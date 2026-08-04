@@ -6,8 +6,7 @@
 import { SurveyResponse, EmailLog, SystemIntegrationLog, AppConfig, SchoolItem } from '../types';
 
 export const EMPLOYEES = [
-  { id: 'emp_1', nameAr: 'سالم الترجمي', nameEn: 'Salem Al-Turjumi' },
-  { id: 'emp_2', nameAr: 'رمزي المزيني', nameEn: 'Ramzi Al-Muzaini' }
+  { id: 'emp_1', nameAr: 'سالم الترجمي', nameEn: 'Salem Al-Turjumi' }
 ];
 
 export const INITIAL_CONFIG: AppConfig = {

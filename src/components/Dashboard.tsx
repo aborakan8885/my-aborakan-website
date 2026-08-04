@@ -283,13 +283,7 @@ interface DashboardProps {
 }
 
 const DEFAULT_OFFICERS: OfficerUser[] = [
-  { id: 'emp_1', nameAr: 'سالم الترجمي', fullNameQuad: 'سالم بن محمد بن علي الترجمي', nationalId: '1011112222', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'admin', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' },
-  { id: 'emp_2', nameAr: 'رمزي المزيني', fullNameQuad: 'رمزي بن سعيد بن أحمد المزيني', nationalId: '1022223333', personalEmail: 'ramzi.muzaini@gmail.com', nameEn: 'Ramzi Al-Muzaini', role: 'director', mobile: '0553334444', isActive: true, password: '123456', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'إدارة رعاية المستفيدين - الإشراف', roleDescription: 'مدير - متابعة التقارير التنفيذية والاعتماد' },
-  { id: 'emp_leadership_dir', nameAr: 'د. خالد السفياني', fullNameQuad: 'خالد بن معتوق السفياني', nationalId: '1033334444', personalEmail: 'khalid.sufyani@gmail.com', nameEn: 'Dr. Khalid Al-Sufyani', role: 'leadership_director', mobile: '0554445555', isActive: true, password: '123456', canGrantRoles: true, canDeleteUsers: false, canAddUsers: true, workField: 'إدارة القيادة المدرسية - المكتب الرئيسي', roleDescription: 'مدير القيادة المدرسية - الإشراف العام ومتابعة وتصعيد الطلبات المعادة بعد 48 ساعة' },
-  { id: 'emp_equivalency_1', nameAr: 'أ. دلال الغامدي', fullNameQuad: 'دلال بنت سعيد الغامدي', nationalId: '1077778888', personalEmail: 'dalal.ghamdi@gmail.com', nameEn: 'Dalal Al-Ghamdi', role: 'equivalency_supervisor', mobile: '0558889999', isActive: true, password: '123456', canGrantRoles: false, canDeleteUsers: false, canAddUsers: true, canHandleEqualizations: true, workField: 'قسم القبول ومعادلة الشهادات والمؤهلات الدراسية', roleDescription: 'مشرف القبول معادلات الشهادات - دراسة وفحص طلبات معادلة الشهادات الصادرة من خارج المملكة أو المدارس الدولية وإجراء المعايرة وتوجيه الطلاب' },
-  { id: 'emp_returned_followup', nameAr: 'محمد العوفي', fullNameQuad: 'محمد بن سالم العوفي', nationalId: '1044445555', personalEmail: 'mohammed.aufi@gmail.com', nameEn: 'Mohammed Al-Aufi', role: 'returned_followup', mobile: '0555556666', isActive: true, password: '123456', canGrantRoles: false, canDeleteUsers: false, canAddUsers: false, workField: 'وحدة متابعة الطلبات المعادة (بنين وبنات)', roleDescription: 'مسؤول المتابعة المباشرة للطلبات المعادة من المدارس لقطاعي البنين والبنات' },
-  { id: 'emp_planning_1', nameAr: 'م. عبد الله الغامدي', fullNameQuad: 'عبد الله بن أحمد الغامدي', nationalId: '1055556666', personalEmail: 'abdullah.ghamdi@gmail.com', nameEn: 'Abdullah Al-Ghamdi', role: 'school_planning', mobile: '0556667777', isActive: true, password: '123456', workField: 'إدارة التخطيط المدرسي', roleDescription: 'مسؤول فتح الشواغر والطاقة الاستيعابية بالفصول' },
-  { id: 'emp_leadership_1', nameAr: 'أ. فهد الجهني', fullNameQuad: 'فهد بن علي الجهني', nationalId: '1066667777', personalEmail: 'fahad.juhani@gmail.com', nameEn: 'Fahad Al-Juhani', role: 'school_leadership', mobile: '0557778888', isActive: true, password: '123456', workField: 'إدارة القيادة المدرسية - المتابعة الميدانية', roleDescription: 'مشرف القيادة المدرسية للمتابعة والتواصل الميداني مع المدارس' }
+  { id: 'emp_1', nameAr: 'سالم الترجمي', fullNameQuad: 'سالم بن محمد بن علي الترجمي', nationalId: '1011112222', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'admin', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
 ];
 
 interface TabItemConfig {
@@ -434,14 +428,14 @@ function Dashboard({
   const isRtl = currentLang === 'ar';
   const isDark = theme === 'dark';
 
-  // Load and manage officer users list
+  // Load and manage officer users list (Admin only by default)
   const [officers, setOfficers] = useState<OfficerUser[]>(() => {
-    const cached = localStorage.getItem('officer_users_v2');
+    const cached = localStorage.getItem('officer_users_v3');
     let list: OfficerUser[] = [];
     if (cached) {
       try {
         const parsed: OfficerUser[] = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           list = parsed;
         } else {
           list = [...DEFAULT_OFFICERS];
@@ -453,9 +447,9 @@ function Dashboard({
       list = [...DEFAULT_OFFICERS];
     }
 
-    // Merge missing default officers to ensure accounts like leadership_director & returned_followup are present
+    // Ensure default admin user is present
     DEFAULT_OFFICERS.forEach(defOff => {
-      if (!list.some(o => o.id === defOff.id || o.role === defOff.role)) {
+      if (!list.some(o => o.id === defOff.id)) {
         list.push(defOff);
       }
     });
@@ -480,19 +474,6 @@ function Dashboard({
           canAddUsers: true
         };
       }
-      if (o.id === 'emp_2' || o.nameAr === 'رمزي المزيني') {
-        return {
-          ...o,
-          nationalId: o.nationalId || '1022223333',
-          fullNameQuad: o.fullNameQuad || 'رمزي بن سعيد بن أحمد المزيني',
-          personalEmail: o.personalEmail || 'ramzi.muzaini@gmail.com',
-          password: pwd,
-          role: 'director',
-          canGrantRoles: true,
-          canDeleteUsers: true,
-          canAddUsers: true
-        };
-      }
       return {
         ...o,
         password: pwd,
@@ -503,6 +484,7 @@ function Dashboard({
       };
     });
 
+    localStorage.setItem('officer_users_v3', JSON.stringify(list));
     localStorage.setItem('officer_users_v2', JSON.stringify(list));
     return list;
   });
