@@ -1,0 +1,1721 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  User,
+  Phone,
+  School,
+  FileQuestion,
+  Star,
+  MessageSquare,
+  Send,
+  CheckCircle2,
+  ShieldCheck,
+  AlertTriangle,
+  Building,
+  GraduationCap,
+  UserCheck,
+  Home,
+  ArrowRight,
+  ArrowLeft,
+  Users,
+  MapPin,
+  ClipboardList,
+  CheckSquare,
+  HelpCircle,
+  Clock,
+  ThumbsUp,
+  FileText,
+  Bookmark
+} from 'lucide-react';
+import { Language, SurveyResponse, ProblemType, AppConfig, SchoolItem } from '../types';
+import { TRANSLATIONS, INITIAL_SCHOOLS } from '../data/mockData';
+import { SchoolSelectDropdown } from './SchoolSelectDropdown';
+
+interface SurveyFormProps {
+  currentLang: Language;
+  onSubmit: (survey: Omit<SurveyResponse, 'id' | 'createdAt' | 'isSynced'>) => SurveyResponse;
+  onUpdateSurvey: (survey: SurveyResponse) => void;
+  config: AppConfig;
+  isOnline: boolean;
+  onBackToPortal?: () => void;
+  theme?: 'light' | 'dark';
+  schools?: SchoolItem[];
+}
+
+export default function SurveyForm({
+  currentLang,
+  onSubmit,
+  onUpdateSurvey,
+  config,
+  isOnline,
+  onBackToPortal,
+  theme,
+  schools = INITIAL_SCHOOLS
+}: SurveyFormProps) {
+  const t = TRANSLATIONS[currentLang];
+  const isRtl = currentLang === 'ar';
+  const isDark = theme === 'dark';
+
+  const activeSchools = useMemo(() => {
+    if (schools !== undefined && schools !== INITIAL_SCHOOLS) {
+      return schools;
+    }
+    const cached = localStorage.getItem('app_schools_list_v1');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* ignore */ }
+    }
+    return schools || INITIAL_SCHOOLS;
+  }, [schools]);
+
+  // -----------------------------------------------------------------
+  // Phase 1 (Submission Form) States
+  // -----------------------------------------------------------------
+  const [beneficiaryName, setBeneficiaryName] = useState('');
+  const [parentName, setParentName] = useState('');
+  const [studentAge, setStudentAge] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [gender, setGender] = useState<'boys' | 'girls' | ''>('');
+
+  // Nationality & Residency States
+  const [nationality, setNationality] = useState('سعودي');
+  const [nationalitySearch, setNationalitySearch] = useState('');
+  const [showNationalityDropdown, setShowNationalityDropdown] = useState(false);
+  const [residencyType, setResidencyType] = useState<'regular' | 'visit' | 'other' | ''>('regular');
+  const [customResidencyType, setCustomResidencyType] = useState('');
+
+  // Student Category Selection: 'fresh' (مستجد) or 'non_fresh' (غير مستجد)
+  const [studentCategoryType, setStudentCategoryType] = useState<'fresh' | 'non_fresh'>('fresh');
+  const [equalizationStage, setEqualizationStage] = useState<'primary' | 'intermediate' | 'secondary' | ''>('');
+  const [equalizationNotes, setEqualizationNotes] = useState('');
+
+  const [stage, setStage] = useState('');
+  const [grade, setGrade] = useState('');
+  const [sector, setSector] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [secondSchoolName, setSecondSchoolName] = useState('');
+  const [thirdSchoolName, setThirdSchoolName] = useState('');
+  const [agreedToAlternativeSchoolPlacement, setAgreedToAlternativeSchoolPlacement] = useState<boolean>(true);
+  const [problemType, setProblemType] = useState<ProblemType | ''>('');
+  const [otherProblemDetails, setOtherProblemDetails] = useState('');
+  const [contactedSchool, setContactedSchool] = useState<'yes' | 'no' | ''>('');
+  const [schoolFeedback, setSchoolFeedback] = useState('');
+
+  const ALL_NATIONALITIES = [
+    'سعودي', 'مصري', 'سوري', 'يمني', 'سوداني', 'أردني', 'فلسطيني', 'كويتي', 'إماراتي', 'قطري', 'بحريني', 'عماني', 'عراقي', 'لبناني', 'مغربي', 'تونس', 'جزائري', 'ليبيا', 'الصومال', 'موريتانيا', 'باكستاني', 'هندي', 'بنغلاديشي', 'فلبيني', 'أندونيسي', 'تركيا', 'أفغاني', 'أخرى'
+  ];
+
+  // -----------------------------------------------------------------
+  // Phase 2 (Tracking & Evaluation Form) States
+  // -----------------------------------------------------------------
+  const [isResolved, setIsResolved] = useState<boolean | null>(null);
+  const [unresolvedReason, setUnresolvedReason] = useState('');
+  const [staffSatisfaction, setStaffSatisfaction] = useState<number>(0);
+  const [receptionSatisfaction, setReceptionSatisfaction] = useState<number>(0);
+  const [notes, setNotes] = useState('');
+
+  // Star hover feedback states
+  const [staffHover, setStaffHover] = useState<number>(0);
+  const [receptionHover, setReceptionHover] = useState<number>(0);
+
+  // -----------------------------------------------------------------
+  // Flow and Validation States
+  // -----------------------------------------------------------------
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [evalErrors, setEvalErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false); // True once Phase 1 is submitted
+  const [showEvaluation, setShowEvaluation] = useState(false); // True when "Track and Evaluate" clicked
+  const [evalSubmitted, setEvalSubmitted] = useState(false); // True once Evaluation is submitted
+  const [createdSurvey, setCreatedSurvey] = useState<SurveyResponse | null>(null);
+  const [showNegativeAlert, setShowNegativeAlert] = useState(false);
+
+  // Administrative Sector options
+  const SECTORS = [
+    'منطقة المدينة المنورة (المقر الرئيسي)',
+    'محافظة ينبع',
+    'محافظة الحناكية',
+    'محافظة العلا',
+    'محافظة بدر',
+    'محافظة خيبر',
+    'محافظة مهد الذهب',
+    'محافظة العيص',
+    'محافظة وادي الفرع'
+  ];
+
+  // Helper: dynamic grades based on stage
+  const getGradesForStage = (selectedStage: string) => {
+    if (isRtl) {
+      switch (selectedStage) {
+        case 'EarlyChildhood':
+        case 'Kindergarten':
+          return ['المستوى الأول (روضة)', 'المستوى الثاني (روضة)', 'المستوى الثالث (روضة)'];
+        case 'Primary':
+          return [
+            'الصف الأول الابتدائي',
+            'الصف الثاني الابتدائي',
+            'الصف الثالث الابتدائي',
+            'الصف الرابع الابتدائي',
+            'الصف الخامس الابتدائي',
+            'الصف السادس الابتدائي'
+          ];
+        case 'Intermediate':
+          return ['الصف الأول المتوسط', 'الصف الثاني المتوسط', 'الصف الثالث المتوسط'];
+        case 'Secondary':
+          return ['الصف الأول الثانوي', 'الصف الثاني الثانوي', 'الصف الثالث الثانوي'];
+        default:
+          return [];
+      }
+    } else {
+      switch (selectedStage) {
+        case 'EarlyChildhood':
+        case 'Kindergarten':
+          return ['Level 1 (KG)', 'Level 2 (KG)', 'Level 3 (KG)'];
+        case 'Primary':
+          return ['1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade'];
+        case 'Intermediate':
+          return ['1st Intermediate', '2nd Intermediate', '3rd Intermediate'];
+        case 'Secondary':
+          return ['1st Secondary', '2nd Secondary', '3rd Secondary'];
+        default:
+          return [];
+      }
+    }
+  };
+
+  // Phase 1: Form Validation
+  const validatePhase1 = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!beneficiaryName.trim()) {
+      newErrors.beneficiaryName = isRtl ? 'يرجى إدخال اسم المستفيد / الطالب كاملاً' : 'Please enter full beneficiary / student name';
+    }
+
+    if (!parentName.trim()) {
+      newErrors.parentName = isRtl ? 'يرجى إدخال اسم ولي الأمر كاملاً' : 'Please enter full parent name';
+    }
+
+    const phoneRegex = /^(05|5)\d{8}$/;
+    if (!phoneNumber) {
+      newErrors.phoneNumber = isRtl ? 'يرجى إدخال رقم الهاتف المحمول' : 'Please enter phone number';
+    } else if (!phoneRegex.test(phoneNumber.trim())) {
+      newErrors.phoneNumber = isRtl ? 'رقم الهاتف يجب أن يبدأ بـ 05 ويتكون من 10 أرقام' : 'Phone number must start with 05 and be 10 digits';
+    }
+
+    if (!nationality.trim()) {
+      newErrors.nationality = isRtl ? 'يرجى اختيار جنسية المستفيد' : 'Please select nationality';
+    }
+
+    if (residencyType === 'other' && !customResidencyType.trim()) {
+      newErrors.customResidencyType = isRtl ? 'يرجى توضيح نوع الإقامة بالتفصيل' : 'Please specify custom residency type';
+    }
+
+    if (!gender) {
+      newErrors.gender = isRtl ? 'يرجى اختيار جنس الطالب / الطالبة' : 'Please select gender';
+    }
+
+    // If Non-Fresh student (Equalization Request)
+    if (studentCategoryType === 'non_fresh') {
+      if (!equalizationStage) {
+        newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+      }
+    } else {
+      // Fresh Student validation
+      if (!stage) {
+        newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
+      }
+
+      if (!grade) {
+        newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
+      }
+
+      if (!sector) {
+        newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
+      }
+
+      if (!neighborhood.trim()) {
+        newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
+      }
+
+      if (!schoolName.trim()) {
+        newErrors.schoolName = isRtl ? 'يرجى إدخال اسم المدرسة المعنية' : 'Please enter school name';
+      }
+
+      if (!problemType) {
+        newErrors.problemType = isRtl ? 'يرجى اختيار نوع المشكلة الرئيسي' : 'Please select main problem type';
+      }
+
+      if (problemType === 'other' && !otherProblemDetails.trim()) {
+        newErrors.otherProblemDetails = isRtl ? 'يرجى تحديد تفاصيل أخرى للمشكلة' : 'Please enter other problem details';
+      }
+
+      if (!contactedSchool) {
+        newErrors.contactedSchool = isRtl ? 'يرجى تحديد ما إذا تم التواصل مع المدرسة' : 'Please state if you contacted school';
+      }
+
+      if (contactedSchool === 'yes' && !schoolFeedback.trim()) {
+        newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
+      }
+    }
+
+    setErrors(newErrors);
+    return { isValid: Object.keys(newErrors).length === 0, newErrors };
+  };
+
+  // Phase 1 Form Submission
+  const handlePhase1Submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const { isValid, newErrors } = validatePhase1();
+
+    if (!isValid) {
+      const firstErrorKey = Object.keys(newErrors)[0];
+      const element = document.getElementById(`field-${firstErrorKey}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      const isEq = studentCategoryType === 'non_fresh';
+      const isVac = !isEq && problemType === 'vacancies_unavailable';
+
+      const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
+      const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
+
+      const response = onSubmit({
+        beneficiaryName: beneficiaryName.trim(),
+        parentName: parentName.trim() || undefined,
+        studentAge: studentAge.trim() || undefined,
+        phoneNumber: phoneNumber.trim(),
+        nationality: nationality.trim(),
+        residencyType: residencyType || undefined,
+        customResidencyType: residencyType === 'other' ? customResidencyType.trim() : undefined,
+        studentCategoryType,
+        isNonFreshStudent: isEq,
+        isEqualizationRequest: isEq,
+        equalizationStage: isEq ? equalizationStage : undefined,
+
+        stage: isEq ? eqStageMapped : stage,
+        sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
+        schoolName: isEq ? `مكتب معادلة الشهادات (${eqStageLabelAr})` : schoolName.trim(),
+        schoolCode: isEq ? undefined : (schoolCode.trim() || undefined),
+        problemType: isEq ? 'other' : (problemType as ProblemType),
+        serviceEmployee: '',
+        isResolved: false,
+        unresolvedReason: undefined,
+        staffSatisfaction: 0,
+        receptionSatisfaction: 0,
+        notes: isEq 
+          ? `🎓 طلب معادلة شهادة ومؤهل لـ (${eqStageLabelAr}). ${equalizationNotes ? 'تفاصيل المؤهل: ' + equalizationNotes.trim() : ''}`
+          : notes,
+        isOfflineCreated: !isOnline,
+
+        gender: gender ? (gender as 'boys' | 'girls') : 'boys',
+        grade: isEq ? `معادلة ${eqStageLabelAr}` : grade,
+        neighborhood: neighborhood.trim() || undefined,
+        contactedSchool: isEq ? 'no' : (contactedSchool as 'yes' | 'no'),
+        schoolFeedback: (!isEq && contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
+        otherProblemDetails: isEq 
+          ? `طلب معادلة شهادة دراسية للمرحلة (${eqStageLabelAr})` 
+          : (problemType === 'other' ? otherProblemDetails.trim() : undefined),
+        secondSchoolName: isEq ? undefined : (secondSchoolName.trim() || undefined),
+        thirdSchoolName: isEq ? undefined : (thirdSchoolName.trim() || undefined),
+        agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
+        isVacancyRequest: isVac ? true : undefined,
+        vacancyRequestStatus: isVac ? 'pending_vacancy' : undefined
+      });
+
+      setCreatedSurvey(response);
+      setIsSubmitting(false);
+      setIsSuccess(true);
+    }, 1200);
+  };
+
+  // Phase 2: Evaluation Validation
+  const validateEvaluation = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (isResolved === null) {
+      newErrors.isResolved = isRtl ? 'يرجى الإجابة عما إذا تم معالجة طلبك' : 'Please answer if your request was resolved';
+    }
+
+    if (isResolved === false && !unresolvedReason.trim()) {
+      newErrors.unresolvedReason = isRtl ? 'يرجى إدخال سبب عدم حل الشكوى' : 'Please write down unresolved explanation';
+    }
+
+    if (staffSatisfaction === 0) {
+      newErrors.staffSatisfaction = isRtl ? 'يرجى تقييم رضاك عن الموظف' : 'Please rate staff satisfaction';
+    }
+
+    if (receptionSatisfaction === 0) {
+      newErrors.receptionSatisfaction = isRtl ? 'يرجى تقييم رضاك عن جودة الاستقبال والتوجيه' : 'Please rate reception satisfaction';
+    }
+
+    setEvalErrors(newErrors);
+    return { isValid: Object.keys(newErrors).length === 0, newErrors };
+  };
+
+  // Phase 2 Evaluation Submission
+  const handleEvaluationSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const { isValid, newErrors } = validateEvaluation();
+
+    if (!isValid) {
+      const firstErrorKey = Object.keys(newErrors)[0];
+      const element = document.getElementById(`eval-${firstErrorKey}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    if (!createdSurvey) return;
+
+    // Simulate final response update
+    const updatedSurvey: SurveyResponse = {
+      ...createdSurvey,
+      isResolved: isResolved!,
+      unresolvedReason: isResolved === false ? unresolvedReason.trim() : undefined,
+      staffSatisfaction,
+      receptionSatisfaction,
+      notes: notes.trim()
+    };
+
+    onUpdateSurvey(updatedSurvey);
+    setEvalSubmitted(true);
+
+    const hasNegativeFeedback = staffSatisfaction < 3 || receptionSatisfaction < 3;
+    if (hasNegativeFeedback) {
+      setShowNegativeAlert(true);
+    }
+  };
+
+  // Reset & start new application
+  const handleResetAll = () => {
+    setBeneficiaryName('');
+    setPhoneNumber('');
+    setGender('');
+    setStage('');
+    setGrade('');
+    setSector('');
+    setNeighborhood('');
+    setSchoolName('');
+    setProblemType('');
+    setOtherProblemDetails('');
+    setContactedSchool('');
+    setSchoolFeedback('');
+
+    // Phase 2 resetting
+    setIsResolved(null);
+    setUnresolvedReason('');
+    setStaffSatisfaction(0);
+    setReceptionSatisfaction(0);
+    setNotes('');
+
+    setErrors({});
+    setEvalErrors({});
+    setCreatedSurvey(null);
+    setIsSuccess(false);
+    setShowEvaluation(false);
+    setEvalSubmitted(false);
+    setShowNegativeAlert(false);
+  };
+
+  // -----------------------------------------------------------------
+  // SUCCESS VIEW (Phase 1 Completed)
+  // -----------------------------------------------------------------
+  if (isSuccess) {
+    return (
+      <div className="max-w-3xl mx-auto my-6 sm:my-10 px-4 sm:px-0">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`border rounded-3xl shadow-xl overflow-hidden ${
+            isDark ? 'bg-teal-950/60 border-teal-800/40 text-white' : 'bg-white border-slate-200/80'
+          }`}
+        >
+          {/* Top visual confirmation band */}
+          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-teal-800 p-8 text-center text-white relative">
+            <div className="mx-auto w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-white mb-4 shadow-inner backdrop-blur-xs">
+              <CheckCircle2 className="w-10 h-10 animate-bounce" />
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black font-sans mb-1">
+              {isRtl ? 'تم ارسال الطلب بنجاح ويمكنك متابعة الطلب بالإسم المسجل كاملاً' : 'Request sent successfully! You can track your request using your full registered name.'}
+            </h2>
+            <p className="text-emerald-100 text-xs sm:text-sm">
+              {isRtl
+                ? 'تم تسجيل طلبك وتوليد رقم بلاغ فريد مشفر بالكامل في قاعدة البيانات.'
+                : 'Your ticket has been recorded with a secure custom encrypted ID.'}
+            </p>
+
+            <div className="absolute top-4 left-4 font-mono text-[10px] bg-black/20 text-white/80 px-2 py-1 rounded-md">
+              #{createdSurvey?.id}
+            </div>
+          </div>
+
+          <div className="p-6 sm:p-8 space-y-8">
+            {/* Summary of what they just submitted */}
+            <div className={`p-5 rounded-2xl border text-sm space-y-4 ${
+              isDark ? 'bg-[#032e2d]/60 border-teal-800/30' : 'bg-slate-50/75 border-slate-100'
+            }`}>
+              <h4 className={`font-bold flex items-center gap-2 border-b pb-2 ${isDark ? 'text-teal-300 border-teal-800/30' : 'text-slate-800 border-slate-200/60'}`}>
+                <FileText className="w-4 h-4 text-teal-500" />
+                {isRtl ? 'ملخص بيانات الطلب المسجل:' : 'Registered Request Summary:'}
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'اسم المستفيد: ' : 'Beneficiary Name: '}</span>
+                  <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>{createdSurvey?.beneficiaryName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'رقم الجوال: ' : 'Mobile Number: '}</span>
+                  <span className="font-mono font-bold text-slate-500">{createdSurvey?.phoneNumber}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'المرحلة / الصف: ' : 'Stage & Grade: '}</span>
+                  <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>
+                    {createdSurvey?.stage === 'Primary' ? t.stagePrimary : createdSurvey?.stage === 'Intermediate' ? t.stageIntermediate : createdSurvey?.stage === 'Secondary' ? t.stageSecondary : createdSurvey?.stage === 'EarlyChildhood' ? t.stageEarlyChildhood : t.stageKindergarten}
+                    {createdSurvey?.grade ? ` - ${createdSurvey.grade}` : ''}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'الجنس: ' : 'Gender: '}</span>
+                  <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>
+                    {createdSurvey?.gender === 'boys' ? (isRtl ? 'بنين' : 'Boys') : (isRtl ? 'بنات' : 'Girls')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'القطاع والحي: ' : 'Sector & Neighborhood: '}</span>
+                  <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>{createdSurvey?.sector} - {createdSurvey?.neighborhood}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'المدرسة المعنية: ' : 'Target School: '}</span>
+                  <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>{createdSurvey?.schoolName}</span>
+                </div>
+                <div className="md:col-span-2">
+                  <span className="text-slate-400 font-medium">{isRtl ? 'المشكلة الرئيسية: ' : 'Main Issue: '}</span>
+                  <span className="font-bold text-teal-600 dark:text-teal-400">
+                    {createdSurvey?.problemType === 'distance_from_school' ? (isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Transfer due to school distance') : t[`prob${createdSurvey?.problemType?.charAt(0).toUpperCase()}${createdSurvey?.problemType?.slice(1)}` as keyof typeof t] || createdSurvey?.problemType}
+                  </span>
+                  {createdSurvey?.otherProblemDetails && (
+                    <div className="mt-1.5 p-2 bg-slate-100 dark:bg-teal-900/40 rounded-lg text-slate-600 dark:text-teal-200 text-xs font-serif italic">
+                      &ldquo;{createdSurvey.otherProblemDetails}&rdquo;
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Split Page Feature: Track & Evaluate Action Box */}
+            <div className="border-t pt-8">
+              {!showEvaluation ? (
+                // Interactive trigger to open tracking/eval stage
+                <motion.div
+                  whileHover={{ scale: 1.01 }}
+                  className={`p-6 rounded-2xl border text-center cursor-pointer transition-all shadow-md hover:shadow-lg ${
+                    isDark
+                      ? 'bg-[#063d3b]/50 border-teal-700/40 hover:bg-[#0b4a48]/60 text-white'
+                      : 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50 text-slate-900'
+                  }`}
+                  onClick={() => setShowEvaluation(true)}
+                  id="btn-track-and-evaluate"
+                >
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white mb-3">
+                    <ClipboardList className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg mb-1 flex items-center justify-center gap-1.5">
+                    {isRtl ? 'متابعة الطلب والتقييم' : 'Track Request and Evaluate'}
+                  </h3>
+                  <p className="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
+                    {isRtl
+                      ? 'انقر هنا لفتح نافذة المتابعة الحية ومراجعة حالة الطلب الحالي، وتقديم تقييم مستويات الرضا المباشر عن الخدمة المقدمة.'
+                      : 'Click here to access live request tracking and submit detailed service satisfaction evaluation.'}
+                  </p>
+                </motion.div>
+              ) : (
+                // Evaluation flow rendered inline upon clicking tracking
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className={`p-6 rounded-3xl border ${
+                    isDark ? 'bg-teal-950/40 border-teal-800/40' : 'bg-slate-50 border-slate-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 border-b pb-4 mb-6">
+                    <span className="p-2.5 bg-emerald-600 rounded-xl text-white shadow-md">
+                      <ClipboardList className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <h3 className="font-extrabold text-slate-800 dark:text-teal-200 text-base sm:text-lg">
+                        {isRtl ? 'بوابة متابعة وتحديث الطلب والتقييم' : 'Request Tracker & Evaluation Desk'}
+                      </h3>
+                      <p className="text-slate-400 text-xs">
+                        {isRtl ? 'متابعة حالة المعاملة + تقديم استبانة قياس جودة الاستقبال وفاعلية المعالجة' : 'Track resolution, rate staff response and reception quality.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tracking Status indicator */}
+                  <div className={`p-4 rounded-xl mb-6 flex items-center justify-between border ${
+                    isDark ? 'bg-[#03302f] border-teal-800/30' : 'bg-white border-slate-100'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-300">{isRtl ? 'حالة الطلب الحالية:' : 'Live Status:'}</span>
+                    </div>
+                    <span className="text-xs font-bold px-3 py-1 bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 rounded-full">
+                      {isRtl ? 'قيد المراجعة والتدقيق' : 'Under Active Review'}
+                    </span>
+                  </div>
+
+                  {/* Final Evaluation submitted state */}
+                  {evalSubmitted ? (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="p-6 bg-emerald-600 text-white rounded-2xl text-center space-y-3"
+                    >
+                      <ThumbsUp className="w-8 h-8 mx-auto text-emerald-100 animate-bounce" />
+                      <h4 className="font-bold text-base">{isRtl ? 'شكراً جزيلاً لتقييمك!' : 'Thank you for your rating!'}</h4>
+                      <p className="text-xs text-emerald-100 leading-relaxed max-w-md mx-auto">
+                        {isRtl
+                          ? 'تم حفظ تقييمك لمستوى الرضا وحالة المعالجة وتحديثها بنجاح في قاعدة البيانات ومزامنتها فورياً مع مسؤولي الجودة.'
+                          : 'Your satisfaction score has been updated in our system and synced with quality management.'}
+                      </p>
+
+                      {showNegativeAlert && (
+                        <div className="p-3 bg-teal-950/40 text-teal-200 text-xs rounded-xl border border-teal-800/40 text-right flex items-start gap-2.5 flex-row-reverse">
+                          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">
+                            {t.negativeAlertWarning}
+                          </span>
+                        </div>
+                      )}
+                    </motion.div>
+                  ) : (
+                    // The evaluation questions moved here
+                    <form onSubmit={handleEvaluationSubmit} className="space-y-6">
+                      
+                      {/* Question 1: Is Resolved */}
+                      <div id="eval-isResolved" className="space-y-3">
+                        <label className="block text-sm font-bold text-slate-700 dark:text-teal-200">
+                          {t.isResolved} <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex gap-3 max-w-md">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsResolved(true);
+                              setUnresolvedReason('');
+                            }}
+                            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-bold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                              isResolved === true
+                                ? 'bg-teal-600 border-teal-600 text-white shadow-md'
+                                : 'bg-white dark:bg-teal-900/20 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {t.yes}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsResolved(false)}
+                            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-bold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                              isResolved === false
+                                ? 'bg-amber-600 border-amber-600 text-white shadow-md'
+                                : 'bg-white dark:bg-teal-900/20 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {t.no}
+                          </button>
+                        </div>
+                        {evalErrors.isResolved && (
+                          <p className="text-xs text-red-500 font-semibold">{evalErrors.isResolved}</p>
+                        )}
+
+                        {/* Unresolved Reason */}
+                        <AnimatePresence>
+                          {isResolved === false && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden space-y-2 mt-2"
+                              id="eval-unresolvedReason"
+                            >
+                              <label className="block text-xs font-bold text-slate-700 dark:text-teal-200">
+                                {t.unresolvedReasonLabel} <span className="text-red-500">*</span>
+                              </label>
+                              <textarea
+                                value={unresolvedReason}
+                                onChange={(e) => setUnresolvedReason(e.target.value)}
+                                placeholder={t.unresolvedReasonPlaceholder}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-teal-950/60 text-slate-900 dark:text-white text-xs sm:text-sm font-medium rounded-xl border transition-all outline-none focus:ring-2 ${
+                                  evalErrors.unresolvedReason
+                                    ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                                    : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                                }`}
+                                rows={2}
+                                dir={isRtl ? 'rtl' : 'ltr'}
+                              />
+                              {evalErrors.unresolvedReason && (
+                                <p className="text-xs text-red-500 font-semibold">{evalErrors.unresolvedReason}</p>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Question 2: Satisfaction Star Ratings */}
+                      <div className="space-y-6 pt-2 border-t border-slate-200/50 dark:border-teal-800/20">
+                        <h4 className="text-xs font-extrabold text-slate-500 dark:text-teal-300 tracking-wider">
+                          {isRtl ? 'قياس مستويات الرضا والتقييم التفصيلي:' : 'Satisfactory Metrics & Scores:'}
+                        </h4>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Staff performance stars */}
+                          <div id="eval-staffSatisfaction" className="space-y-2">
+                            <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                              {t.staffSatisfaction} <span className="text-red-500">*</span>
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setStaffSatisfaction(star)}
+                                  onMouseEnter={() => setStaffHover(star)}
+                                  onMouseLeave={() => setStaffHover(0)}
+                                  className="p-0.5 cursor-pointer transition-all hover:scale-120 focus:outline-none"
+                                >
+                                  <Star
+                                    className={`w-7.5 h-7.5 ${
+                                      star <= (staffHover || staffSatisfaction)
+                                        ? 'fill-amber-400 text-amber-400'
+                                        : 'text-slate-300 dark:text-teal-900/60'
+                                    }`}
+                                  />
+                                </button>
+                              ))}
+                              {staffSatisfaction > 0 && (
+                                <span className="text-[10px] font-mono font-bold bg-slate-200/60 dark:bg-teal-950 text-slate-600 dark:text-teal-300 px-2 py-0.5 rounded-full">
+                                  {staffSatisfaction} / 5
+                                </span>
+                              )}
+                            </div>
+                            {evalErrors.staffSatisfaction && (
+                              <p className="text-xs text-red-500 font-semibold">{evalErrors.staffSatisfaction}</p>
+                            )}
+                          </div>
+
+                          {/* Reception quality stars */}
+                          <div id="eval-receptionSatisfaction" className="space-y-2">
+                            <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                              {t.receptionSatisfaction} <span className="text-red-500">*</span>
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setReceptionSatisfaction(star)}
+                                  onMouseEnter={() => setReceptionHover(star)}
+                                  onMouseLeave={() => setReceptionHover(0)}
+                                  className="p-0.5 cursor-pointer transition-all hover:scale-120 focus:outline-none"
+                                >
+                                  <Star
+                                    className={`w-7.5 h-7.5 ${
+                                      star <= (receptionHover || receptionSatisfaction)
+                                        ? 'fill-amber-400 text-amber-400'
+                                        : 'text-slate-300 dark:text-teal-900/60'
+                                    }`}
+                                  />
+                                </button>
+                              ))}
+                              {receptionSatisfaction > 0 && (
+                                <span className="text-[10px] font-mono font-bold bg-slate-200/60 dark:bg-teal-950 text-slate-600 dark:text-teal-300 px-2 py-0.5 rounded-full">
+                                  {receptionSatisfaction} / 5
+                                </span>
+                              )}
+                            </div>
+                            {evalErrors.receptionSatisfaction && (
+                              <p className="text-xs text-red-500 font-semibold">{evalErrors.receptionSatisfaction}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question 3: Reviewer general comments */}
+                      <div className="space-y-2 pt-2 border-t border-slate-200/50 dark:border-teal-800/20">
+                        <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                          {t.reviewerNotes}
+                        </label>
+                        <textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder={t.notesPlaceholder}
+                          rows={3}
+                          className="w-full p-3.5 bg-white dark:bg-teal-950/60 text-slate-900 dark:text-white text-xs sm:text-sm font-medium rounded-xl border border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all outline-none"
+                          dir={isRtl ? 'rtl' : 'ltr'}
+                        />
+                      </div>
+
+                      {/* Submit evaluation controls */}
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="submit"
+                          className="flex items-center gap-1.5 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer"
+                        >
+                          <CheckSquare className="w-4 h-4" />
+                          <span>{isRtl ? 'إرسال التقييم النهائي والملاحظات' : 'Submit Final Assessment'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer of success card */}
+          <div className={`p-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${
+            isDark ? 'bg-teal-950/40 border-teal-800/40' : 'bg-slate-50 border-slate-100'
+          }`}>
+            <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+              <ShieldCheck className="w-4.5 h-4.5 text-teal-600" />
+              <span>{isRtl ? 'تشفير وحماية البيانات نشطة' : 'Advanced SHA-256 local lock active'}</span>
+            </div>
+
+            <div className="flex gap-3 w-full sm:w-auto">
+              <button
+                onClick={handleResetAll}
+                className="flex-1 sm:flex-initial px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md cursor-pointer transition-all"
+              >
+                {isRtl ? 'تقديم طلب جديد' : 'Submit Another Request'}
+              </button>
+
+              {onBackToPortal && (
+                <button
+                  onClick={onBackToPortal}
+                  className={`flex-1 sm:flex-initial px-5 py-2.5 border font-bold text-xs sm:text-sm rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+                    isDark
+                      ? 'bg-teal-900/30 border-teal-800/50 text-teal-300 hover:bg-teal-900/50'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Home className="w-4 h-4 text-slate-400" />
+                  <span>{t.goBackPortal}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // -----------------------------------------------------------------
+  // PRIMARY ENTRY VIEW: SUBMISSION FORM (Phase 1)
+  // -----------------------------------------------------------------
+  return (
+    <div className="max-w-3xl mx-auto my-6 sm:my-10 px-4 sm:px-0">
+      
+      {/* Back to Portal Top Bar Button */}
+      {onBackToPortal && (
+        <div className="mb-6 flex justify-start">
+          <button
+            onClick={onBackToPortal}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer border ${
+              isDark
+                ? 'text-teal-300 border-teal-800/40 hover:bg-teal-900/30'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 border-transparent hover:border-slate-200'
+            }`}
+            id="survey-form-back-home"
+          >
+            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            <Home className="w-4.5 h-4.5" />
+            <span>{t.goBackPortal}</span>
+          </button>
+        </div>
+      )}
+      
+      {/* Intro Header */}
+      <div className="text-center mb-8">
+        <h2 className={`text-xl sm:text-3xl font-black font-sans mb-2 ${isDark ? 'text-teal-200' : 'text-slate-900'}`}>
+          {t.formTitle}
+        </h2>
+        <p className={`text-xs sm:text-base max-w-xl mx-auto leading-relaxed ${isDark ? 'text-teal-300/80' : 'text-slate-500'}`}>
+          {isRtl
+            ? 'فضلاً يرجى تعبئة بيانات الطلب أو الشكوى الخاصة بنجلك وتحديد المعوقات المصادفة لتيسير الإجراء والتوجيه السليم.'
+            : 'Please specify the educational request details below to resolve constraints immediately.'}
+        </p>
+      </div>
+
+      {/* Form Content */}
+      <form
+        onSubmit={handlePhase1Submit}
+        className={`border shadow-lg rounded-3xl p-6 sm:p-10 space-y-8 ${
+          isDark ? 'bg-teal-950/60 border-teal-800/40 text-white' : 'bg-white border-slate-200/80'
+        }`}
+        id="survey-form"
+      >
+        
+        {/* Section 1: Beneficiary Info */}
+        <div>
+          <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
+            <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
+              <User className="w-4.5 h-4.5" />
+            </span>
+            <h3 className="font-extrabold text-base sm:text-lg">
+              {isRtl ? 'بيانات الطالب وولي الأمر' : 'Student & Parent Information'}
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Student Name */}
+            <div id="field-beneficiaryName">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'اسم المستفيد / الطالب كاملاً' : 'Full Beneficiary / Student Name'} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                  <User className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  value={beneficiaryName}
+                  onChange={(e) => setBeneficiaryName(e.target.value)}
+                  placeholder={isRtl ? 'أدخل اسم الطالب / المستفيد كاملاً' : 'Enter student full name'}
+                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                    isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                  } ${
+                    errors.beneficiaryName
+                      ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                      : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                  }`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+              </div>
+              {errors.beneficiaryName && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.beneficiaryName}</p>
+              )}
+            </div>
+
+            {/* Parent Name */}
+            <div id="field-parentName">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'اسم ولي الأمر كاملاً' : 'Full Parent Name'} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                  <User className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  value={parentName}
+                  onChange={(e) => setParentName(e.target.value)}
+                  placeholder={isRtl ? 'أدخل اسم ولي الأمر كاملاً' : 'Enter parent full name'}
+                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                    isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                  } ${
+                    errors.parentName
+                      ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                      : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                  }`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+              </div>
+              {errors.parentName && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.parentName}</p>
+              )}
+            </div>
+
+            {/* Phone Number */}
+            <div id="field-phoneNumber">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'رقم الهاتف المحمول' : 'Mobile Phone Number'} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                  <Phone className="w-4 h-4" />
+                </span>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder={t.phonePlaceholder}
+                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                    isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                  } ${
+                    errors.phoneNumber
+                      ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                      : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                  }`}
+                  dir="ltr"
+                />
+              </div>
+              {errors.phoneNumber && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.phoneNumber}</p>
+              )}
+            </div>
+
+            {/* Student Age */}
+            <div id="field-studentAge">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'العمر' : 'Age'}
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                  <Clock className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  value={studentAge}
+                  onChange={(e) => setStudentAge(e.target.value)}
+                  placeholder={isRtl ? 'أدخل العمر (مثال: 7 سنوات)' : 'e.g. 7 years'}
+                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                    isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                  } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+              </div>
+            </div>
+
+            {/* Nationality (الجنسية مع قائمة منسدلة قابلة للبحث) */}
+            <div id="field-nationality" className="relative">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'الجنسية' : 'Nationality'} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                  <Bookmark className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  readOnly
+                  onClick={() => setShowNationalityDropdown(!showNationalityDropdown)}
+                  value={nationality}
+                  placeholder={isRtl ? 'اختر الجنسية...' : 'Select nationality...'}
+                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none cursor-pointer focus:ring-2 ${
+                    isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                  } ${
+                    errors.nationality
+                      ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                      : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                  }`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+              </div>
+
+              {/* Searchable dropdown menu */}
+              {showNationalityDropdown && (
+                <div className={`absolute z-30 mt-1 w-full rounded-2xl border shadow-xl p-2.5 max-h-60 overflow-y-auto ${
+                  isDark ? 'bg-[#002828] border-teal-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                }`}>
+                  <input
+                    type="text"
+                    value={nationalitySearch}
+                    onChange={(e) => setNationalitySearch(e.target.value)}
+                    placeholder={isRtl ? '🔍 بحث في قائمة الجنسيات...' : 'Search nationality...'}
+                    className={`w-full p-2 mb-2 text-xs font-bold rounded-xl border outline-none ${
+                      isDark ? 'bg-[#001c1c] border-teal-800 text-teal-100' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                    dir={isRtl ? 'rtl' : 'ltr'}
+                    autoFocus
+                  />
+                  <div className="space-y-1">
+                    {ALL_NATIONALITIES.filter(n => n.toLowerCase().includes(nationalitySearch.toLowerCase())).map((nat) => (
+                      <button
+                        key={nat}
+                        type="button"
+                        onClick={() => {
+                          setNationality(nat);
+                          setShowNationalityDropdown(false);
+                          setNationalitySearch('');
+                        }}
+                        className={`w-full text-start px-3 py-2 text-xs font-bold rounded-xl transition-all ${
+                          nationality === nat
+                            ? 'bg-emerald-600 text-white'
+                            : isDark ? 'hover:bg-teal-900/60 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
+                        }`}
+                      >
+                        {nat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {errors.nationality && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.nationality}</p>
+              )}
+            </div>
+
+            {/* Residency Type (نوع الاقامة) */}
+            <div id="field-residencyType">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'نوع الاقامة' : 'Residency Type'} <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={residencyType}
+                onChange={(e) => setResidencyType(e.target.value as any)}
+                className={`w-full px-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                  isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
+                <option value="regular">{isRtl ? 'إقامة نظامية' : 'Regular Residency'}</option>
+                <option value="visit">{isRtl ? 'زيارة' : 'Visit Visa'}</option>
+                <option value="other">{isRtl ? 'أخرى (يرجى توضيح نوعها)' : 'Other'}</option>
+              </select>
+            </div>
+
+            {/* Custom Residency Type text input if 'other' */}
+            {residencyType === 'other' && (
+              <div id="field-customResidencyType" className="md:col-span-2">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                  {isRtl ? 'اكتب نوع الإقامة المخصصة:' : 'Specify Custom Residency Type:'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customResidencyType}
+                  onChange={(e) => setCustomResidencyType(e.target.value)}
+                  placeholder={isRtl ? 'أدخل نوع الإقامة بالتفصيل...' : 'Enter custom residency type...'}
+                  className={`w-full px-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none ${
+                    isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                  } ${errors.customResidencyType ? 'border-red-500' : 'border-slate-200 dark:border-teal-800/40'}`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+                {errors.customResidencyType && (
+                  <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.customResidencyType}</p>
+                )}
+              </div>
+            )}
+
+            {/* Student Gender (الجنس: بنين - بنات) */}
+            <div id="field-gender" className="md:col-span-2">
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                {isRtl ? 'الجنس (للطالب / الطالبة)' : 'Gender (Student)'} <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-4 max-w-sm">
+                <button
+                  type="button"
+                  onClick={() => setGender('boys')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                    gender === 'boys'
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                      : isDark
+                      ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>{isRtl ? 'بنين' : 'Boys'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGender('girls')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                    gender === 'girls'
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                      : isDark
+                      ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>{isRtl ? 'بنات' : 'Girls'}</span>
+                </button>
+              </div>
+              {errors.gender && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.gender}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section: Student Category Selection (تحديد صفة الطالب المتقدم: مستجد / غير مستجد) */}
+        <div className={`p-6 rounded-3xl border ${isDark ? 'bg-teal-950/40 border-teal-800/40' : 'bg-slate-50/80 border-slate-200'}`}>
+          <div className="flex items-center gap-2 mb-4">
+            <GraduationCap className={`w-5 h-5 ${isDark ? 'text-teal-300' : 'text-emerald-600'}`} />
+            <h3 className="font-extrabold text-base sm:text-lg">
+              {isRtl ? 'تحديد صفة ومسار الطالب المتقدم' : 'Student Status & Category'}
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Card 1: Fresh Student */}
+            <button
+              type="button"
+              onClick={() => setStudentCategoryType('fresh')}
+              className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
+                studentCategoryType === 'fresh'
+                  ? 'bg-emerald-500/10 border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
+                  : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-sm font-black ${studentCategoryType === 'fresh' ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                  🟢 {isRtl ? 'طالب مستجد (تسجيل جديد)' : 'Fresh Student (New Registration)'}
+                </span>
+                {studentCategoryType === 'fresh' && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
+              </div>
+              <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {isRtl 
+                  ? 'تسجيل طالب جديد لأول مرة في مراحل التعليم العام وتحديد رغبات المدارس ومتابعة الشواغر.' 
+                  : 'New student registration for general education stages.'}
+              </p>
+            </button>
+
+            {/* Card 2: Non-Fresh Student (Equalization) */}
+            <button
+              type="button"
+              onClick={() => setStudentCategoryType('non_fresh')}
+              className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
+                studentCategoryType === 'non_fresh'
+                  ? 'bg-purple-500/10 border-purple-600 shadow-md ring-2 ring-purple-500/20'
+                  : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                  📘 {isRtl ? 'طالب غير مستجد (معادلة المؤهلات)' : 'Non-Fresh Student (Certificate Equalization)'}
+                </span>
+                {studentCategoryType === 'non_fresh' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
+              </div>
+              <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-purple-200' : 'text-purple-900'}`}>
+                {isRtl 
+                  ? 'أي الطالب حاصل على شهادات في صفوف متقدمة خارج المملكة أو من نظام تعليمي آخر ويرغب بمعادلة المؤهل الدراسي.' 
+                  : 'Student holds advanced certificates from outside KSA or needs formal equivalency evaluation.'}
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic View based on Category Selection */}
+        {studentCategoryType === 'non_fresh' ? (
+          /* SECTION: EQUALIZATION REQUEST FORM FOR NON-FRESH STUDENTS */
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`p-6 rounded-3xl border space-y-6 ${
+              isDark ? 'bg-[#002b2b] border-purple-800/40 text-white' : 'bg-purple-50/60 border-purple-200 text-slate-800'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 border-b pb-4 dark:border-purple-800/40">
+              <span className="p-2.5 rounded-2xl bg-purple-600 text-white shadow-md">
+                <GraduationCap className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="font-black text-base sm:text-lg text-purple-900 dark:text-purple-200">
+                  {isRtl ? '🎓 قسم تقديم طلبات معادلة الشهادات والمؤهلات' : 'Certificate Equalization Submission'}
+                </h3>
+                <p className="text-xs text-purple-700 dark:text-purple-300 font-semibold mt-0.5">
+                  {isRtl ? 'يحال هذا الطلب مباشرة إلى الموظف المختص والمعتمد لمعادلة الشهادات بقسم القبول والتسجيل.' : 'Routed directly to the assigned equalization officer.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Equalization Stage Dropdown */}
+              <div id="field-equalizationStage">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-purple-200 mb-2">
+                  {isRtl ? 'نوع المعادلة للمرحلة المطلوبة' : 'Equalization Stage'} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={equalizationStage}
+                  onChange={(e) => setEqualizationStage(e.target.value as any)}
+                  className={`w-full p-3.5 text-xs sm:text-sm font-bold rounded-xl border outline-none ${
+                    isDark ? 'bg-[#001c1c] border-purple-800 text-white' : 'bg-white border-purple-300 text-slate-900'
+                  } ${errors.equalizationStage ? 'border-red-500' : ''}`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                >
+                  <option value="">{isRtl ? '-- اختر نوع المعادلة المطلوب --' : '-- Select Equalization --'}</option>
+                  <option value="primary">{isRtl ? 'المعادلة للمرحلة الابتدائية' : 'Primary School Equalization'}</option>
+                  <option value="intermediate">{isRtl ? 'المعادلة للمرحلة المتوسطة' : 'Intermediate School Equalization'}</option>
+                  <option value="secondary">{isRtl ? 'المعادلة للمرحلة الثانوية' : 'Secondary School Equalization'}</option>
+                </select>
+                {errors.equalizationStage && (
+                  <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.equalizationStage}</p>
+                )}
+              </div>
+
+              {/* Certificate & Equalization Details Textarea */}
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-purple-200">
+                  {isRtl ? 'تفاصيل ومعلومات المؤهل والشهادة المراد معادلتها (اختياري):' : 'Qualification & Certificate Details (Optional):'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={equalizationNotes}
+                  onChange={(e) => setEqualizationNotes(e.target.value)}
+                  placeholder={isRtl ? 'اكتب الدولة الصادر منها المؤهل، والصف الدراسي السابق لطلب المعادلة...' : 'Enter country of issuance, last completed grade...'}
+                  className={`w-full p-3.5 text-xs sm:text-sm font-semibold rounded-xl border outline-none ${
+                    isDark ? 'bg-[#001c1c] border-purple-800 text-white' : 'bg-white border-purple-300 text-slate-900'
+                  }`}
+                  dir={isRtl ? 'rtl' : 'ltr'}
+                />
+              </div>
+
+              {/* Submit Equalization Button */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-4 px-6 text-white text-sm font-black rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>{isRtl ? 'جاري تشفير وإرسال طلب المعادلة...' : 'Submitting Equalization...'}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      <span>{isRtl ? 'إرسال طلب المعادلة لموظف القبول المختص 🚀' : 'Submit Equalization Request 🚀'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <>
+            {/* Section 2: Educational Details */}
+            <div>
+              <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
+                <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                  <School className="w-4.5 h-4.5" />
+                </span>
+                <h3 className="font-extrabold text-base sm:text-lg">
+                  {isRtl ? 'المدرسة والبيانات التعليمية والقطاع' : 'School Stage, Sector & Location'}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Educational Stage Dropdown */}
+                <div id="field-stage">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                    {t.stage} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                      <GraduationCap className="w-4 h-4" />
+                    </span>
+                    <select
+                      value={stage}
+                      onChange={(e) => {
+                        setStage(e.target.value);
+                        setGrade(''); // reset grade on stage update
+                      }}
+                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                      } ${
+                        errors.stage
+                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                      }`}
+                      dir={isRtl ? 'rtl' : 'ltr'}
+                    >
+                      <option value="">{t.stageSelect}</option>
+                      <option value="EarlyChildhood">{t.stageEarlyChildhood}</option>
+                      <option value="Kindergarten">{t.stageKindergarten}</option>
+                      <option value="Primary">{t.stagePrimary}</option>
+                      <option value="Intermediate">{t.stageIntermediate}</option>
+                      <option value="Secondary">{t.stageSecondary}</option>
+                    </select>
+                  </div>
+                  {errors.stage && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.stage}</p>
+                  )}
+                </div>
+
+                {/* Dynamic Grade selection */}
+                <div id="field-grade">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                    {isRtl ? 'الصف الدراسي' : 'Student Grade'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                      <Bookmark className="w-4 h-4" />
+                    </span>
+                    <select
+                      value={grade}
+                      onChange={(e) => setGrade(e.target.value)}
+                      disabled={!stage}
+                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                      } ${
+                        errors.grade
+                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                      } disabled:opacity-50`}
+                      dir={isRtl ? 'rtl' : 'ltr'}
+                    >
+                      <option value="">
+                        {stage
+                          ? (isRtl ? 'اختر الصف الدراسي المخصص' : 'Select classroom grade')
+                          : (isRtl ? 'الرجاء اختيار المرحلة التعليمية أولاً' : 'Please select stage first')}
+                      </option>
+                      {getGradesForStage(stage).map((gradeOption) => (
+                        <option key={gradeOption} value={gradeOption}>
+                          {gradeOption}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {errors.grade && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.grade}</p>
+                  )}
+                </div>
+
+                {/* Administrative Sector Dropdown */}
+                <div id="field-sector">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                    {isRtl ? 'القطاع الإداري' : 'Administrative Sector'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                      <Building className="w-4 h-4" />
+                    </span>
+                    <select
+                      value={sector}
+                      onChange={(e) => setSector(e.target.value)}
+                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                      } ${
+                        errors.sector
+                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                      }`}
+                      dir={isRtl ? 'rtl' : 'ltr'}
+                    >
+                      <option value="">{isRtl ? 'اختر القطاع الإداري التابع له' : 'Select Administrative Sector'}</option>
+                      {SECTORS.map((sec) => (
+                        <option key={sec} value={sec}>
+                          {sec}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {errors.sector && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.sector}</p>
+                  )}
+                </div>
+
+                {/* Neighborhood Option (الحي) */}
+                <div id="field-neighborhood">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                    {isRtl ? 'الحي' : 'Neighborhood'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                      <MapPin className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      value={neighborhood}
+                      onChange={(e) => setNeighborhood(e.target.value)}
+                      placeholder={isRtl ? 'مثال: حي الملك فهد، حي الربوة، إلخ' : 'Example: Al-Malek Fahd, etc.'}
+                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                      } ${
+                        errors.neighborhood
+                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                      }`}
+                      dir={isRtl ? 'rtl' : 'ltr'}
+                    />
+                  </div>
+                  {errors.neighborhood && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.neighborhood}</p>
+                  )}
+                </div>
+
+                {/* Primary School Choice (الرغبة الأولى) */}
+                <div id="field-schoolName" className="md:col-span-2">
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={schoolName}
+                    onChange={(name, code) => {
+                      setSchoolName(name);
+                      if (code) setSchoolCode(code);
+                    }}
+                    label={isRtl ? 'المدرسة المطلوبة (الرغبة الأولى)' : 'Primary Preferred School'}
+                    required
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    error={errors.schoolName}
+                    placeholder={isRtl ? '🔍 اختر الرغبة الأولى (الاسم / الرقم الوزاري)...' : 'Search 1st choice school...'}
+                    helperText={isRtl ? '💡 اكتب اسم المدرسة المطلوبة أو الرقم الوزاري للفرز والفلترة الذكية.' : 'Type school name or ministerial code.'}
+                  />
+                </div>
+
+                {/* Second Choice School (الرغبة الثانية) */}
+                <div className="md:col-span-1">
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={secondSchoolName}
+                    onChange={(name) => setSecondSchoolName(name)}
+                    label={isRtl ? 'مدرسة خيار ثانٍ (الرغبة الثانية - اختيارية)' : '2nd Choice School (Optional)'}
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    placeholder={isRtl ? '🔍 اختر مدرسة الرغبة الثانية...' : 'Search 2nd choice school...'}
+                  />
+                </div>
+
+                {/* Third Choice School (الرغبة الثالثة) */}
+                <div className="md:col-span-1">
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={thirdSchoolName}
+                    onChange={(name) => setThirdSchoolName(name)}
+                    label={isRtl ? 'مدرسة خيار ثالث (الرغبة الثالثة - اختيارية)' : '3rd Choice School (Optional)'}
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    placeholder={isRtl ? '🔍 اختر مدرسة الرغبة الثالثة...' : 'Search 3rd choice school...'}
+                  />
+                </div>
+
+                {/* Guardian Pledge / Undertaking Checkbox */}
+                <div className="md:col-span-2 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-start space-y-2">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={agreedToAlternativeSchoolPlacement}
+                      onChange={(e) => setAgreedToAlternativeSchoolPlacement(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200 leading-relaxed">
+                      {isRtl
+                        ? '☑️ تعهد وإقرار ولي الأمر: أقر وأتعهد بأنه في حال عدم إمكانية تسجيل الطالب/ة في الرغبات المحددة أعلاه، فإنني أوافق على تسكينه/ا في أقرب مدرسة متاحة لضمان التحاقه بالتعليم.'
+                        : '☑️ Guardian Pledge: In case of impossibility to register in the above choices, I agree to place the student in the nearest available school to ensure education enrollment.'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Problem Nature */}
+            <div>
+              <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
+                <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                  <FileQuestion className="w-4.5 h-4.5" />
+                </span>
+                <h3 className="font-extrabold text-base sm:text-lg">
+                  {isRtl ? 'نوع العائق الرئيسي وتفاصيل المشكلة' : 'Request & Complaint Parameters'}
+                </h3>
+              </div>
+
+              <div className="space-y-6">
+                {/* Problem Type dropdown */}
+                <div id="field-problemType">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                    {t.problemType} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                      <FileQuestion className="w-4 h-4" />
+                    </span>
+                    <select
+                      value={problemType}
+                      onChange={(e) => {
+                        setProblemType(e.target.value as ProblemType);
+                        setOtherProblemDetails(''); // Reset detail text if changed from other
+                      }}
+                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                      } ${
+                        errors.problemType
+                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                      }`}
+                      dir={isRtl ? 'rtl' : 'ltr'}
+                    >
+                      <option value="">{t.problemSelect}</option>
+                      <option value="new_registration_saudi">{isRtl ? 'تسجيل مستجد سعودي' : 'New Registration (Saudi)'}</option>
+                      <option value="new_registration_resident">{isRtl ? 'تسجيل مستجد مقيم' : 'New Registration (Resident)'}</option>
+                      <option value="vacancies_unavailable">{t.probVacancies}</option>
+                      <option value="student_density">{t.probDensity}</option>
+                      <option value="unjustified_rejection">{t.probRejection}</option>
+                      <option value="distance_from_school">{t.probDistance}</option>
+                      <option value="unregistered_desire">{t.probUnregistered}</option>
+                      <option value="other">{t.probOther}</option>
+                    </select>
+                  </div>
+                  {errors.problemType && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.problemType}</p>
+                  )}
+                </div>
+
+                {/* Other details text input if problemType is other */}
+                <AnimatePresence>
+                  {problemType === 'other' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2 overflow-hidden"
+                      id="field-otherProblemDetails"
+                    >
+                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                        {isRtl ? 'يرجى كتابة تفاصيل المشكلة المصادفة:' : 'Please explain the other issue details:'} <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={otherProblemDetails}
+                        onChange={(e) => setOtherProblemDetails(e.target.value)}
+                        placeholder={isRtl ? 'أدخل تفاصيل العائق أو الطلب هنا لمساعدتنا في تحليله...' : 'Describe the problem parameters here...'}
+                        rows={3}
+                        className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                          isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                        } ${
+                          errors.otherProblemDetails
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                            : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                        }`}
+                        dir={isRtl ? 'rtl' : 'ltr'}
+                      />
+                      {errors.otherProblemDetails && (
+                        <p className="text-xs text-red-500 font-bold">{errors.otherProblemDetails}</p>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Section 4: Contacted School status */}
+            <div>
+              <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
+                <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                  <UserCheck className="w-4.5 h-4.5" />
+                </span>
+                <h3 className="font-extrabold text-base sm:text-lg">
+                  {isRtl ? 'التواصل المسبق مع المدرسة المعنية' : 'Prior Communication with School'}
+                </h3>
+              </div>
+
+              <div className="space-y-4">
+                {/* Contacted school question */}
+                <div id="field-contactedSchool" className="space-y-3">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                    {isRtl ? 'هل تم التواصل مع المدرسة المعنية مسبقاً بخصوص هذا العائق؟' : 'Have you contacted the target school regarding this constraint?'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-4 max-w-sm">
+                    <button
+                      type="button"
+                      onClick={() => setContactedSchool('yes')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                        contactedSchool === 'yes'
+                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                          : isDark
+                          ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{isRtl ? 'نعم' : 'Yes'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContactedSchool('no');
+                        setSchoolFeedback(''); // reset feedback
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                        contactedSchool === 'no'
+                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                          : isDark
+                          ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{isRtl ? 'لا' : 'No'}</span>
+                    </button>
+                  </div>
+                  {errors.contactedSchool && (
+                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.contactedSchool}</p>
+                  )}
+                </div>
+
+                {/* School feedback details if answered Yes */}
+                <AnimatePresence>
+                  {contactedSchool === 'yes' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2 overflow-hidden pt-2"
+                      id="field-schoolFeedback"
+                    >
+                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                        {isRtl ? 'إفادة المدرسة التي تم استلامها:' : 'What feedback response was given by the school?'} <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={schoolFeedback}
+                        onChange={(e) => setSchoolFeedback(e.target.value)}
+                        placeholder={isRtl ? 'يرجى كتابة الرد أو التبرير الذي أفادتكم به إدارة المدرسة بالتفصيل...' : 'Please input school feedback detail...'}
+                        rows={3}
+                        className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                          isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                        } ${
+                          errors.schoolFeedback
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                            : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                        }`}
+                        dir={isRtl ? 'rtl' : 'ltr'}
+                      />
+                      {errors.schoolFeedback && (
+                        <p className="text-xs text-red-500 font-bold">{errors.schoolFeedback}</p>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Submit Bar with encryption details */}
+            <div className={`pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
+                <ShieldCheck className="w-5 h-5 text-teal-600 shrink-0" />
+                <span>{isRtl ? 'تشفير عسكري لحماية خصوصية المستند والبيانات (AES-256)' : 'Encrypted via SHA-256 and stored cipher locked'}</span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-400 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                id="survey-submit-button"
+              >
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>{isRtl ? 'جاري التحقق والتشفير والتقديم...' : 'Securing and submitting...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4.5 h-4.5" />
+                    <span>{isRtl ? 'تقديم الطلب للجنة المختصة' : 'Submit Educational Request'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
+
+      </form>
+    </div>
+  );
+}
