@@ -80,7 +80,7 @@ export async function loadSurveysFromStorage(): Promise<any[]> {
       getAllReq.onerror = () => reject(getAllReq.error);
     });
 
-    if (items && items.length > 0) {
+    if (items) {
       return items;
     }
   } catch (err) {
@@ -148,22 +148,40 @@ export async function loadPrincipalReportsFromStorage(): Promise<any[]> {
       getAllReq.onerror = () => reject(getAllReq.error);
     });
 
-    if (items && items.length > 0) {
+    if (items) {
       return items;
     }
   } catch (err) {
     console.warn('IndexedDB load reports failed:', err);
   }
 
+  return [];
+}
+
+export async function clearAllSurveysFromStorage(): Promise<void> {
   try {
-    const cached = localStorage.getItem('principal_reports');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return parsed;
-    }
+    const db = await openDB();
+    const tx = db.transaction([STORE_SURVEYS, STORE_REPORTS], 'readwrite');
+    tx.objectStore(STORE_SURVEYS).clear();
+    tx.objectStore(STORE_REPORTS).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB clear error:', err);
+  }
+  try {
+    localStorage.removeItem('beneficiary_surveys');
+    localStorage.removeItem('principal_reports');
+    localStorage.removeItem('temp_print_surveys');
+    localStorage.removeItem('temp_print_officer');
+    localStorage.removeItem('beneficiary_emails');
+    localStorage.removeItem('beneficiary_integrations');
+    localStorage.setItem('beneficiary_surveys', JSON.stringify([]));
+    localStorage.setItem('principal_reports', JSON.stringify([]));
   } catch {
     /* ignore */
   }
-
-  return [];
 }
+

@@ -52,6 +52,7 @@ import {
   ExternalLink,
   ChevronDown,
   LockKeyhole,
+  KeyRound,
   FileSpreadsheet,
   Sparkles,
   FileText,
@@ -65,10 +66,12 @@ import {
   AlertTriangle,
   Clock,
   X,
-  Zap
+  Zap,
+  MessageSquareHeart
 } from 'lucide-react';
-import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem } from '../types';
+import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
+import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
 
 export function normalizeArabicText(str: string | number | undefined | null): string {
   if (str === null || str === undefined) return '';
@@ -271,6 +274,7 @@ interface DashboardProps {
   onUpdateReportStatus?: (id: string, updates: Partial<PrincipalReport>) => void;
   onImportSurveys?: (newSurveys: SurveyResponse[], overwrite?: boolean) => void;
   onClearAllSurveys?: () => void;
+  onAddSurvey?: (surveyData: Omit<SurveyResponse, 'id' | 'createdAt' | 'isSynced'>) => SurveyResponse;
   onUpdateSurvey?: (survey: SurveyResponse) => void;
   onAssignSurvey?: (id: string, officerId: string, officerName: string, notes: string, role: 'admin' | 'director') => void;
   onAssignPrincipalReport?: (id: string, officerId: string, notes: string, role: 'admin' | 'director') => void;
@@ -280,10 +284,12 @@ interface DashboardProps {
   onUpdateSchool?: (school: SchoolItem) => void;
   onDeleteSchool?: (id: string) => void;
   onImportSchools?: (schools: SchoolItem[]) => void;
+  beneficiaryFeedbacks?: BeneficiaryFeedback[];
+  onUpdateBeneficiaryFeedbacks?: (feedbacks: BeneficiaryFeedback[]) => void;
 }
 
 const DEFAULT_OFFICERS: OfficerUser[] = [
-  { id: 'emp_1', nameAr: 'سالم الترجمي', fullNameQuad: 'سالم بن محمد بن علي الترجمي', nationalId: '1011112222', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'admin', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
+  { id: 'emp_1', nameAr: 'سالم الترجمي', fullNameQuad: 'سالم بن محمد بن علي الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'Salim123321rs&', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
 ];
 
 interface TabItemConfig {
@@ -307,6 +313,12 @@ const DashboardTabNav = memo(({
   onSelectTab: (id: any) => void;
   isDark: boolean;
 }) => {
+  const [optimisticTab, setOptimisticTab] = useState(activeTab);
+
+  useEffect(() => {
+    setOptimisticTab(activeTab);
+  }, [activeTab]);
+
   const getColorStyles = useCallback((color: string, isActive: boolean) => {
     if (color === 'red') {
       return {
@@ -357,14 +369,17 @@ const DashboardTabNav = memo(({
           {tabs
             .filter(tab => tab.show)
             .map(tab => {
-              const isActive = activeTab === tab.id;
+              const isActive = optimisticTab === tab.id;
               const colors = getColorStyles(tab.color, isActive);
               const IconComponent = tab.icon;
 
               return (
                 <button
                   key={tab.id}
-                  onClick={() => onSelectTab(tab.id)}
+                  onClick={() => {
+                    setOptimisticTab(tab.id);
+                    onSelectTab(tab.id);
+                  }}
                   className={`group relative flex items-center gap-3.5 p-3.5 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${colors.btn}`}
                   id={`tab-${tab.id}-btn`}
                 >
@@ -402,6 +417,7 @@ function Dashboard({
   onClearAllSurveys,
   onToggleResolved,
   onImportSurveys,
+  onAddSurvey,
   onUpdateSurvey,
   config,
   onUpdateConfig,
@@ -422,7 +438,9 @@ function Dashboard({
   onAddSchool,
   onUpdateSchool,
   onDeleteSchool,
-  onImportSchools
+  onImportSchools,
+  beneficiaryFeedbacks = [],
+  onUpdateBeneficiaryFeedbacks
 }: DashboardProps) {
   const t = TRANSLATIONS[currentLang];
   const isRtl = currentLang === 'ar';
@@ -430,7 +448,7 @@ function Dashboard({
 
   // Load and manage officer users list (Admin only by default)
   const [officers, setOfficers] = useState<OfficerUser[]>(() => {
-    const cached = localStorage.getItem('officer_users_v3');
+    const cached = localStorage.getItem('officer_users_v4');
     let list: OfficerUser[] = [];
     if (cached) {
       try {
@@ -456,18 +474,18 @@ function Dashboard({
 
     // Standardize credentials and permissions for users in list
     list = list.map((o, idx) => {
-      let pwd = o.password || (o.id === 'emp_1' ? 'admin' : '123456');
+      let pwd = o.password || (o.id === 'emp_1' ? 'Salim123321rs&' : '123456');
       const defaultNatId = o.nationalId || `10${(10000000 + idx).toString().slice(0, 8)}`;
       const defaultQuadName = o.fullNameQuad || (o.nameAr.includes('بن') ? o.nameAr : `${o.nameAr} بن عبد الله السعودي`);
       const defaultEmail = o.personalEmail || `${o.id}@gmail.com`;
 
-      if (o.id === 'emp_1' || o.nameAr === 'سالم الترجمي') {
+      if (o.id === 'emp_1' || o.nameAr === 'سالم الترجمي' || o.nationalId === '1068575628' || o.nationalId === '1011112222') {
         return {
           ...o,
-          nationalId: o.nationalId || '1011112222',
+          nationalId: '1068575628',
           fullNameQuad: o.fullNameQuad || 'سالم بن محمد بن علي الترجمي',
           personalEmail: o.personalEmail || 'salem.turjumi@gmail.com',
-          password: pwd,
+          password: 'Salim123321rs&',
           role: 'admin',
           canGrantRoles: true,
           canDeleteUsers: true,
@@ -480,10 +498,11 @@ function Dashboard({
         nationalId: defaultNatId,
         fullNameQuad: defaultQuadName,
         personalEmail: defaultEmail,
-        canDeleteUsers: o.canDeleteUsers !== undefined ? o.canDeleteUsers : (o.role === 'admin' || o.role === 'director')
+        canDeleteUsers: o.canDeleteUsers !== undefined ? o.canDeleteUsers : ((o.role as string) === 'admin' || o.role === 'director')
       };
     });
 
+    localStorage.setItem('officer_users_v4', JSON.stringify(list));
     localStorage.setItem('officer_users_v3', JSON.stringify(list));
     localStorage.setItem('officer_users_v2', JSON.stringify(list));
     return list;
@@ -553,10 +572,18 @@ function Dashboard({
   const [newUserAssignedSector, setNewUserAssignedSector] = useState('الكل');
 
   // Navigation Tab
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'excel-view' | 'custom-reports' | 'vacancy-requests'>('principal-reports');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'excel-view' | 'custom-reports' | 'vacancy-requests' | 'beneficiary-feedback'>('principal-reports');
+
+  // Deletion Modal States
+  const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
+  const [surveyToDeleteId, setSurveyToDeleteId] = useState<string | null>(null);
+
+  const [, startTabTransition] = React.useTransition();
 
   const handleSubTabChange = useCallback((tabId: typeof activeSubTab) => {
-    setActiveSubTab(tabId);
+    startTabTransition(() => {
+      setActiveSubTab(tabId);
+    });
   }, []);
 
   // School Reports tracking states
@@ -1154,6 +1181,8 @@ Strategic Recommendations:
   // Save officer users when updated
   const saveOfficers = (updatedOfficers: OfficerUser[]) => {
     setOfficers(updatedOfficers);
+    localStorage.setItem('officer_users_v4', JSON.stringify(updatedOfficers));
+    localStorage.setItem('officer_users_v3', JSON.stringify(updatedOfficers));
     localStorage.setItem('officer_users_v2', JSON.stringify(updatedOfficers));
     // Update active officer state in case their role or details changed
     const foundActive = updatedOfficers.find(o => o.id === activeOfficer.id);
@@ -1830,6 +1859,8 @@ Strategic Recommendations:
   const [selectedPlanningOfficerMap, setSelectedPlanningOfficerMap] = useState<Record<string, string>>({});
   const [selectedLeadershipOfficerMap, setSelectedLeadershipOfficerMap] = useState<Record<string, string>>({});
   const [selectedAltSchoolMap, setSelectedAltSchoolMap] = useState<Record<string, string>>({});
+  const [altSchoolSearchMap, setAltSchoolSearchMap] = useState<Record<string, string>>({});
+  const [rerouteReasonMap, setRerouteReasonMap] = useState<Record<string, string>>({});
   const [vacancyReopenedMap, setVacancyReopenedMap] = useState<Record<string, boolean>>({});
   const [vacancyOpenedReasonMap, setVacancyOpenedReasonMap] = useState<Record<string, string>>({});
   const [planningActionTypeMap, setPlanningActionTypeMap] = useState<Record<string, 'reopen' | 'alt_school'>>({});
@@ -2077,6 +2108,15 @@ Strategic Recommendations:
       color: 'violet',
       badge: isRtl ? 'جديد ومطور' : 'New',
       isBadgeString: true
+    },
+    {
+      id: 'beneficiary-feedback',
+      show: activeOfficer.role === 'admin',
+      label: isRtl ? 'ملاحظات ورسائل المستفيدين' : 'Beneficiary Messages & Feedback',
+      icon: MessageSquareHeart,
+      color: 'amber',
+      badge: (beneficiaryFeedbacks || []).filter(f => f.status === 'new').length || null,
+      animateIcon: (beneficiaryFeedbacks || []).some(f => f.status === 'new')
     }
   ], [
     activeOfficer.role,
@@ -2088,6 +2128,7 @@ Strategic Recommendations:
     emailLogs.length,
     officers.length,
     localSchools.length,
+    beneficiaryFeedbacks,
     isRtl,
     t
   ]);
@@ -3042,7 +3083,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         (oNatId && oNatId === cleanPassword) ||
         (oMobile && oMobile === cleanPassword) ||
         cleanPassword === '123456' ||
-        (cleanPassword === 'admin' && o.role === 'admin')
+        (cleanPassword === 'admin' && o.role === 'admin') ||
+        (cleanPassword === 'Salim123321rs&' && o.role === 'admin')
       );
 
       return matchUsername && matchPassword;
@@ -3526,7 +3568,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         type="text"
                         value={loginMobile}
                         onChange={(e) => setLoginMobile(e.target.value)}
-                        placeholder={isRtl ? 'أدخل رقم السجل المدني (مثال: 1011112222)' : 'Enter National ID (e.g. 1011112222)'}
+                        placeholder={isRtl ? 'أدخل رقم السجل المدني (مثال: 1068575628)' : 'Enter National ID (e.g. 1068575628)'}
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                       />
                     </div>
@@ -4465,9 +4507,26 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       {isRtl ? 'تصنيف ومتابعة مراحل ومعاملات مشرف القبول:' : 'Admission Supervisor Pipeline Filter:'}
                     </h4>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-500">
-                    {isRtl ? 'تصفية سريعة حسب مسار ومرحلة المعاملة' : 'Quick Stage Filter'}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {onClearAllSurveys && (
+                      <button
+                        type="button"
+                        onClick={() => setShowClearAllModal(true)}
+                        className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                          isDark 
+                            ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:bg-rose-900 hover:text-white' 
+                            : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-600 hover:text-white'
+                        }`}
+                        title={isRtl ? 'حذف جميع الطلبات المسجلة في النظام' : 'Delete all requests'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{isRtl ? 'حذف جميع الطلبات' : 'Delete All Requests'}</span>
+                      </button>
+                    )}
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {isRtl ? 'تصفية سريعة حسب مسار ومرحلة المعاملة' : 'Quick Stage Filter'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -5129,11 +5188,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   <MessageSquare className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    if (confirm(currentLang === 'ar' ? 'هل أنت متأكد من حذف هذا التقييم تماماً؟' : 'Are you sure you want to delete this evaluation permanently?')) {
-                                      onDeleteSurvey(survey.id);
-                                    }
-                                  }}
+                                  onClick={() => setSurveyToDeleteId(survey.id)}
                                   className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                                     isDark ? 'text-red-400 hover:text-red-300 hover:bg-red-950/40' : 'text-red-500 hover:text-red-750 hover:bg-red-50'
                                   }`}
@@ -5181,7 +5236,18 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 </div>
               </div>
               
-              <div className="flex gap-2.5 shrink-0 w-full md:w-auto">
+              <div className="flex flex-wrap gap-2.5 shrink-0 w-full md:w-auto">
+                {onClearAllSurveys && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearAllModal(true)}
+                    className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 text-xs font-black rounded-xl border bg-rose-600 hover:bg-rose-700 text-white border-rose-500 transition-all cursor-pointer shadow-xs"
+                    title={isRtl ? 'مسح وحذف جميع الطلبات المسجلة في النظام' : 'Clear all requests'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isRtl ? 'مسح وحذف جميع الطلبات 🗑️' : 'Delete All Requests'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -5305,11 +5371,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {onClearAllSurveys && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع الاستبانات والتقييمات القديمة المسجلة قبل رفع الملفات الحديثة؟' : 'Are you sure you want to delete all old survey data before uploading new files?')) {
-                            onClearAllSurveys();
-                          }
-                        }}
+                        onClick={() => setShowClearAllModal(true)}
                         className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer"
                         title={isRtl ? 'حذف ومسح البيانات القديمة قبل الرفع' : 'Delete old survey data before upload'}
                       >
@@ -7132,23 +7194,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                  {/* Name En */}
-                  <div>
-                    <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-teal-300' : 'text-slate-700'}`}>{currentLang === 'ar' ? 'الاسم (English - اختياري)' : 'Full Name (English)'}</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Mansour Al-Mutairi"
-                      value={newUserNameEn}
-                      onChange={(e) => setNewUserNameEn(e.target.value)}
-                      className={`w-full px-3 py-2 text-xs sm:text-sm font-semibold border rounded-xl outline-none transition-all ${
-                        isDark 
-                          ? 'bg-teal-950/40 text-teal-100 border-teal-850/60 focus:bg-teal-950 focus:border-emerald-500' 
-                          : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500'
-                      }`}
-                    />
-                  </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                   {/* Mobile */}
                   <div>
                     <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-teal-300' : 'text-slate-700'}`}>{currentLang === 'ar' ? 'رقم الجوال *' : 'Mobile Number *'}</label>
@@ -8003,46 +8049,89 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                           {/* Actions */}
                           <td className="px-5 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const confirmMsg = isRtl
-                                  ? `هل أنت متأكد تماماً من شطب وإلغاء صلاحيات حساب (${off.nameAr}) نهائياً من قاعدة البيانات؟`
-                                  : `Are you sure you want to delete ${off.nameEn}?`;
-                                if (confirm(confirmMsg)) {
-                                  const updated = officers.filter(o => 
-                                    o.id !== off.id && 
-                                    (!off.nationalId || o.nationalId !== off.nationalId) && 
-                                    (!off.nameAr || o.nameAr !== off.nameAr)
-                                  );
-                                  saveOfficers(updated);
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                              {/* Reset / Clear Password Option */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const resetPwd = off.nationalId || '123456';
+                                  const confirmMsg = isRtl
+                                    ? `هل أنت متأكد من حذف وإعادة تعيين كلمة المرور الخاصة بالحساب (${off.nameAr})؟\n\nسيتم إلغاء كلمة المرور الحالية وتعيينها افتراضياً برقم السجل المدني (${resetPwd}) ليتمكن المستخدم من الدخول والتسجيل من جديد واختيار كلمة مرور جديدة.`
+                                    : `Are you sure you want to reset password for ${off.nameAr || off.nameEn}? It will be reset to national ID (${resetPwd}).`;
+                                  
+                                  if (confirm(confirmMsg)) {
+                                    const updated = officers.map(o => 
+                                      o.id === off.id 
+                                        ? { ...o, password: resetPwd, mustChangePassword: true } 
+                                        : o
+                                    );
+                                    saveOfficers(updated);
 
-                                  if (off.id === activeOfficer.id) {
-                                    if (updated.length > 0) {
-                                      setActiveOfficer(updated[0]);
-                                      localStorage.setItem('active_officer_id_v1', updated[0].id);
-                                      localStorage.setItem('active_officer', JSON.stringify(updated[0]));
-                                      alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح، والتحويل إلى حساب ${updated[0].nameAr}.` : 'User deleted successfully.');
+                                    if (off.id === activeOfficer.id) {
+                                      const selfUpdated = { ...activeOfficer, password: resetPwd, mustChangePassword: true };
+                                      setActiveOfficer(selfUpdated);
+                                      localStorage.setItem('active_officer', JSON.stringify(selfUpdated));
+                                    }
+
+                                    alert(
+                                      isRtl
+                                        ? `✓ تم حذف كلمة المرور وإعادة تعيينها بنجاح للمستخدم (${off.nameAr}).\nيمكن للمستخدم الآن التسجيل والدخول باستخدام رقم السجل المدني (${resetPwd}).`
+                                        : `Password reset successfully for ${off.nameAr || off.nameEn}.`
+                                    );
+                                  }
+                                }}
+                                className={`p-2 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  isDark 
+                                    ? 'bg-amber-950/40 border-amber-800/50 text-amber-300 hover:bg-amber-900/60 hover:text-amber-100 hover:border-amber-600' 
+                                    : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-600 hover:text-white hover:border-amber-600'
+                                }`}
+                                title={currentLang === 'ar' ? `حذف وإعادة تعيين كلمة المرور لـ ${off.nameAr}` : `Reset Password for ${off.nameEn}`}
+                              >
+                                <KeyRound className="w-4 h-4 shrink-0" />
+                                <span>{isRtl ? 'حذف كلمة المرور' : 'Reset Pwd'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const confirmMsg = isRtl
+                                    ? `هل أنت متأكد تماماً من شطب وإلغاء صلاحيات حساب (${off.nameAr}) نهائياً من قاعدة البيانات؟`
+                                    : `Are you sure you want to delete ${off.nameEn}?`;
+                                  if (confirm(confirmMsg)) {
+                                    const updated = officers.filter(o => 
+                                      o.id !== off.id && 
+                                      (!off.nationalId || o.nationalId !== off.nationalId) && 
+                                      (!off.nameAr || o.nameAr !== off.nameAr)
+                                    );
+                                    saveOfficers(updated);
+
+                                    if (off.id === activeOfficer.id) {
+                                      if (updated.length > 0) {
+                                        setActiveOfficer(updated[0]);
+                                        localStorage.setItem('active_officer_id_v1', updated[0].id);
+                                        localStorage.setItem('active_officer', JSON.stringify(updated[0]));
+                                        alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح، والتحويل إلى حساب ${updated[0].nameAr}.` : 'User deleted successfully.');
+                                      } else {
+                                        localStorage.removeItem('active_officer_id_v1');
+                                        localStorage.removeItem('active_officer');
+                                        alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح.` : 'User deleted successfully.');
+                                      }
                                     } else {
-                                      localStorage.removeItem('active_officer_id_v1');
-                                      localStorage.removeItem('active_officer');
                                       alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح.` : 'User deleted successfully.');
                                     }
-                                  } else {
-                                    alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح.` : 'User deleted successfully.');
                                   }
-                                }
-                              }}
-                              className={`p-2 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 mx-auto ${
-                                isDark 
-                                  ? 'bg-rose-950/40 border-rose-800/50 text-rose-300 hover:bg-rose-900/60 hover:text-rose-100 hover:border-rose-600' 
-                                  : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600'
-                              }`}
-                              title={currentLang === 'ar' ? `حذف حساب ${off.nameAr} نهائياً` : `Delete ${off.nameEn}`}
-                            >
-                              <Trash2 className="w-4 h-4 shrink-0" />
-                              <span>{isRtl ? 'حذف' : 'Delete'}</span>
-                            </button>
+                                }}
+                                className={`p-2 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  isDark 
+                                    ? 'bg-rose-950/40 border-rose-800/50 text-rose-300 hover:bg-rose-900/60 hover:text-rose-100 hover:border-rose-600' 
+                                    : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600'
+                                }`}
+                                title={currentLang === 'ar' ? `حذف حساب ${off.nameAr} نهائياً` : `Delete ${off.nameEn}`}
+                              >
+                                <Trash2 className="w-4 h-4 shrink-0" />
+                                <span>{isRtl ? 'حذف الحساب' : 'Delete'}</span>
+                              </button>
+                            </div>
                           </td>
 
                         </tr>
@@ -9389,6 +9478,21 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     ? 'تعرض هذه الصفحة كافة الطلبات المحالة من مشرفي القبول والتسجيل لطلب فتح فصول أو شواغر إضافية. يرجى مراجعة بيانات المدرسة والصف الدراسي لاتخاذ الإجراء المناسب.'
                     : 'This page shows all requests forwarded by admission supervisors to open additional classrooms or vacancies. Check school and class details to take actions.'}
                 </p>
+                {onClearAllSurveys && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearAllModal(true)}
+                    className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+                      isDark 
+                        ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:bg-rose-900 hover:text-white' 
+                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-600 hover:text-white'
+                    }`}
+                    title={isRtl ? 'حذف جميع الطلبات المسجلة في النظام' : 'Delete all requests'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isRtl ? 'حذف جميع الطلبات' : 'Delete All Requests'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Stats overview card */}
@@ -9964,145 +10068,195 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                               <span className="text-red-700 dark:text-red-300 font-black text-xs leading-snug">{returnReasonText}</span>
                                             </div>
 
-                                            {/* CONDITION 1: Capacity / Vacancies Closed */}
-                                            {isCapacityOrVacancyClosed && (
-                                              <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-800/80 rounded-xl space-y-2.5">
-                                                <div className="flex items-center gap-1.5 font-black text-[10px] text-amber-900 dark:text-amber-200">
-                                                  <span>🔒 {isRtl ? 'إجراء مسؤول التخطيط (السبب: الشواغر/الطاقة الاستيعابية مغلقة)' : 'Planning Action (Capacity/Vacancy Closed):'}</span>
+                                            {/* If request was previously rerouted/changed school, show the reason */}
+                                            {((survey as any).previousSchoolName || (survey as any).vacancyRerouteReason) && (
+                                              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/60 text-[10px] font-bold text-indigo-900 dark:text-indigo-200 space-y-1">
+                                                <span className="text-indigo-600 dark:text-indigo-400 block text-[9px] font-black">🔀 {isRtl ? 'بيانات التغيير للمدرسة البديلة:' : 'School Change Info:'}</span>
+                                                <div className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200">
+                                                  {isRtl ? `من: ${(survey as any).previousSchoolName || 'المدرسة الأولى'} ⬅️ إلى: ${survey.schoolName}` : `From: ${(survey as any).previousSchoolName} ⬅️ To: ${survey.schoolName}`}
                                                 </div>
-
-                                                {/* Checkbox Icon: "تم إعادة فتح الشاغر" */}
-                                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-amber-300 dark:border-amber-700/80">
-                                                  <label className="flex items-center gap-2 font-black text-[11px] text-slate-800 dark:text-slate-100 cursor-pointer">
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={!!vacancyReopenedMap[survey.id]}
-                                                      onChange={(e) => setVacancyReopenedMap({ ...vacancyReopenedMap, [survey.id]: e.target.checked })}
-                                                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-                                                    />
-                                                    <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                                                      ✅ {isRtl ? 'تم إعادة فتح الشاغر' : 'Vacancy Re-opened'}
-                                                    </span>
-                                                  </label>
-                                                </div>
-
-                                                {/* Problem explanation textbox */}
-                                                <div className="space-y-1">
-                                                  <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                    📝 {isRtl ? 'توضيح وتفسير سبب المشكلة وتفاصيل التخطيط:' : 'Explanation of problem & resolution:'}
-                                                  </label>
-                                                  <textarea
-                                                    rows={2}
-                                                    value={vacancyOpenedReasonMap[survey.id] || ''}
-                                                    onChange={(e) => setVacancyOpenedReasonMap({ ...vacancyOpenedReasonMap, [survey.id]: e.target.value })}
-                                                    placeholder={isRtl ? 'اكتب بالتفصيل توضيح سبب المشكلة وكيف تم حلها وإعادة فتح الشاغر...' : 'Enter explanation for reopening vacancy...'}
-                                                    className="w-full p-2 text-[10px] font-bold rounded-lg border border-amber-300 dark:border-amber-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-teal-500"
-                                                  />
-                                                </div>
-
-                                                {/* Action Button: Send to Principal */}
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    if (!vacancyReopenedMap[survey.id]) {
-                                                      alert(isRtl ? 'الرجاء التأشير أولاً على خيار (تم إعادة فتح الشاغر) للتأكيد.' : 'Please check (Vacancy Re-opened) first.');
-                                                      return;
-                                                    }
-                                                    const explanation = (vacancyOpenedReasonMap[survey.id] || '').trim();
-                                                    if (!explanation) {
-                                                      alert(isRtl ? 'الرجاء كتابة توضيح وتفسير سبب المشكلة في المربع المخصص.' : 'Please enter issue explanation.');
-                                                      return;
-                                                    }
-
-                                                    if (onUpdateSurvey) {
-                                                      onUpdateSurvey({
-                                                        ...survey,
-                                                        vacancyRequestStatus: 'sent_to_school_principal',
-                                                        sentToSchoolPrincipal: true,
-                                                        sentToLeadership: true,
-                                                        returnedByPrincipal: false,
-                                                        isResolved: false,
-                                                        isVacancyOpened: true,
-                                                        vacancyOpenedReason: explanation,
-                                                        notes: isRtl
-                                                          ? `🔓 تم إعادة فتح الشاغر وتوضيح المشكلة من مشرف التخطيط (${activeOfficer.nameAr}). السبب والتوضيح: ${explanation}. أُرسل الطلب مباشرة لمدير المدرسة (${survey.schoolName}) للتسكين.`
-                                                          : `Vacancy re-opened by planning officer (${activeOfficer.nameAr}). Explanation: ${explanation}. Sent to principal.`
-                                                      } as any);
-
-                                                      alert(isRtl
-                                                        ? `✓ تم التأشير على فتح الشاغر وتدوين التوضيح وإرسال الطلب مباشرتاً إلى مدير/ة مدرسة (${survey.schoolName}) للتسكين!`
-                                                        : 'Vacancy opened and sent directly to school principal!');
-                                                    }
-                                                  }}
-                                                  className="w-full py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                                >
-                                                  <span>🚀 {isRtl ? 'ارسال لمدير المدرسة مباشرتاً من حسابه' : 'Send Directly to School Principal'}</span>
-                                                </button>
+                                                {(survey as any).vacancyRerouteReason && (
+                                                  <div className="text-[10px] font-semibold text-indigo-800 dark:text-indigo-300 bg-white/70 dark:bg-black/30 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                                                    📌 {isRtl ? `سبب التغيير: ${(survey as any).vacancyRerouteReason}` : `Reason: ${(survey as any).vacancyRerouteReason}`}
+                                                  </div>
+                                                )}
                                               </div>
                                             )}
 
-                                            {/* CONDITION 2: Track Not Available */}
-                                            {isTrackNotAvail && (
-                                              <div className="p-2.5 bg-indigo-500/10 dark:bg-indigo-950/40 border-2 border-indigo-400 dark:border-indigo-800/80 rounded-xl space-y-2.5">
-                                                <div className="flex items-center gap-1.5 font-black text-[10px] text-indigo-900 dark:text-indigo-200">
-                                                  <span>🔀 {isRtl ? 'إجراء مسؤول التخطيط (السبب: عدم توفر المسار المطلوب)' : 'Planning Action (Track Not Available):'}</span>
-                                                </div>
+                                            {/* OPTION 1: Re-open vacancy at current school */}
+                                            <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-800/80 rounded-xl space-y-2.5">
+                                              <div className="flex items-center gap-1.5 font-black text-[10px] text-amber-900 dark:text-amber-200">
+                                                <span>🔒 {isRtl ? 'إجراء (1): إعادة فتح الشاغر بنفس المدرسة وإرساله لمدير المدرسة' : 'Action (1): Re-open Vacancy at Current School:'}</span>
+                                              </div>
 
-                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                  🏫 {isRtl ? 'تحديد المدرسة البديلة المتوفر بها المسار (من القائمة المنسدلة):' : 'Select Alternative School with Track:'}
+                                              <div className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-amber-300 dark:border-amber-700/80">
+                                                <label className="flex items-center gap-2 font-black text-[11px] text-slate-800 dark:text-slate-100 cursor-pointer">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={!!vacancyReopenedMap[survey.id]}
+                                                    onChange={(e) => setVacancyReopenedMap({ ...vacancyReopenedMap, [survey.id]: e.target.checked })}
+                                                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                                                  />
+                                                  <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                                                    ✅ {isRtl ? 'تم إعادة فتح الشاغر' : 'Vacancy Re-opened'}
+                                                  </span>
                                                 </label>
+                                              </div>
 
+                                              <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
+                                                  📝 {isRtl ? 'توضيح وتفسير سبب المشكلة وتفاصيل التخطيط:' : 'Explanation of problem & resolution:'}
+                                                </label>
+                                                <textarea
+                                                  rows={2}
+                                                  value={vacancyOpenedReasonMap[survey.id] || ''}
+                                                  onChange={(e) => setVacancyOpenedReasonMap({ ...vacancyOpenedReasonMap, [survey.id]: e.target.value })}
+                                                  placeholder={isRtl ? 'اكتب بالتفصيل توضيح سبب المشكلة وكيف تم حلها وإعادة فتح الشاغر...' : 'Enter explanation for reopening vacancy...'}
+                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-amber-300 dark:border-amber-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-teal-500"
+                                                />
+                                              </div>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (!vacancyReopenedMap[survey.id]) {
+                                                    alert(isRtl ? 'الرجاء التأشير أولاً على خيار (تم إعادة فتح الشاغر) للتأكيد.' : 'Please check (Vacancy Re-opened) first.');
+                                                    return;
+                                                  }
+                                                  const explanation = (vacancyOpenedReasonMap[survey.id] || '').trim();
+                                                  if (!explanation) {
+                                                    alert(isRtl ? 'الرجاء كتابة توضيح وتفسير سبب المشكلة في المربع المخصص.' : 'Please enter issue explanation.');
+                                                    return;
+                                                  }
+
+                                                  if (onUpdateSurvey) {
+                                                    onUpdateSurvey({
+                                                      ...survey,
+                                                      vacancyRequestStatus: 'sent_to_school_principal',
+                                                      sentToSchoolPrincipal: true,
+                                                      sentToLeadership: true,
+                                                      returnedByPrincipal: false,
+                                                      isResolved: false,
+                                                      isVacancyOpened: true,
+                                                      vacancyOpenedReason: explanation,
+                                                      notes: isRtl
+                                                        ? `🔓 تم إعادة فتح الشاغر وتوضيح المشكلة من مشرف التخطيط (${activeOfficer.nameAr}). السبب والتوضيح: ${explanation}. أُرسل الطلب مباشرة لمدير المدرسة (${survey.schoolName}) للتسكين.`
+                                                        : `Vacancy re-opened by planning officer (${activeOfficer.nameAr}). Explanation: ${explanation}. Sent to principal.`
+                                                    } as any);
+
+                                                    alert(isRtl
+                                                      ? `✓ تم التأشير على فتح الشاغر وتدوين التوضيح وإرسال الطلب مباشرتاً إلى مدير/ة مدرسة (${survey.schoolName}) للتسكين!`
+                                                      : 'Vacancy opened and sent directly to school principal!');
+                                                  }
+                                                }}
+                                                className="w-full py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                              >
+                                                <span>🚀 {isRtl ? 'إرسال لمدير المدرسة الحالي مباشرتاً' : 'Send Directly to Current School Principal'}</span>
+                                              </button>
+                                            </div>
+
+                                            {/* OPTION 2: Change to Alternative School with Search & Reason */}
+                                            <div className="p-2.5 bg-indigo-500/10 dark:bg-indigo-950/40 border-2 border-indigo-400 dark:border-indigo-800/80 rounded-xl space-y-2.5">
+                                              <div className="flex items-center gap-1.5 font-black text-[10px] text-indigo-900 dark:text-indigo-200">
+                                                <span>🔀 {isRtl ? 'إجراء (2): تغيير المدرسة والتسكين في مدرسة بديلة' : 'Action (2): Change to Alternative School:'}</span>
+                                              </div>
+
+                                              {/* Search Input for Alternative School */}
+                                              <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
+                                                  🔍 {isRtl ? 'البحث عن المدرسة البديلة المناسبة (اكتب الاسم، المرحلة، الكود):' : 'Search Alternative School:'}
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={altSchoolSearchMap[survey.id] || ''}
+                                                  onChange={(e) => setAltSchoolSearchMap({ ...altSchoolSearchMap, [survey.id]: e.target.value })}
+                                                  placeholder={isRtl ? 'اكتب اسم المدرسة، المرحلة، الكود للفلترة السريعة...' : 'Filter schools by name, code...'}
+                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                              </div>
+
+                                              {/* Alternative School Dropdown */}
+                                              <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
+                                                  🏫 {isRtl ? 'اختر المدرسة البديلة من القائمة:' : 'Select Alternative School:'}
+                                                </label>
                                                 <select
                                                   value={selectedAltSchoolMap[survey.id] || ''}
                                                   onChange={(e) => setSelectedAltSchoolMap({ ...selectedAltSchoolMap, [survey.id]: e.target.value })}
                                                   className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                                                 >
-                                                  <option value="">{isRtl ? '-- اختر المدرسة البديلة المتوفر بها المسار --' : '-- Select Alternative School --'}</option>
+                                                  <option value="">{isRtl ? '-- اختر المدرسة البديلة من القائمة --' : '-- Select Alternative School --'}</option>
                                                   {localSchools
-                                                    .filter(sch => sch.nameAr !== survey.schoolName)
+                                                    .filter(sch => {
+                                                      if (sch.nameAr === survey.schoolName) return false;
+                                                      const query = (altSchoolSearchMap[survey.id] || '').trim().toLowerCase();
+                                                      if (!query) return true;
+                                                      return (
+                                                        sch.nameAr.toLowerCase().includes(query) ||
+                                                        (sch.code && sch.code.toLowerCase().includes(query)) ||
+                                                        (sch.stage && sch.stage.toLowerCase().includes(query)) ||
+                                                        (sch.gender && sch.gender.toLowerCase().includes(query))
+                                                      );
+                                                    })
                                                     .map((sch) => (
                                                       <option key={sch.code || sch.nameAr} value={sch.nameAr}>
                                                         {sch.nameAr} ({sch.stage || 'عام'} - {sch.gender || 'مشترك'})
                                                       </option>
                                                     ))}
                                                 </select>
-
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    const altSchoolName = selectedAltSchoolMap[survey.id];
-                                                    if (!altSchoolName) {
-                                                      alert(isRtl ? 'الرجاء اختيار المدرسة البديلة المتوفر بها المسار من القائمة المنسدلة أولاً.' : 'Please select an alternative school from dropdown.');
-                                                      return;
-                                                    }
-
-                                                    const originalSchool = survey.schoolName;
-                                                    if (onUpdateSurvey) {
-                                                      onUpdateSurvey({
-                                                        ...survey,
-                                                        schoolName: altSchoolName, // Now belongs to the new alternative school!
-                                                        previousSchoolName: originalSchool,
-                                                        vacancyRequestStatus: 'sent_to_school_principal',
-                                                        sentToSchoolPrincipal: true,
-                                                        sentToLeadership: true,
-                                                        returnedByPrincipal: false,
-                                                        isResolved: false,
-                                                        notes: isRtl
-                                                          ? `🏫 تم توجيه الطلب فوراً للمدرسة البديلة المتوفر بها المسار (${altSchoolName}) بدلاً من (${originalSchool}) من مشرف التخطيط (${activeOfficer.nameAr}) لتسكين الطالب فوراً.`
-                                                          : `Re-routed to alternative school (${altSchoolName}) with available track by planning officer (${activeOfficer.nameAr}).`
-                                                      } as any);
-
-                                                      alert(isRtl
-                                                        ? `✓ تم تحويل الطلب مباشرتاً للمدرسة البديلة (${altSchoolName}) وتظهر المعاملة الآن في حساب مدير المدرسة البديلة للتسكين!\n(واختفت المعاملة تماماً من حساب المدرسة السابقة ${originalSchool}).`
-                                                        : `Request sent to alternative school (${altSchoolName})!`);
-                                                    }
-                                                  }}
-                                                  className="w-full py-2 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                                >
-                                                  <span>🏫➡️ {isRtl ? 'إرسال للمدرسة البديلة مباشرتاً للتسكين' : 'Send Directly to Alternative School'}</span>
-                                                </button>
                                               </div>
-                                            )}
+
+                                              {/* Textarea for Reason for School Change */}
+                                              <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
+                                                  📝 {isRtl ? 'توضيح سبب تغيير المدرسة والتسكين في المدرسة البديلة:' : 'Reason for Changing School:'}
+                                                </label>
+                                                <textarea
+                                                  rows={2}
+                                                  value={rerouteReasonMap[survey.id] || ''}
+                                                  onChange={(e) => setRerouteReasonMap({ ...rerouteReasonMap, [survey.id]: e.target.value })}
+                                                  placeholder={isRtl ? 'اكتب سبب تغيير المدرسة (مثال: توفر شاغر وطاقة استيعابية بالمدرسة البديلة، قرب السكن...)' : 'Write reason for changing school...'}
+                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                              </div>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const altSchoolName = selectedAltSchoolMap[survey.id];
+                                                  if (!altSchoolName) {
+                                                    alert(isRtl ? 'الرجاء اختيار المدرسة البديلة من القائمة أولاً.' : 'Please select an alternative school from dropdown.');
+                                                    return;
+                                                  }
+                                                  const reason = (rerouteReasonMap[survey.id] || '').trim() || (isRtl ? 'تغيير المدرسة لتوفر شاغر وطاقة استيعابية مناسبة بالمدرسة البديلة' : 'Changed school due to available capacity in alternative school');
+
+                                                  const originalSchool = survey.schoolName;
+                                                  if (onUpdateSurvey) {
+                                                    onUpdateSurvey({
+                                                      ...survey,
+                                                      schoolName: altSchoolName,
+                                                      previousSchoolName: originalSchool,
+                                                      vacancyRerouteReason: reason,
+                                                      vacancyRequestStatus: 'sent_to_school_principal',
+                                                      sentToSchoolPrincipal: true,
+                                                      sentToLeadership: true,
+                                                      returnedByPrincipal: false,
+                                                      isResolved: false,
+                                                      notes: isRtl
+                                                        ? `🏫 تم تغيير المدرسة من (${originalSchool}) إلى المدرسة البديلة (${altSchoolName}) من مشرف التخطيط (${activeOfficer.nameAr}). السبب: ${reason}.`
+                                                        : `Re-routed from (${originalSchool}) to alternative school (${altSchoolName}) by planning officer (${activeOfficer.nameAr}). Reason: ${reason}.`
+                                                    } as any);
+
+                                                    alert(isRtl
+                                                      ? `✓ تم تغيير المدرسة إلى (${altSchoolName}) وتدوين السبب وإعادة التسكين بنجاح!\nتظهر المعاملة الآن في حساب مدير المدرسة البديلة.`
+                                                      : `Request sent to alternative school (${altSchoolName})!`);
+                                                  }
+                                                }}
+                                                className="w-full py-2 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                              >
+                                                <span>🏫➡️ {isRtl ? 'إرسال للمدرسة البديلة مباشرتاً والتسكين بها' : 'Send Directly to Alternative School'}</span>
+                                              </button>
+                                            </div>
                                           </div>
                                         );
                                       })()}
@@ -10651,6 +10805,16 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           </div>
         )}
 
+        {/* SUB-TAB: Beneficiary Feedback & Messages (Admin Only) */}
+        {(activeSubTab === 'beneficiary-feedback' && activeOfficer.role === 'admin') && (
+          <BeneficiaryFeedbackView
+            feedbacks={beneficiaryFeedbacks || []}
+            onUpdateFeedbacks={onUpdateBeneficiaryFeedbacks}
+            isDark={isDark}
+            isRtl={isRtl}
+          />
+        )}
+
       </div>
 
       {/* First-Time Password & Email Setup Modal */}
@@ -10739,6 +10903,102 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         </div>
       )}
 
+      {/* React Modal for Deleting All Requests */}
+      {showClearAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+          <div className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${
+            isDark ? 'bg-slate-900 border-rose-800 text-white' : 'bg-white border-rose-200 text-slate-900'
+          }`}>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-rose-500/10 border-2 border-rose-500/30 flex items-center justify-center text-rose-500 animate-bounce">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-black text-rose-600 dark:text-rose-400">
+                  {isRtl ? '⚠️ تأكيد مسح وحذف جميع الطلبات نهائياً' : '⚠️ Confirm Deleting All Requests'}
+                </h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                  {isRtl 
+                    ? 'هل أنت متأكد تماماً من مسح وحذف جميع الطلبات والتقارير والبلاغات المسجلة بالنظام (المرسلة، المستلمة، المنجزة، والمعلقة) نهائياً؟\n\nتنبيه: سيتم تفريغ كافة السجلات وسيعود العدد إلى 0 ولن يمكنك التراجع عن هذه العملية.'
+                    : 'Are you sure you want to permanently delete ALL registered requests and reports in the system? This action cannot be undone and will reset counts to 0.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 w-full pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onClearAllSurveys) {
+                      onClearAllSurveys();
+                    }
+                    setShowClearAllModal(false);
+                  }}
+                  className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs rounded-2xl shadow-lg shadow-rose-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isRtl ? 'نعم، احذف جميع الطلبات الآن' : 'Yes, Delete All Requests'}</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setShowClearAllModal(false)}
+                  className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-2xl transition-all cursor-pointer"
+                >
+                  {isRtl ? 'إلغاء الأمر' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* React Modal for Deleting Single Survey */}
+      {surveyToDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl border transition-all ${
+            isDark ? 'bg-slate-900 border-rose-800 text-white' : 'bg-white border-rose-200 text-slate-900'
+          }`}>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  {isRtl ? 'تأكيد حذف الطلب' : 'Confirm Delete Request'}
+                </h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
+                  {isRtl 
+                    ? `هل أنت متأكد من حذف الطلب رقم (${surveyToDeleteId}) نهائياً من النظام؟`
+                    : `Are you sure you want to delete request #${surveyToDeleteId}?`}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 w-full pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteSurvey(surveyToDeleteId);
+                    setSurveyToDeleteId(null);
+                  }}
+                  className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  {isRtl ? 'حذف الطلب' : 'Delete'}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setSurveyToDeleteId(null)}
+                  className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  {isRtl ? 'إلغاء' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

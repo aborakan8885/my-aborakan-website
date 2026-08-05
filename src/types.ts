@@ -8,6 +8,7 @@ export type ProblemType = 'new_registration_saudi' | 'new_registration_resident'
 export interface SurveyResponse {
   id: string;
   beneficiaryName: string;
+  nationalId?: string;
   phoneNumber: string;
   stage: string; // e.g. "Primary", "Intermediate", "Secondary"
   sector: string; // e.g. "North", "South", "East", "West"
@@ -202,5 +203,16 @@ export interface SchoolItem {
   customFields?: Record<string, any>; // الأعمدة والمتغيرات الديناميكية المستوردة من ملف إكسل أو كيس
   [key: string]: any; // تسمح بقراءة أي حقل متغير ديناميكياً
 }
+
+export interface BeneficiaryFeedback {
+  id: string;
+  senderName?: string;
+  senderPhone?: string;
+  message: string;
+  createdAt: string;
+  status: 'new' | 'read' | 'replied';
+  notes?: string;
+}
+
 
 

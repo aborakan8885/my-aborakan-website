@@ -574,39 +574,64 @@ export default function Portal({
     const local = evals[survey.id] || {
       staffSatisfaction: survey.staffSatisfaction || 0,
       receptionSatisfaction: survey.receptionSatisfaction || 0,
-      notes: survey.notes || '',
+      notes: '',
       isResolved: survey.isResolved || false,
     };
 
-    if (onUpdateSurvey) {
-      onUpdateSurvey({
-        ...survey,
-        staffSatisfaction: local.staffSatisfaction,
-        receptionSatisfaction: local.receptionSatisfaction,
-        notes: local.notes,
-        isResolved: local.isResolved
-      });
+    const staffSat = local.staffSatisfaction > 0 ? local.staffSatisfaction : 5;
+    const receptionSat = local.receptionSatisfaction > 0 ? local.receptionSatisfaction : 5;
+    const userNotes = (local.notes || '').trim();
 
-      // Mark success
+    const updatedSurvey: SurveyResponse = {
+      ...survey,
+      staffSatisfaction: staffSat,
+      receptionSatisfaction: receptionSat,
+      notes: userNotes || survey.notes,
+      isResolved: true,
+      lastUpdatedAt: new Date().toISOString()
+    };
+
+    if (onUpdateSurvey) {
+      onUpdateSurvey(updatedSurvey);
+    }
+
+    // Direct persistence fallback to localStorage
+    try {
+      const cached = localStorage.getItem('beneficiary_surveys');
+      if (cached) {
+        const list = JSON.parse(cached);
+        const updatedList = list.map((s: any) => s.id === survey.id ? updatedSurvey : s);
+        localStorage.setItem('beneficiary_surveys', JSON.stringify(updatedList));
+      }
+    } catch { /* ignore */ }
+
+    // Mark success in state
+    setEvals(prev => ({
+      ...prev,
+      [survey.id]: {
+        staffSatisfaction: staffSat,
+        receptionSatisfaction: receptionSat,
+        notes: userNotes,
+        isResolved: true,
+        success: true
+      }
+    }));
+
+    // Alert user
+    alert(isRtl 
+      ? '✅ تم حفظ تقييمكم وملاحظاتكم بنجاح ومزامنتها مع قاعدة البيانات!' 
+      : '✅ Your evaluation and feedback have been saved successfully!');
+
+    // Clear success banner after 4 seconds
+    setTimeout(() => {
       setEvals(prev => ({
         ...prev,
         [survey.id]: {
-          ...local,
-          success: true
+          ...(prev[survey.id] || local),
+          success: false
         }
       }));
-
-      // Clear success after 4 seconds
-      setTimeout(() => {
-        setEvals(prev => ({
-          ...prev,
-          [survey.id]: {
-            ...(prev[survey.id] || local),
-            success: false
-          }
-        }));
-      }, 4000);
-    }
+    }, 4000);
   };
 
 
@@ -1028,10 +1053,11 @@ export default function Portal({
                     </h3>
                     
                     {matchedSurveys.map((survey) => {
+                      const cleanExistingNotes = (survey.notes && !survey.notes.includes('🚨') && !survey.notes.includes('طلب تسكين') && !survey.notes.includes('فتح الشاغر') && !survey.notes.includes('توجيه')) ? survey.notes : '';
                       const local = evals[survey.id] || {
                         staffSatisfaction: survey.staffSatisfaction || 0,
                         receptionSatisfaction: survey.receptionSatisfaction || 0,
-                        notes: survey.notes || '',
+                        notes: cleanExistingNotes,
                         isResolved: survey.isResolved || false,
                       };
 
@@ -1126,6 +1152,22 @@ export default function Portal({
                                 <div className="text-xs font-semibold p-2.5 rounded-xl bg-white/70 dark:bg-black/20 border border-emerald-200 dark:border-emerald-900">
                                   <span className="font-bold text-emerald-800 dark:text-emerald-300 block mb-0.5">{isRtl ? '💡 سبب وتوضيح التخطيط المدرسي لولي الأمر:' : '💡 Planning Explanation:'}</span>
                                   <p className="leading-relaxed">{(survey as any).vacancyOpenReason}</p>
+                                </div>
+                              )}
+
+                              {((survey as any).previousSchoolName || (survey as any).vacancyRerouteReason) && (
+                                <div className="text-xs font-semibold p-2.5 rounded-xl bg-indigo-50/80 dark:bg-black/30 border border-indigo-200 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200 space-y-1">
+                                  <span className="font-bold text-indigo-800 dark:text-indigo-300 block mb-0.5">
+                                    🔀 {isRtl ? 'بيانات التسكين والمدرسة البديلة:' : 'Alternative School Placement Info:'}
+                                  </span>
+                                  <p>
+                                    {isRtl ? `المدرسة السابقة: ${(survey as any).previousSchoolName || 'المدرسة الأولى'} ⬅️ المدرسة الحالية المعينة: ${survey.schoolName}` : `Previous: ${(survey as any).previousSchoolName} ⬅️ Current: ${survey.schoolName}`}
+                                  </p>
+                                  {(survey as any).vacancyRerouteReason && (
+                                    <p className="font-extrabold text-indigo-800 dark:text-indigo-300 bg-white/70 dark:bg-black/40 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900 mt-1">
+                                      💡 {isRtl ? `سبب تغيير المدرسة: ${(survey as any).vacancyRerouteReason}` : `Reason for school change: ${(survey as any).vacancyRerouteReason}`}
+                                    </p>
+                                  )}
                                 </div>
                               )}
                             </div>

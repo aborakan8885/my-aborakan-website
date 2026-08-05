@@ -9,10 +9,12 @@ import SurveyForm from './components/SurveyForm';
 import Dashboard from './components/Dashboard';
 import Portal from './components/Portal';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, PrincipalReport, SchoolItem } from './types';
+import ContactFeedbackModal from './components/ContactFeedbackModal';
+import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, PrincipalReport, SchoolItem, BeneficiaryFeedback } from './types';
 import {
   saveSurveysToStorage,
   loadSurveysFromStorage,
+  clearAllSurveysFromStorage,
   savePrincipalReportsToStorage,
   loadPrincipalReportsFromStorage
 } from './utils/storageEngine';
@@ -25,7 +27,7 @@ import {
   TRANSLATIONS
 } from './data/mockData';
 import { processSurveysInBatchAsync } from './utils/batchProcessor';
-import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity } from 'lucide-react';
+import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity, MessageSquareHeart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -48,7 +50,14 @@ export default function App() {
   }, [theme]);
 
   // Application views / tabs / roles: 'portal' (Unified Selection Portal), 'parent' (Beneficiary / Parent Survey Form), or 'admin' (Admission Officer / System Admin)
-  const [userRole, setUserRole] = useState<'portal' | 'parent' | 'admin'>('portal');
+  const [userRole, setUserRoleState] = useState<'portal' | 'parent' | 'admin'>('portal');
+  const [, startRoleTransition] = React.useTransition();
+
+  const setUserRole = (role: 'portal' | 'parent' | 'admin') => {
+    startRoleTransition(() => {
+      setUserRoleState(role);
+    });
+  };
 
   // Compatibility helper for legacy references
   const activeTab: 'survey' | 'dashboard' = userRole === 'admin' ? 'dashboard' : 'survey';
@@ -96,6 +105,44 @@ export default function App() {
     return cached ? JSON.parse(cached) : INITIAL_INTEGRATION_LOGS;
   });
 
+  // Beneficiary Feedbacks database
+  const [beneficiaryFeedbacks, setBeneficiaryFeedbacks] = useState<BeneficiaryFeedback[]>(() => {
+    const cached = localStorage.getItem('beneficiary_feedbacks_v1');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* ignore */ }
+    }
+    return [
+      {
+        id: 'fb-101',
+        senderName: 'محمد بن علي العمري',
+        senderPhone: '0551234567',
+        message: 'نظام ممتاز وميسر لرعاية المستفيدين والتسكين بالمدارس. شكراً لجهودكم في إدارة التعليم.',
+        createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+        status: 'new'
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('beneficiary_feedbacks_v1', JSON.stringify(beneficiaryFeedbacks));
+  }, [beneficiaryFeedbacks]);
+
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
+
+  const handleSendFeedback = (newFb: Omit<BeneficiaryFeedback, 'id' | 'createdAt' | 'status'>) => {
+    const item: BeneficiaryFeedback = {
+      ...newFb,
+      id: `fb-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      status: 'new'
+    };
+    setBeneficiaryFeedbacks(prev => [item, ...prev]);
+    setAlertToast({ message: 'تم إرسال ملاحظتك بنجاح للأدمن!', type: 'success' });
+  };
+
   // Global synchronized school registry (backed by app_schools_list_v1)
   const [schoolsList, setSchoolsList] = useState<SchoolItem[]>(() => {
     const cached = localStorage.getItem('app_schools_list_v1');
@@ -124,14 +171,10 @@ export default function App() {
   // Async initial load from storage engine (IndexedDB + LocalStorage fallback)
   useEffect(() => {
     loadSurveysFromStorage().then(data => {
-      if (data && data.length > 0) {
-        setSurveys(data);
-      }
+      setSurveys(data || []);
     });
     loadPrincipalReportsFromStorage().then(data => {
-      if (data && data.length > 0) {
-        setPrincipalReports(data);
-      }
+      setPrincipalReports(data || []);
     });
   }, []);
 
@@ -250,12 +293,15 @@ export default function App() {
     );
   };
 
-  // Clear all evaluation surveys
+  // Clear all evaluation surveys, requests, and logs
   const handleClearAllSurveys = () => {
     setSurveys([]);
-    localStorage.removeItem('beneficiary_surveys');
+    setPrincipalReports([]);
+    setEmailLogs([]);
+    setIntegrationLogs([]);
+    clearAllSurveysFromStorage();
     triggerToast(
-      currentLang === 'ar' ? 'تم حذف ومسح جميع الاستبيانات والتقييمات القديمة نهائياً.' : 'All old surveys cleared successfully.',
+      currentLang === 'ar' ? 'تم حذف ومسح جميع الطلبات والبلاغات والتقارير المسجلة في النظام (المرسلة والمعالجة والمعلقة) نهائياً.' : 'All registered requests and reports cleared successfully.',
       'info'
     );
   };
@@ -318,7 +364,7 @@ export default function App() {
   const handleAddPrincipalReport = (newRep: Omit<PrincipalReport, 'id' | 'createdAt' | 'isResolved'>) => {
     let assignedOfficerId: string | undefined = undefined;
     try {
-      const cachedOfficers = localStorage.getItem('officer_users_v2');
+      const cachedOfficers = localStorage.getItem('officer_users_v4') || localStorage.getItem('officer_users_v3') || localStorage.getItem('officer_users_v2');
       if (cachedOfficers) {
         const officersList = JSON.parse(cachedOfficers);
         const schoolToMatch = newRep.schoolName ? newRep.schoolName.trim().toLowerCase() : '';
@@ -679,6 +725,7 @@ export default function App() {
                     onClearAllSurveys={handleClearAllSurveys}
                     onToggleResolved={handleToggleResolved}
                     onImportSurveys={handleImportSurveys}
+                    onAddSurvey={handleAddSurvey}
                     onUpdateSurvey={(updatedSurvey) => {
                       const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
                       setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
@@ -723,6 +770,8 @@ export default function App() {
                       }));
                     }}
                     theme={theme}
+                    beneficiaryFeedbacks={beneficiaryFeedbacks}
+                    onUpdateBeneficiaryFeedbacks={setBeneficiaryFeedbacks}
                   />
                 </ErrorBoundary>
               </motion.div>
@@ -809,32 +858,32 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Footer copyright */}
-      <footer className={`border-t py-6 text-center text-xs font-mono transition-colors duration-300 ${
-        isDark
-          ? 'bg-[#04403d]/80 border-teal-800/40 text-teal-400'
-          : 'bg-white border-slate-100 text-slate-400'
-      }`}>
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>
-            © {new Date().getFullYear()} MOE - Smart Beneficiary System.
-          </p>
-          <div className="flex items-center gap-3">
-            <span className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold border ${
+      {/* Bottom Footer - Only Compact Contact & Feedback Button on the Left */}
+      <footer className="w-full bg-transparent py-3 transition-colors duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-start" style={{ direction: 'ltr' }}>
+          <button
+            onClick={() => setIsFeedbackModalOpen(true)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 ${
               isDark
-                ? 'bg-teal-950/60 text-teal-300 border-teal-800/40'
-                : 'bg-blue-50 text-blue-700 border-blue-100'
-            }`}>
-              <ShieldCheck className="w-3 h-3" />
-              AES-256 Enabled
-            </span>
-            <span className={isDark ? 'text-teal-800/70' : 'text-slate-300'}>|</span>
-            <span className="font-sans font-semibold">
-              {currentLang === 'ar' ? 'رعاية المستفيدين أولاً' : 'Care first'}
-            </span>
-          </div>
+                ? 'bg-teal-950/70 hover:bg-teal-900/90 border-teal-700/60 text-teal-200'
+                : 'bg-white/90 hover:bg-teal-50 border-teal-600/40 text-teal-850'
+            }`}
+            id="btn-footer-contact-feedback"
+            style={{ direction: 'rtl' }}
+          >
+            <MessageSquareHeart className="w-3.5 h-3.5 text-amber-500 shrink-0 animate-pulse" />
+            <span className="text-[11px] font-extrabold whitespace-nowrap">للتواصل وإبداء الملاحظات</span>
+          </button>
         </div>
       </footer>
+
+      {/* Contact & Feedback Modal */}
+      <ContactFeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        onSendFeedback={handleSendFeedback}
+        isDark={isDark}
+      />
     </div>
   );
 }
