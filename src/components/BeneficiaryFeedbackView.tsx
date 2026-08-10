@@ -121,25 +121,25 @@ export default function BeneficiaryFeedbackView({
       {/* Top Banner & Stats Header */}
       <div className={`p-6 rounded-3xl border shadow-lg transition-all ${
         isDark 
-          ? 'bg-gradient-to-r from-[#012f2c] via-[#023e3b] to-[#012221] border-teal-800/60 text-white' 
-          : 'bg-gradient-to-r from-[#004B49] via-[#035d5a] to-[#269fa6] border-teal-800 text-white'
+          ? 'bg-gradient-to-r from-[#0b2336] via-[#10304a] to-[#071927] border-[#218caa]/40 text-white' 
+          : 'bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] border-[#3078a6] text-white'
       }`}>
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
           <div className="flex items-center gap-3.5">
             <div className="p-3 bg-white/15 rounded-2xl border border-white/20 backdrop-blur-md shadow-xs">
-              <MessageSquareHeart className="w-8 h-8 text-amber-300 animate-pulse" />
+              <MessageSquareHeart className="w-8 h-8 text-[#69cee3] animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-900">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#69cee3] text-slate-900 shadow-2xs">
                   لوحة تحكم الأدمن الخاصة
                 </span>
-                <span className="text-xs text-teal-200 font-bold">• حصرية لمسؤول النظام</span>
+                <span className="text-xs text-purple-200 font-bold">• حصرية لمسؤول النظام</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
                 ملاحظات ورسائل المستفيدين
               </h2>
-              <p className="text-xs text-teal-100 font-medium mt-0.5">
+              <p className="text-xs text-purple-100 font-medium mt-0.5">
                 متابعة وإدارة الملاحظات والاستفسارات الواردة من تذييل النظام
               </p>
             </div>
@@ -220,7 +220,7 @@ export default function BeneficiaryFeedbackView({
             onClick={() => setStatusFilter('all')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
               statusFilter === 'all'
-                ? 'bg-teal-700 text-white shadow-xs'
+                ? 'bg-[#218caa] text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
             }`}
           >
@@ -272,7 +272,7 @@ export default function BeneficiaryFeedbackView({
               className={`p-5 rounded-2xl border transition-all ${
                 fb.status === 'new'
                   ? isDark
-                    ? 'bg-[#022f2c]/90 border-amber-500/50 shadow-md ring-1 ring-amber-500/20'
+                    ? 'bg-[#0b2336]/90 border-amber-500/50 shadow-md ring-1 ring-amber-500/20'
                     : 'bg-amber-50/40 border-amber-300 shadow-md ring-1 ring-amber-400/20'
                   : isDark
                   ? 'bg-slate-900 border-slate-800 text-slate-200'
@@ -334,7 +334,7 @@ export default function BeneficiaryFeedbackView({
                     onClick={() => handleToggleStatus(fb.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
                       fb.status === 'new'
-                        ? 'bg-teal-700 hover:bg-teal-800 text-white'
+                        ? 'bg-[#218caa] hover:bg-teal-800 text-white'
                         : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300'
                     }`}
                   >
@@ -386,7 +386,7 @@ export default function BeneficiaryFeedbackView({
                       </button>
                       <button
                         onClick={() => handleSaveNotes(fb.id)}
-                        className="px-3 py-1 bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                        className="px-3 py-1 bg-[#218caa] text-white rounded-lg text-xs font-bold flex items-center gap-1"
                       >
                         <Save className="w-3 h-3" />
                         <span>حفظ الملاحظة</span>

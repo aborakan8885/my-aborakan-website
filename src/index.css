@@ -1,59 +1,60 @@
 @import "tailwindcss";
 
 @theme {
-  /* Saudi Ministry of Education Official Brand Colors */
-  /* Primary Teal Accent: #009d8f, Secondary Sage: #6e9e8e */
-  --color-blue-50: #f0fdfa;
-  --color-blue-100: #ccfbf1;
-  --color-blue-200: #99f6e4;
-  --color-blue-300: #6e9e8e;
-  --color-blue-400: #2dd4bf;
-  --color-blue-500: #14b8a6;
-  --color-blue-600: #009d8f;
-  --color-blue-700: #0f766e;
-  --color-blue-800: #115e59;
-  --color-blue-900: #134e4a;
-  --color-blue-950: #042f2e;
+  /* Brand Palette Colors based on #218caa (Ocean Cyan Teal) and #3078a6 (Sapphire Blue) */
+  --color-brand-teal: #218caa;
+  --color-brand-blue: #3078a6;
+  --color-brand-cyan: #69cee3;
+  --color-brand-[#218caa]: #218caa;
+  --color-brand-[#3078a6]: #3078a6;
 
-  /* Secondary Golden-Sand Brand Color: #b98e3b / #C5A059 */
-  --color-indigo-50: #fdfaf4;
-  --color-indigo-100: #f9eed4;
-  --color-indigo-200: #eed6a1;
-  --color-indigo-300: #dfba6e;
-  --color-indigo-400: #cf9b3c;
-  --color-indigo-500: #b98e3b;
-  --color-indigo-600: #9c732a;
-  --color-indigo-700: #7f5c1e;
-  --color-indigo-800: #624414;
-  --color-indigo-900: #462f0a;
+  --color-blue-50: #f2f9fd;
+  --color-blue-100: #e1f2fb;
+  --color-blue-200: #b9e3f7;
+  --color-blue-300: #69cee3;
+  --color-blue-400: #3895c4;
+  --color-blue-500: #218caa;
+  --color-blue-600: #3078a6;
+  --color-blue-700: #1d5b82;
+  --color-blue-800: #164666;
+  --color-blue-900: #0f324a;
+  --color-blue-950: #091e2e;
 
-  /* Accent Highlight Gold for stars and badges */
-  --color-amber-50: #fefcf3;
-  --color-amber-100: #fdf5d6;
-  --color-amber-200: #fbe6a0;
-  --color-amber-300: #f7ce62;
-  --color-amber-400: #f1b32d;
-  --color-amber-500: #d5a133;
-  --color-amber-600: #b58322;
-  --color-amber-700: #906219;
-  --color-amber-800: #6c4613;
-  --color-amber-900: #4e300d;
+  --color-teal-50: #effafb;
+  --color-teal-100: #d4f3f6;
+  --color-teal-200: #a9e6ed;
+  --color-teal-300: #69cee3;
+  --color-teal-400: #35b3ce;
+  --color-teal-500: #218caa;
+  --color-teal-600: #1b738e;
+  --color-teal-700: #165b71;
+  --color-teal-800: #114455;
+  --color-teal-900: #0b2f3c;
+  --color-teal-950: #061c24;
 }
 
-/* Print Media Styles for clean Ministry of Education Report Card printing */
+/* Print Media Styles for clean Ministry of Education Report Card & Charts printing */
 @media print {
-  /* Hide everything except the printable card */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* Hide everything by default except printable targets */
   body * {
     visibility: hidden;
   }
   
   #printable-report-card,
-  #printable-report-card * {
+  #printable-report-card *,
+  .printable-charts-container,
+  .printable-charts-container * {
     visibility: visible;
   }
   
   /* Reset page constraints for the printed card */
-  #printable-report-card {
+  #printable-report-card,
+  .printable-charts-container {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -65,6 +66,16 @@
     box-shadow: none !important;
     background: white !important;
     color: black !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Ensure charts scale down and print together on 1 single page */
+  .printable-charts-container .chart-box {
+    max-height: 220px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Force background colors to print correctly in PDF exports */
@@ -75,20 +86,21 @@
   }
 }
 
-/* Glassmorphism Styles for Ministry of Education Premium Look */
+/* Glassmorphism Styles for Premium Visual Identity */
 .glass-card-light {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(0, 122, 120, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(33, 140, 170, 0.15);
+  box-shadow: 0 10px 30px -5px rgba(33, 140, 170, 0.08);
 }
 
 .glass-card-dark {
-  background: rgba(0, 24, 24, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 122, 120, 0.22);
-  box-shadow: 0 8px 32px 0 rgba(0, 15, 15, 0.35);
+  background: rgba(9, 30, 46, 0.75);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(105, 206, 227, 0.22);
+  box-shadow: 0 12px 40px 0 rgba(4, 15, 24, 0.6);
 }
 
 .glass-icon-container {
@@ -104,15 +116,15 @@
 
 /* Glass icon color options for Light Mode */
 .glass-icon-light-blue {
-  background: rgba(1, 132, 129, 0.08);
-  border: 1px solid rgba(1, 132, 129, 0.16);
-  color: #007a78;
+  background: rgba(33, 140, 170, 0.1);
+  border: 1px solid rgba(33, 140, 170, 0.22);
+  color: #218caa;
 }
 
 .glass-icon-light-indigo {
-  background: rgba(185, 142, 59, 0.08);
-  border: 1px solid rgba(185, 142, 59, 0.16);
-  color: #9c732a;
+  background: rgba(48, 120, 166, 0.1);
+  border: 1px solid rgba(48, 120, 166, 0.22);
+  color: #3078a6;
 }
 
 .glass-icon-light-rose {
@@ -122,24 +134,24 @@
 }
 
 .glass-icon-light-emerald {
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.16);
-  color: #059669;
+  background: rgba(33, 140, 170, 0.12);
+  border: 1px solid rgba(33, 140, 170, 0.25);
+  color: #218caa;
 }
 
-/* Glass icon color options for Dark Mode with bright, eye-catching, professionally-tuned glows */
+/* Glass icon color options for Dark Mode with brand glow */
 .glass-icon-dark-blue {
-  background: rgba(1, 132, 129, 0.16);
-  border: 1px solid rgba(1, 132, 129, 0.35);
-  color: #26e6e0;
-  box-shadow: 0 0 15px rgba(38, 230, 224, 0.15);
+  background: rgba(105, 206, 227, 0.15);
+  border: 1px solid rgba(105, 206, 227, 0.35);
+  color: #69cee3;
+  box-shadow: 0 0 16px rgba(105, 206, 227, 0.25);
 }
 
 .glass-icon-dark-indigo {
-  background: rgba(185, 142, 59, 0.16);
-  border: 1px solid rgba(185, 142, 59, 0.35);
-  color: #ffd175;
-  box-shadow: 0 0 15px rgba(255, 209, 117, 0.12);
+  background: rgba(48, 120, 166, 0.22);
+  border: 1px solid rgba(48, 120, 166, 0.45);
+  color: #8acbf2;
+  box-shadow: 0 0 16px rgba(48, 120, 166, 0.3);
 }
 
 .glass-icon-dark-rose {
@@ -150,10 +162,10 @@
 }
 
 .glass-icon-dark-emerald {
-  background: rgba(16, 185, 129, 0.16);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #6ee7b7;
-  box-shadow: 0 0 15px rgba(110, 231, 183, 0.15);
+  background: rgba(33, 140, 170, 0.22);
+  border: 1px solid rgba(33, 140, 170, 0.45);
+  color: #69cee3;
+  box-shadow: 0 0 16px rgba(105, 206, 227, 0.25);
 }
 
 /* Custom slow-spin for sunset/sun icon */
@@ -170,24 +182,33 @@
   animation: spin-slow 12s linear infinite;
 }
 
-/* Hide standard scrollbars or customize for modern aesthetic */
+/* Custom linear gradient stripe featuring #218caa and #3078a6 (Light left #218caa, Dark right #3078a6) */
+.brand-multi-gradient {
+  background: linear-gradient(90deg, #69cee3 0%, #218caa 45%, #3078a6 85%, #184c6c 100%);
+}
+
+.brand-multi-gradient-soft {
+  background: linear-gradient(135deg, #218caa 0%, #2883a4 50%, #3078a6 100%);
+}
+
+/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(0, 122, 120, 0.3);
+  background: rgba(33, 140, 170, 0.45);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(48, 120, 166, 0.3);
   border-radius: 999px;
 }
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 122, 120, 0.5);
+  background: rgba(105, 206, 227, 0.7);
 }
 
 /* Snappy instantaneous tab switching animation */
@@ -199,4 +220,5 @@
 .animate-fade-in {
   animation: fadeInSnappy 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
 

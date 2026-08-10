@@ -50,7 +50,12 @@ export default function App() {
   }, [theme]);
 
   // Application views / tabs / roles: 'portal' (Unified Selection Portal), 'parent' (Beneficiary / Parent Survey Form), or 'admin' (Admission Officer / System Admin)
-  const [userRole, setUserRoleState] = useState<'portal' | 'parent' | 'admin'>('portal');
+  const [userRole, setUserRoleState] = useState<'portal' | 'parent' | 'admin'>(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('print-report=true')) {
+      return 'admin';
+    }
+    return 'portal';
+  });
   const [, startRoleTransition] = React.useTransition();
 
   const setUserRole = (role: 'portal' | 'parent' | 'admin') => {
@@ -586,7 +591,7 @@ export default function App() {
   return (
     <div
       className={`min-h-screen flex flex-col font-sans select-none antialiased transition-colors duration-300 ${
-        isDark ? 'bg-gradient-to-b from-[#0b3c3b] via-[#062827] to-[#031d1c] text-slate-100' : 'bg-[#f8fafc] text-slate-900'
+        isDark ? 'bg-gradient-to-br from-[#0b1f2e] via-[#081724] to-[#05101a] text-slate-100' : 'bg-gradient-to-br from-[#f2f9fd] via-[#e8f4fb] to-[#dfeff8] text-slate-900'
       }`}
       dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
     >
@@ -863,15 +868,15 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-start" style={{ direction: 'ltr' }}>
           <button
             onClick={() => setIsFeedbackModalOpen(true)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 ${
               isDark
-                ? 'bg-teal-950/70 hover:bg-teal-900/90 border-teal-700/60 text-teal-200'
-                : 'bg-white/90 hover:bg-teal-50 border-teal-600/40 text-teal-850'
+                ? 'bg-[#1b6b8b]/60 hover:bg-[#218caa]/80 border-[#69cee3]/40 text-cyan-100'
+                : 'bg-white/95 hover:bg-cyan-50/80 border-[#218caa]/35 text-[#1b6583]'
             }`}
             id="btn-footer-contact-feedback"
             style={{ direction: 'rtl' }}
           >
-            <MessageSquareHeart className="w-3.5 h-3.5 text-amber-500 shrink-0 animate-pulse" />
+            <MessageSquareHeart className="w-3.5 h-3.5 text-[#69cee3] shrink-0 animate-pulse" />
             <span className="text-[11px] font-extrabold whitespace-nowrap">للتواصل وإبداء الملاحظات</span>
           </button>
         </div>

@@ -55,16 +55,16 @@ export default function ContactFeedbackModal({
         }`}
       >
         {/* Top Header Bar */}
-        <div className="sticky top-0 z-10 flex items-center justify-between p-4 sm:p-5 border-b bg-gradient-to-r from-[#004B49] via-[#035d5a] to-[#269fa6] text-white rounded-t-3xl shadow-md">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 sm:p-5 border-b bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] text-white rounded-t-3xl shadow-md">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/15 rounded-2xl border border-white/20 backdrop-blur-md">
-              <MessageSquareHeart className="w-6 h-6 text-amber-300 animate-pulse" />
+              <MessageSquareHeart className="w-6 h-6 text-[#69cee3] animate-pulse" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black leading-tight text-white">
                 للتواصل وإبداء الملاحظات
               </h3>
-              <p className="text-[11px] text-teal-100 font-medium">
+              <p className="text-[11px] text-cyan-100 font-medium">
                 يسعدنا استقبال ملاحظاتكم ومقترحاتكم والتواصل المباشر مع دعم النظام
               </p>
             </div>
@@ -85,17 +85,17 @@ export default function ContactFeedbackModal({
           {/* Section 1: Developer Info & Contact */}
           <div className={`p-4 sm:p-5 rounded-2xl border ${
             isDark 
-              ? 'bg-teal-950/40 border-teal-800/50 text-teal-100' 
-              : 'bg-teal-50/60 border-teal-200/80 text-teal-950'
+              ? 'bg-[#218caa]/15 border-[#69cee3]/30 text-cyan-100' 
+              : 'bg-cyan-50/70 border-[#218caa]/25 text-slate-900'
           }`}>
-            <div className="flex items-center justify-between gap-2 mb-3 pb-2.5 border-b border-teal-500/20">
+            <div className="flex items-center justify-between gap-2 mb-3 pb-2.5 border-b border-[#218caa]/20">
               <div className="flex items-center gap-2">
-                <Code2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                <h4 className="font-extrabold text-sm sm:text-base text-teal-900 dark:text-teal-200">
+                <Code2 className="w-5 h-5 text-[#218caa] dark:text-[#69cee3]" />
+                <h4 className="font-extrabold text-sm sm:text-base text-[#1b6583] dark:text-cyan-200">
                   👨‍💻 نبذة عن المبرمج ورقم التواصل
                 </h4>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-teal-600 text-white">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#218caa] text-white shadow-2xs">
                 مطور النظام
               </span>
             </div>
@@ -104,27 +104,27 @@ export default function ContactFeedbackModal({
               <div className="flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-1" />
                 <div className="leading-relaxed">
-                  <span className="font-extrabold text-slate-700 dark:text-teal-200 block text-xs">فكرة وتطوير النظام:</span>
-                  <span className="font-black text-sm sm:text-base text-teal-950 dark:text-teal-100 bg-teal-100/90 dark:bg-teal-900/60 px-3 py-1 rounded-xl border border-teal-300/80 dark:border-teal-700/80 inline-block mt-1 shadow-2xs">
+                  <span className="font-extrabold text-slate-700 dark:text-cyan-200 block text-xs">فكرة وتطوير النظام:</span>
+                  <span className="font-black text-sm sm:text-base text-[#1b6583] dark:text-cyan-100 bg-cyan-100/90 dark:bg-[#218caa]/40 px-3 py-1 rounded-xl border border-[#218caa]/30 inline-block mt-1 shadow-2xs">
                     الأستاذ / سالم محمد الترجمي - وحدة القبول
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <Phone className="w-4 h-4 text-[#218caa] dark:text-[#69cee3] shrink-0" />
                 <p className="leading-relaxed">
-                  <strong className="font-extrabold text-teal-900 dark:text-teal-100">رقم التواصل الخاص:</strong>{' '}
+                  <strong className="font-extrabold text-[#1b6583] dark:text-cyan-100">رقم التواصل الخاص:</strong>{' '}
                   <a 
                     href="tel:0553512200"
-                    className="font-mono font-black text-sm sm:text-base dir-ltr inline-block text-emerald-700 dark:text-emerald-300 hover:underline hover:text-emerald-800 transition-colors"
+                    className="font-mono font-black text-sm sm:text-base dir-ltr inline-block text-[#218caa] dark:text-[#69cee3] hover:underline transition-colors"
                   >
                     0553512200
                   </a>
                 </p>
               </div>
 
-              <div className="p-3 bg-white/80 dark:bg-slate-900/70 rounded-xl border border-teal-200/70 dark:border-teal-800/50 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+              <div className="p-3 bg-white/80 dark:bg-slate-900/70 rounded-xl border border-[#218caa]/25 dark:border-[#218caa]/40 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                 تم تطوير هذا النظام وإعداد خوارزمياته المتقدمة لرعاية المستفيدين، وتسهيل إجراءات القبول والتسكين بالمدارس، ومتابعة بلاغات الشواغر بكفاءة عالية وشفافية كاملة.
               </div>
 
@@ -141,9 +141,9 @@ export default function ContactFeedbackModal({
                 </a>
                 <a
                   href="tel:0553512200"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#218caa] to-[#3078a6] hover:brightness-110 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer"
                 >
-                  <Phone className="w-4 h-4" />
+                  <Phone className="w-4 h-4 text-[#69cee3]" />
                   <span>اتصال مباشر</span>
                 </a>
               </div>
@@ -233,9 +233,9 @@ export default function ContactFeedbackModal({
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white font-black text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    className="px-6 py-2.5 bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] hover:brightness-110 text-white font-black text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-4 h-4 text-[#69cee3]" />
                     <span>🚀 إرسال الملاحظة للأدمن</span>
                   </button>
                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { verifyCivilIdMatch, extractCivilIdFromSchool, cleanDigitsString } from '../utils/civilId';
+import { AgeVerificationModal } from './AgeVerificationModal';
 import { 
   Users, 
   School, 
@@ -84,6 +85,9 @@ export default function Portal({
 
   // Portal view state: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'
   const [view, setView] = useState<'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'>('selection');
+
+  // Age Verification Modal State for Student Grade 1 Admission
+  const [showAgeModal, setShowAgeModal] = useState<boolean>(false);
 
   // Parent Tracking & Evaluation States
   const [searchName, setSearchName] = useState('');
@@ -647,24 +651,16 @@ export default function Portal({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.25 }}
-            className="space-y-12"
+            className="py-2 sm:py-4 space-y-4 max-w-6xl mx-auto px-4"
           >
             {/* Header Title */}
-            <div className="text-center max-w-3xl mx-auto space-y-4">
-              <span className={`inline-flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-full font-bold border transition-colors ${
-                isDark
-                  ? 'bg-[#002d2c] text-teal-300 border-teal-800/40'
-                  : 'bg-blue-50 text-blue-700 border-blue-100/50'
-              }`}>
-                <ShieldCheck className={`w-4 h-4 animate-pulse ${isDark ? 'text-teal-400' : 'text-blue-600'}`} />
-                {isRtl ? 'منصة الخدمات الموحدة للقبول' : 'Unified Admission Services Platform'}
-              </span>
-              <h1 className={`text-3xl sm:text-4xl font-black tracking-tight leading-tight transition-colors ${
+            <div className="text-center max-w-2xl mx-auto space-y-1">
+              <h1 className={`text-2xl sm:text-3xl font-black tracking-tight leading-tight transition-colors ${
                 isDark ? 'text-white' : 'text-slate-800'
               }`}>
                 {t.portalTitle}
               </h1>
-              <p className={`text-sm sm:text-base font-medium max-w-2xl mx-auto leading-relaxed transition-colors ${
+              <p className={`text-xs sm:text-sm font-medium max-w-xl mx-auto leading-relaxed transition-colors ${
                 isDark ? 'text-teal-200/80' : 'text-slate-500'
               }`}>
                 {t.portalSubtitle}
@@ -672,144 +668,146 @@ export default function Portal({
             </div>
 
             {/* Selection Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-5 max-w-5xl mx-auto">
               
               {/* Card 1: Parent Beneficiary (ولي أمر) */}
               <motion.div
-                whileHover={{ y: -6, scale: 1.01 }}
+                whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => setView('parent-choices')}
-                className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-teal-400 hover:shadow-teal-500/5'
                     : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-xl'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
                   isDark ? 'bg-teal-500/5 group-hover:bg-teal-500/10' : 'bg-blue-500/5 group-hover:bg-blue-500/10'
                 }`} />
                 
-                <div className="space-y-6">
+                <div className="space-y-3">
                   {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-4 ${
-                    isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#001c1c]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
+                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
+                    isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#061c24]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
                   }`}>
-                    <Users className="w-8 h-8" />
+                    <Users className="w-6 h-6" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className={`font-extrabold text-xl transition-colors ${
+                  <div className="space-y-1">
+                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
                       isDark ? 'text-white group-hover:text-teal-300' : 'text-slate-800 group-hover:text-blue-600'
                     }`}>
                       {t.roleParent}
                     </h3>
-                    <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
+                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
                       {isRtl ? 'دخول مباشر بدون حساب' : 'Direct access without registration'}
                     </p>
-                    <p className={`text-sm font-medium leading-relaxed pt-2 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
                       {t.roleParentDesc}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-2 pt-8 font-bold text-sm group-hover:gap-3 transition-all ${
+                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
                   isDark ? 'text-teal-300' : 'text-blue-600'
                 }`}>
                   <span>{isRtl ? 'بدء الخدمة الآن' : 'Start Service'}</span>
-                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
                 </div>
               </motion.div>
 
               {/* Card 2: School Principal Beneficiary (مدير مدرسة) */}
               <motion.div
-                whileHover={{ y: -6, scale: 1.01 }}
+                whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => {
                   setView('principal-login');
                   setPrincipalAuthMode('login');
                   setLoginError('');
                 }}
-                className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-emerald-400 hover:shadow-emerald-500/5'
                     : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-xl'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
                   isDark ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-emerald-500/5 group-hover:bg-emerald-500/10'
                 }`} />
                 
-                <div className="space-y-6">
+                <div className="space-y-3">
                   {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-4 ${
-                    isDark ? 'glass-icon-dark-emerald group-hover:bg-emerald-400 group-hover:text-[#001c1c]' : 'glass-icon-light-emerald group-hover:bg-emerald-600 group-hover:text-white'
+                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
+                    isDark ? 'glass-icon-dark-emerald group-hover:bg-emerald-400 group-hover:text-[#061c24]' : 'glass-icon-light-emerald group-hover:bg-[#218caa] group-hover:text-white'
                   }`}>
-                    <School className="w-8 h-8" />
+                    <School className="w-6 h-6" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className={`font-extrabold text-xl transition-colors ${
+                  <div className="space-y-1">
+                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
                       isDark ? 'text-white group-hover:text-emerald-300' : 'text-slate-800 group-hover:text-emerald-600'
                     }`}>
                       {t.rolePrincipal}
                     </h3>
-                    <p className={`text-xs font-extrabold leading-relaxed ${isDark ? 'text-teal-400' : 'text-emerald-500'}`}>
+                    <p className={`text-[11px] sm:text-xs font-extrabold leading-relaxed ${isDark ? 'text-teal-400' : 'text-emerald-500'}`}>
                       {isRtl ? 'يتطلب رمز المدرسة الوزاري آمن' : 'Requires secure ministerial code'}
                     </p>
-                    <p className={`text-sm font-medium leading-relaxed pt-2 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
                       {t.rolePrincipalDesc}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-2 pt-8 font-bold text-sm group-hover:gap-3 transition-all ${
+                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
                   isDark ? 'text-emerald-300' : 'text-emerald-600'
                 }`}>
                   <span>{isRtl ? 'تسجيل دخول للمدرسة' : 'School Sign In'}</span>
-                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
                 </div>
               </motion.div>
 
-              {/* Card 3: Admission Officer (مسئول القبول) */}
+              {/* Card 3: Department Staff (منسوبي الإدارة) */}
               <motion.div
-                whileHover={{ y: -6, scale: 1.01 }}
+                whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => onSelectRole('admin')}
-                className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-amber-400 hover:shadow-amber-500/5'
                     : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-xl'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
                   isDark ? 'bg-amber-500/5 group-hover:bg-amber-500/10' : 'bg-indigo-500/5 group-hover:bg-indigo-500/10'
                 }`} />
                 
-                <div className="space-y-6">
+                <div className="space-y-3">
                   {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-4 ${
-                    isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#001c1c]' : 'glass-icon-light-indigo group-hover:bg-indigo-600 group-hover:text-white'
+                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
+                    isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#061c24]' : 'glass-icon-light-indigo group-hover:bg-indigo-600 group-hover:text-white'
                   }`}>
-                    <ShieldCheck className="w-8 h-8" />
+                    <ShieldCheck className="w-6 h-6" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className={`font-extrabold text-xl transition-colors ${
+                  <div className="space-y-1">
+                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
                       isDark ? 'text-white group-hover:text-amber-300' : 'text-slate-800 group-hover:text-indigo-600'
                     }`}>
-                      {t.roleAdmin}
+                      {isRtl ? 'منسوبي الإدارة' : 'Department Staff'}
                     </h3>
-                    <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
+                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
                       {isRtl ? 'بوابة إدارة وحوكمة الأنظمة والتحليلات' : 'Administrative governance & analytics'}
                     </p>
-                    <p className={`text-sm font-medium leading-relaxed pt-2 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
-                      {t.roleAdminDesc}
+                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                      {isRtl
+                        ? 'بوابة الدخول للمصرح لهم من منسوبي الإدارة العامة للتعليم بمنطقة المدينة المنورة'
+                        : 'Entry portal for authorized staff of the General Administration of Education in Madinah Region'}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-2 pt-8 font-bold text-sm group-hover:gap-3 transition-all ${
+                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
                   isDark ? 'text-amber-300' : 'text-indigo-600'
                 }`}>
-                  <span>{isRtl ? 'لوحة التحكم والتحليل' : 'Dashboard Control'}</span>
-                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                  <span>{isRtl ? 'تسجيل الدخول لمنسوبي الإدارة' : 'Department Staff Login'}</span>
+                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
                 </div>
               </motion.div>
 
@@ -831,7 +829,7 @@ export default function Portal({
             <div className="text-center max-w-2xl mx-auto space-y-4">
               <span className={`inline-flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-full font-bold border transition-colors ${
                 isDark
-                  ? 'bg-[#002d2c] text-teal-300 border-teal-800/40'
+                  ? 'bg-[#0b2a3f] text-teal-300 border-teal-800/40'
                   : 'bg-blue-50 text-blue-700 border-blue-100/50'
               }`}>
                 <Users className={`w-4 h-4 ${isDark ? 'text-teal-400' : 'text-blue-600'}`} />
@@ -857,7 +855,7 @@ export default function Portal({
               {/* Option A: Submit Request */}
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
-                onClick={() => onSelectRole('parent')}
+                onClick={() => setShowAgeModal(true)}
                 className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-teal-400 hover:shadow-teal-500/5'
@@ -870,7 +868,7 @@ export default function Portal({
 
                 <div className="space-y-6">
                   <div className={`glass-icon-container p-4 ${
-                    isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#001c1c]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
+                    isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#061c24]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
                   }`}>
                     <Plus className="w-8 h-8" />
                   </div>
@@ -912,7 +910,7 @@ export default function Portal({
 
                 <div className="space-y-6">
                   <div className={`glass-icon-container p-4 ${
-                    isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#001c1c]' : 'glass-icon-light-indigo group-hover:bg-amber-600 group-hover:text-white'
+                    isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#061c24]' : 'glass-icon-light-indigo group-hover:bg-amber-600 group-hover:text-white'
                   }`}>
                     <Eye className="w-8 h-8" />
                   </div>
@@ -946,7 +944,7 @@ export default function Portal({
                 onClick={() => setView('selection')}
                 className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-extrabold transition-all cursor-pointer ${
                   isDark 
-                    ? 'bg-[#002525] border-teal-800/40 text-teal-300 hover:bg-[#001c1c] hover:border-teal-400' 
+                    ? 'bg-[#0b2336] border-teal-800/40 text-teal-300 hover:bg-[#061c24] hover:border-teal-400' 
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-blue-500 hover:text-blue-600'
                 }`}
               >
@@ -1034,7 +1032,7 @@ export default function Portal({
                     placeholder={isRtl ? 'مثال: فيصل محمد الترجمي' : 'e.g. Faisal Mohammed'}
                     className={`w-full pr-10 pl-4 py-3 text-sm font-bold rounded-xl outline-none transition-all focus:ring-2 ${
                       isDark
-                        ? 'bg-[#002525] border-teal-800/50 text-white focus:border-amber-400 focus:bg-[#001c1c] focus:ring-amber-950'
+                        ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-amber-400 focus:bg-[#061c24] focus:ring-amber-950'
                         : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500 focus:bg-white focus:ring-amber-100'
                     }`}
                     required
@@ -1448,7 +1446,7 @@ export default function Portal({
                               <button
                                 type="button"
                                 onClick={() => handleSaveEval(survey)}
-                                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-50 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer"
+                                className="flex items-center gap-2 px-6 py-3 bg-[#218caa] hover:bg-emerald-50 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer"
                               >
                                 <Send className="w-4 h-4" />
                                 <span>{isRtl ? 'حفظ وإرسال التقييم المحدث' : 'Save & Submit Updated Rating'}</span>
@@ -1463,7 +1461,7 @@ export default function Portal({
                 ) : (
                   /* No Matching Results Found */
                   <div className={`p-8 text-center border border-dashed rounded-3xl ${
-                    isDark ? 'border-teal-800/30 bg-[#001f1f]/50' : 'border-slate-200 bg-white'
+                    isDark ? 'border-teal-800/30 bg-[#092233]/50' : 'border-slate-200 bg-white'
                   }`}>
                     <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                     <h4 className={`font-extrabold text-sm ${isDark ? 'text-teal-300' : 'text-slate-800'}`}>
@@ -1479,7 +1477,7 @@ export default function Portal({
               ) : (
                 /* Prompt before typing search */
                 <div className={`p-10 text-center border border-dashed rounded-3xl ${
-                  isDark ? 'border-teal-800/30 bg-[#001f1f]/30' : 'border-slate-200 bg-slate-50/50'
+                  isDark ? 'border-teal-800/30 bg-[#092233]/30' : 'border-slate-200 bg-slate-50/50'
                 }`}>
                   <User className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
                   <h4 className={`font-bold text-sm ${isDark ? 'text-teal-300' : 'text-slate-500'}`}>
@@ -1524,7 +1522,7 @@ export default function Portal({
             <div className={`border rounded-3xl p-8 shadow-xl space-y-6 relative overflow-hidden ${
               isDark ? 'glass-card-dark' : 'bg-white border-slate-200'
             }`}>
-              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-600" />
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6]" />
               
               <div className="text-center space-y-2">
                 <div className={`inline-flex items-center justify-center p-3 rounded-2xl mb-1 ${
@@ -1546,7 +1544,7 @@ export default function Portal({
 
               {/* Toggle tabs for login / registration */}
               <div className={`p-1 rounded-2xl flex items-center border ${
-                isDark ? 'bg-[#002525] border-teal-800/45' : 'bg-slate-100 border-slate-200'
+                isDark ? 'bg-[#0b2336] border-teal-800/45' : 'bg-slate-100 border-slate-200'
               }`}>
                 <button
                   type="button"
@@ -1557,7 +1555,7 @@ export default function Portal({
                   className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     principalAuthMode === 'login'
                       ? isDark
-                        ? 'bg-emerald-600 text-white shadow-lg'
+                        ? 'bg-[#218caa] text-white shadow-lg'
                         : 'bg-white text-emerald-700 shadow-sm border border-slate-200/50'
                       : isDark
                         ? 'text-teal-400 hover:text-teal-300'
@@ -1575,7 +1573,7 @@ export default function Portal({
                   className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     principalAuthMode === 'register'
                       ? isDark
-                        ? 'bg-emerald-600 text-white shadow-lg'
+                        ? 'bg-[#218caa] text-white shadow-lg'
                         : 'bg-white text-emerald-700 shadow-sm border border-slate-200/50'
                       : isDark
                         ? 'text-teal-400 hover:text-teal-300'
@@ -1685,7 +1683,7 @@ export default function Portal({
                         placeholder={isRtl ? 'أدخل الرقم السري...' : 'Enter secret key...'}
                         className={`w-full px-4 py-3 text-sm font-medium rounded-xl outline-none transition-all focus:ring-2 ${
                           isDark
-                            ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c] focus:ring-emerald-950'
+                            ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24] focus:ring-emerald-950'
                             : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white focus:ring-emerald-100'
                         }`}
                         required
@@ -1734,7 +1732,7 @@ export default function Portal({
                             onChange={(e) => setPrincipalForgotQuery(e.target.value)}
                             placeholder={isRtl ? 'مثال: مدرسة أحد الابتدائية أو 45013' : 'e.g. Ohod School or 45013'}
                             className={`w-full px-4 py-3 rounded-xl border text-sm font-bold outline-none transition-all ${
-                              isDark ? 'bg-[#002525] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                              isDark ? 'bg-[#0b2336] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
                             }`}
                           />
                         </div>
@@ -1772,7 +1770,7 @@ export default function Portal({
                             setLoginError('');
                             alert(isRtl ? `🔒 كود التحقق لاسترجاع كلمة مرور مدير المدرسة (${found.schoolName}): ${code}` : `Recovery code: ${code}`);
                           }}
-                          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                          className="w-full py-3 bg-[#218caa] hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
                         >
                           {isRtl ? 'إرسال كود التحقق لاسترجاع كلمة المرور' : 'Send Verification Code'}
                         </button>
@@ -1794,7 +1792,7 @@ export default function Portal({
                             onChange={(e) => setPrincipalForgotEnteredCode(e.target.value)}
                             placeholder="123456"
                             className={`w-full px-4 py-2.5 rounded-xl border text-sm font-mono font-bold text-center tracking-widest ${
-                              isDark ? 'bg-[#002525] border-teal-800/50 text-teal-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                              isDark ? 'bg-[#0b2336] border-teal-800/50 text-teal-200' : 'bg-slate-50 border-slate-200 text-slate-800'
                             }`}
                           />
                         </div>
@@ -1809,7 +1807,7 @@ export default function Portal({
                             onChange={(e) => setPrincipalForgotNewPwd(e.target.value)}
                             placeholder="S123456"
                             className={`w-full px-4 py-2.5 rounded-xl border text-sm font-bold ${
-                              isDark ? 'bg-[#002525] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                              isDark ? 'bg-[#0b2336] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
                             }`}
                           />
                         </div>
@@ -1824,7 +1822,7 @@ export default function Portal({
                             onChange={(e) => setPrincipalForgotConfirmPwd(e.target.value)}
                             placeholder="S123456"
                             className={`w-full px-4 py-2.5 rounded-xl border text-sm font-bold ${
-                              isDark ? 'bg-[#002525] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                              isDark ? 'bg-[#0b2336] border-teal-800/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
                             }`}
                           />
                         </div>
@@ -1876,7 +1874,7 @@ export default function Portal({
                               setPrincipalAuthMode('login');
                               setLoginError('');
                             }}
-                            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                            className="flex-1 py-3 bg-[#218caa] hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
                           >
                             {isRtl ? 'تأكيد واسترجاع كلمة المرور' : 'Confirm Password Reset'}
                           </button>
@@ -1906,7 +1904,7 @@ export default function Portal({
                     {/* 2. بطاقة مراجعة وتأكيد بيانات المدرسة المستدعاة تلقائياً من الملف */}
                     {(selectedSchoolData || schoolName) ? (
                       <div className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3.5 ${
-                        isDark ? 'bg-[#002828] border-teal-800/60 shadow-lg' : 'bg-slate-50/90 border-slate-200 shadow-sm'
+                        isDark ? 'bg-[#092538] border-teal-800/60 shadow-lg' : 'bg-slate-50/90 border-slate-200 shadow-sm'
                       }`}>
                         <div className="flex items-center justify-between border-b pb-2.5 dark:border-teal-800/30">
                           <div className="flex items-center gap-2">
@@ -1924,28 +1922,28 @@ export default function Portal({
 
                         {/* Grid of Official Auto-Retrieved Details */}
                         <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#001f1f] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
+                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#092233] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
                             <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'الرقم الوزاري المعتمد:' : 'Ministerial Code:'}</span>
                             <span className={`font-black font-mono ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                               #{schoolCode || selectedSchoolData?.ministryCode || (selectedSchoolData as any)?.code || '45013'}
                             </span>
                           </div>
 
-                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#001f1f] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
+                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#092233] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
                             <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'اسم مدير/ة المدرسة:' : 'Principal Name:'}</span>
                             <span className={`font-black truncate block ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                               {principalName || (isRtl ? 'أ. مدير المدرسة' : 'Principal')}
                             </span>
                           </div>
 
-                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#001f1f] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
+                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#092233] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
                             <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'رقم الجوال:' : 'Mobile Number:'}</span>
                             <span className={`font-black font-mono ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                               {principalMobile || '0550000000'}
                             </span>
                           </div>
 
-                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#001f1f] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
+                          <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#092233] border-teal-800/30' : 'bg-white border-slate-200/80'}`}>
                             <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'المرحلة والقطاع:' : 'Stage & District:'}</span>
                             <span className={`font-black truncate block ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                               {selectedSchoolData?.stage || 'جميع المراحل'} - {selectedSchoolData?.district || 'المدينة'}
@@ -1981,7 +1979,7 @@ export default function Portal({
                                     civilIdErrorMsg
                                       ? 'border-rose-500 bg-rose-50/70 text-rose-900 focus:ring-2 focus:ring-rose-200'
                                       : isDark
-                                      ? 'bg-[#001f1f] border-teal-800/60 text-white focus:border-emerald-400 focus:ring-1 focus:ring-emerald-950'
+                                      ? 'bg-[#092233] border-teal-800/60 text-white focus:border-emerald-400 focus:ring-1 focus:ring-emerald-950'
                                       : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-100'
                                   }`}
                                 />
@@ -2042,7 +2040,7 @@ export default function Portal({
                                 const codeToUse = schoolObjToUse?.ministryCode || (schoolObjToUse as any)?.code || schoolCode;
                                 if (codeToUse) setSchoolCode(codeToUse);
                               }}
-                              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              className="w-full py-3 px-4 bg-[#218caa] hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                             >
                               <CheckCircle className="w-4 h-4" />
                               <span>{isRtl ? '✅ التحقق من كلمة السر المخفية وتأكيد قبول التسجيل' : 'Verify Hidden Secret Password & Confirm Registration'}</span>
@@ -2066,7 +2064,7 @@ export default function Portal({
                       </div>
                     ) : (
                       <div className={`p-4 rounded-2xl border border-dashed text-center space-y-1.5 ${
-                        isDark ? 'border-teal-800/40 bg-[#001f1f]/30' : 'border-slate-300 bg-slate-50'
+                        isDark ? 'border-teal-800/40 bg-[#092233]/30' : 'border-slate-300 bg-slate-50'
                       }`}>
                         <Building2 className="w-6 h-6 text-slate-400 mx-auto" />
                         <p className="text-xs font-black text-slate-500 dark:text-teal-300">
@@ -2090,7 +2088,7 @@ export default function Portal({
 
                         {/* ملخص البيانات المستدماة المعتمدة */}
                         <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
-                          isDark ? 'bg-[#001f1f] border-teal-800/40 text-teal-200' : 'bg-slate-100/80 border-slate-200 text-slate-700'
+                          isDark ? 'bg-[#092233] border-teal-800/40 text-teal-200' : 'bg-slate-100/80 border-slate-200 text-slate-700'
                         }`}>
                           <div className="flex justify-between items-center text-[11px] font-black border-b pb-1 dark:border-teal-800/30">
                             <span>{isRtl ? 'الرقم الوزاري المعتمد:' : 'Code:'} <strong className="text-emerald-500 font-mono">#{schoolCode}</strong></span>
@@ -2115,7 +2113,7 @@ export default function Portal({
                               placeholder={isRtl ? 'مثال: S123456 أو M2026...' : 'e.g. S123456 or M2026...'}
                               className={`w-full pr-10 pl-12 py-3 text-sm font-medium rounded-xl outline-none transition-all focus:ring-2 ${
                                 isDark
-                                  ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c] focus:ring-emerald-950'
+                                  ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24] focus:ring-emerald-950'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white focus:ring-emerald-100'
                               }`}
                               required
@@ -2149,7 +2147,7 @@ export default function Portal({
                               placeholder={isRtl ? 'أعد كتابة الرقم السري للتأكيد...' : 'Confirm password...'}
                               className={`w-full pr-10 pl-12 py-3 text-sm font-medium rounded-xl outline-none transition-all focus:ring-2 ${
                                 isDark
-                                  ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c] focus:ring-emerald-950'
+                                  ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24] focus:ring-emerald-950'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white focus:ring-emerald-100'
                               }`}
                               required
@@ -2181,7 +2179,7 @@ export default function Portal({
                     ) : (
                       /* Locked prompt when school data hasn't been confirmed yet */
                       <div className={`p-4 rounded-2xl border border-dashed text-center space-y-1.5 ${
-                        isDark ? 'border-teal-800/40 bg-[#001f1f]/30' : 'border-slate-300 bg-slate-50/70'
+                        isDark ? 'border-teal-800/40 bg-[#092233]/30' : 'border-slate-300 bg-slate-50/70'
                       }`}>
                         <Lock className="w-5 h-5 text-slate-400 mx-auto" />
                         <h4 className={`text-xs font-black ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
@@ -2205,8 +2203,8 @@ export default function Portal({
                     principalAuthMode === 'register' && !isSchoolDataConfirmed
                       ? 'opacity-50 cursor-not-allowed bg-slate-400'
                       : isDark
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-teal-950/50'
-                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/10 hover:shadow-emerald-600/20'
+                        ? 'bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] hover:brightness-110 shadow-[#0b2336]/50'
+                        : 'bg-gradient-to-r from-[#218caa] to-[#3078a6] hover:brightness-105 shadow-[#218caa]/20'
                   }`}
                 >
                   <Lock className="w-4 h-4" />
@@ -2235,8 +2233,8 @@ export default function Portal({
             {/* Header / Welcome Banner */}
             <div className={`p-8 rounded-3xl shadow-lg relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 border transition-all ${
               isDark
-                ? 'bg-gradient-to-r from-teal-900/60 via-teal-800/40 to-emerald-950/60 text-white border-teal-800/30'
-                : 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700 text-white border-emerald-800/10'
+                ? 'bg-gradient-to-r from-[#0b2336] via-[#10304a] to-[#071927] text-white border-[#218caa]/40'
+                : 'bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] text-white border-[#3078a6]/20'
             }`}>
               {/* background design */}
               <div className="absolute right-0 bottom-0 top-0 w-80 bg-white/5 rounded-l-full blur-3xl" />
@@ -2458,7 +2456,7 @@ export default function Portal({
 
                     {/* Filter Tabs */}
                     <div className={`flex p-1 rounded-xl border shrink-0 ${
-                      isDark ? 'bg-[#002828] border-teal-800/40' : 'bg-white border-slate-200'
+                      isDark ? 'bg-[#092538] border-teal-800/40' : 'bg-white border-slate-200'
                     }`}>
                       <button
                         type="button"
@@ -2487,7 +2485,7 @@ export default function Portal({
                         onClick={() => setPlacementFilter('confirmed')}
                         className={`px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                           placementFilter === 'confirmed'
-                            ? 'bg-emerald-600 text-white shadow-xs'
+                            ? 'bg-[#218caa] text-white shadow-xs'
                             : isDark ? 'text-teal-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
@@ -2562,14 +2560,14 @@ export default function Portal({
                               </div>
 
                               <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#002b2b] border-teal-800/30' : 'bg-slate-50 border-slate-100'}`}>
+                                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#0a283c] border-teal-800/30' : 'bg-slate-50 border-slate-100'}`}>
                                   <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'المرحلة والصف:' : 'Stage & Grade:'}</span>
                                   <span className={`font-bold ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                                     {req.stage} {req.grade ? `(${req.grade})` : ''}
                                   </span>
                                 </div>
 
-                                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#002b2b] border-teal-800/30' : 'bg-slate-50 border-slate-100'}`}>
+                                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-[#0a283c] border-teal-800/30' : 'bg-slate-50 border-slate-100'}`}>
                                   <span className="block text-[10px] font-extrabold text-slate-400">{isRtl ? 'الجنس والحي:' : 'Gender & Sector:'}</span>
                                   <span className={`font-bold ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                                     {req.gender === 'girls' ? (isRtl ? 'طالبات' : 'Girls') : (isRtl ? 'بنين' : 'Boys')} - {req.neighborhood || req.sector || 'المدينة'}
@@ -2616,7 +2614,7 @@ export default function Portal({
                                       placeholder={isRtl ? 'مثال: تم التسكين بالفصل 2/أ - بالصف الثاني ابتدائي...' : 'e.g. Placed in Class 2/A...'}
                                       className={`w-full px-3.5 py-2 text-xs font-bold rounded-xl outline-none transition-all border ${
                                         isDark
-                                          ? 'bg-[#002222] border-teal-800/50 text-white focus:border-emerald-400'
+                                          ? 'bg-[#071d2c] border-teal-800/50 text-white focus:border-emerald-400'
                                           : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white'
                                       }`}
                                     />
@@ -2626,7 +2624,7 @@ export default function Portal({
                                     <button
                                       type="button"
                                       onClick={() => handleConfirmPlacement(req)}
-                                      className="flex-1 py-3 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                      className="flex-1 py-3 px-3 bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] hover:brightness-110 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                     >
                                       <CheckCircle className="w-4 h-4 text-white" />
                                       <span>{isRtl ? 'اعتماد التسكين وإنهاء الطلب 🏫✅' : 'Approve Staffing 🏫✅'}</span>
@@ -2694,13 +2692,13 @@ export default function Portal({
 
                     {/* Filters */}
                     <div className={`flex p-1 rounded-xl border self-start sm:self-auto shrink-0 ${
-                      isDark ? 'bg-[#002828] border-teal-800/40' : 'bg-slate-100 border-slate-200'
+                      isDark ? 'bg-[#092538] border-teal-800/40' : 'bg-slate-100 border-slate-200'
                     }`}>
                       <button
                         onClick={() => setPrincipalTab('all')}
                         className={`px-4.5 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                           principalTab === 'all'
-                            ? isDark ? 'bg-teal-600 text-white shadow-sm' : 'bg-emerald-600 text-white shadow-sm'
+                            ? isDark ? 'bg-teal-600 text-white shadow-sm' : 'bg-[#218caa] text-white shadow-sm'
                             : `${isDark ? 'text-teal-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`
                         }`}
                       >
@@ -2720,7 +2718,7 @@ export default function Portal({
                         onClick={() => setPrincipalTab('resolved')}
                         className={`px-4.5 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                           principalTab === 'resolved'
-                            ? isDark ? 'bg-teal-600 text-white shadow-sm' : 'bg-emerald-600 text-white shadow-sm'
+                            ? isDark ? 'bg-teal-600 text-white shadow-sm' : 'bg-[#218caa] text-white shadow-sm'
                             : `${isDark ? 'text-teal-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`
                         }`}
                       >
@@ -2840,7 +2838,7 @@ export default function Portal({
                               {survey.notes && (
                                 <div className={`p-3 rounded-xl border text-xs font-semibold italic ${
                                   isDark
-                                    ? 'bg-[#002d2c]/40 border-teal-800/30 text-teal-200'
+                                    ? 'bg-[#0b2a3f]/40 border-teal-800/30 text-teal-200'
                                     : 'bg-slate-50 border-slate-100/60 text-slate-600'
                                 }`}>
                                   "{survey.notes}"
@@ -2877,8 +2875,8 @@ export default function Portal({
                                       ? 'bg-amber-950/40 border-amber-800/40 text-amber-300 hover:bg-amber-900/40'
                                       : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
                                     : isDark
-                                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-transparent text-white hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-teal-950/40'
-                                      : 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+                                      ? 'bg-gradient-to-r from-[#218caa] to-[#3078a6] border-transparent text-white hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-teal-950/40'
+                                      : 'bg-[#218caa] border-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
                                 }`}
                               >
                                 <CheckCircle className="w-3.5 h-3.5" />
@@ -2929,8 +2927,8 @@ export default function Portal({
                           onClick={() => setIsReporting(true)}
                           className={`px-4 py-2.5 text-white text-xs sm:text-sm font-extrabold rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer self-start sm:self-auto ${
                             isDark
-                              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-teal-950/40'
-                              : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/10'
+                              ? 'bg-gradient-to-r from-[#218caa] to-[#3078a6] hover:from-emerald-500 hover:to-teal-500 shadow-teal-950/40'
+                              : 'bg-[#218caa] hover:bg-emerald-500 shadow-emerald-600/10'
                           }`}
                           id="principal-add-report-btn"
                         >
@@ -3046,7 +3044,7 @@ export default function Portal({
                                   {/* Interactive custom solutions output */}
                                   {rep.problemType === 'vacancies_closed' && (
                                     <div className={`p-4 rounded-xl border text-xs space-y-2 ${
-                                      isDark ? 'bg-[#002d2c]/40 border-teal-850/20' : 'bg-slate-50 border-slate-100/80'
+                                      isDark ? 'bg-[#0b2a3f]/40 border-teal-850/20' : 'bg-slate-50 border-slate-100/80'
                                     }`}>
                                       <span className={`font-extrabold block border-b pb-1 ${
                                         isDark ? 'text-teal-300 border-teal-800/40' : 'text-slate-700 border-slate-200'
@@ -3077,7 +3075,7 @@ export default function Portal({
 
                                   {rep.problemType === 'class_density' && (
                                     <div className={`p-4 rounded-xl border text-xs space-y-2 ${
-                                      isDark ? 'bg-[#002d2c]/40 border-teal-850/20' : 'bg-slate-50 border-slate-100/80'
+                                      isDark ? 'bg-[#0b2a3f]/40 border-teal-850/20' : 'bg-slate-50 border-slate-100/80'
                                     }`}>
                                       <span className={`font-extrabold block border-b pb-1 ${
                                         isDark ? 'text-teal-300 border-teal-800/40' : 'text-slate-700 border-slate-200'
@@ -3168,7 +3166,7 @@ export default function Portal({
                         isDark ? 'glass-card-dark border-teal-800/25' : 'bg-white border-slate-200'
                       }`}
                     >
-                      <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600" />
+                      <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-[#218caa] to-[#3078a6]" />
                       
                       {/* Back button */}
                       <button
@@ -3232,7 +3230,7 @@ export default function Portal({
                                 disabled
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-bold rounded-xl cursor-not-allowed outline-none border ${
                                   isDark
-                                    ? 'bg-[#002121] border-teal-900 text-teal-400/60'
+                                    ? 'bg-[#061b27] border-teal-900 text-teal-400/60'
                                     : 'bg-slate-100 border-slate-200 text-slate-500'
                                 }`}
                               />
@@ -3252,7 +3250,7 @@ export default function Portal({
                                 disabled
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-mono font-bold rounded-xl cursor-not-allowed outline-none border ${
                                   isDark
-                                    ? 'bg-[#002121] border-teal-900 text-teal-400/60'
+                                    ? 'bg-[#061b27] border-teal-900 text-teal-400/60'
                                     : 'bg-slate-100 border-slate-200 text-slate-500'
                                 }`}
                               />
@@ -3271,7 +3269,7 @@ export default function Portal({
                                 onChange={(e) => setRepStage(e.target.value)}
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-bold rounded-xl outline-none appearance-none cursor-pointer border transition-all ${
                                   isDark
-                                    ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c]'
+                                    ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24]'
                                     : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white'
                                 }`}
                               >
@@ -3300,7 +3298,7 @@ export default function Portal({
                                 disabled
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-bold rounded-xl cursor-not-allowed outline-none border ${
                                   isDark
-                                    ? 'bg-[#002121] border-teal-900 text-teal-400/60'
+                                    ? 'bg-[#061b27] border-teal-900 text-teal-400/60'
                                     : 'bg-slate-100 border-slate-200 text-slate-500'
                                 }`}
                               />
@@ -3321,7 +3319,7 @@ export default function Portal({
                                 placeholder={isRtl ? 'مثال: 0551234567' : 'e.g., 0551234567'}
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-medium rounded-xl outline-none border transition-all ${
                                   isDark
-                                    ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c]'
+                                    ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24]'
                                     : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white'
                                 }`}
                                 required
@@ -3355,7 +3353,7 @@ export default function Portal({
                                 }}
                                 className={`w-full pr-10 pl-4 py-3 text-xs sm:text-sm font-bold rounded-xl outline-none appearance-none cursor-pointer border transition-all ${
                                   isDark
-                                    ? 'bg-[#002525] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#001c1c]'
+                                    ? 'bg-[#0b2336] border-teal-800/50 text-white focus:border-emerald-400 focus:bg-[#061c24]'
                                     : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500 focus:bg-white'
                                 }`}
                               >
@@ -3378,13 +3376,13 @@ export default function Portal({
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
                               className={`border rounded-2xl p-5 sm:p-6 space-y-4 overflow-hidden ${
-                                isDark ? 'bg-[#002525]/30 border-teal-800/35' : 'bg-slate-50 border-slate-200'
+                                isDark ? 'bg-[#0b2336]/30 border-teal-800/35' : 'bg-slate-50 border-slate-200'
                               }`}
                             >
                               <div className={`flex items-center gap-2 pb-2 border-b ${
                                 isDark ? 'border-teal-800/25' : 'border-slate-200/60'
                               }`}>
-                                <span className="h-5.5 w-1.5 bg-emerald-600 rounded-full" />
+                                <span className="h-5.5 w-1.5 bg-[#218caa] rounded-full" />
                                 <h3 className={`font-extrabold text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>
                                   {isRtl ? 'تفاصيل خيارات الشواغر المغلقة' : 'Closed Vacancies Details'}
                                 </h3>
@@ -3395,10 +3393,10 @@ export default function Portal({
                                 <label className={`flex flex-col p-4 border rounded-xl cursor-pointer transition-all ${
                                   repClosedVacanciesOption === 'all'
                                     ? isDark
-                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#002e2d]/60'
+                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#0b2d42]/60'
                                       : 'border-emerald-500 ring-2 ring-emerald-500/10 bg-white'
                                     : isDark
-                                      ? 'border-teal-800/40 bg-[#001f1f]/50 hover:border-teal-700/60 text-teal-300'
+                                      ? 'border-teal-800/40 bg-[#092233]/50 hover:border-teal-700/60 text-teal-300'
                                       : 'border-slate-200 bg-white hover:border-slate-300'
                                 }`}>
                                   <div className="flex items-center gap-2 mb-2">
@@ -3425,10 +3423,10 @@ export default function Portal({
                                 <label className={`flex flex-col p-4 border rounded-xl cursor-pointer transition-all ${
                                   repClosedVacanciesOption === 'specific'
                                     ? isDark
-                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#002e2d]/60'
+                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#0b2d42]/60'
                                       : 'border-emerald-500 ring-2 ring-emerald-500/10 bg-white'
                                     : isDark
-                                      ? 'border-teal-800/40 bg-[#001f1f]/50 hover:border-teal-700/60 text-teal-300'
+                                      ? 'border-teal-800/40 bg-[#092233]/50 hover:border-teal-700/60 text-teal-300'
                                       : 'border-slate-200 bg-white hover:border-slate-300'
                                 }`}>
                                   <div className="flex items-center gap-2 mb-2">
@@ -3470,7 +3468,7 @@ export default function Portal({
                                       rows={2}
                                       className={`w-full px-4 py-3 text-xs sm:text-sm font-semibold rounded-xl outline-none transition-all resize-none border ${
                                         isDark
-                                          ? 'bg-[#002525] border-teal-850/50 text-white focus:bg-[#001c1c] focus:border-emerald-400'
+                                          ? 'bg-[#0b2336] border-teal-850/50 text-white focus:bg-[#061c24] focus:border-emerald-400'
                                           : 'bg-white border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100/50 text-slate-900'
                                       }`}
                                       required
@@ -3490,13 +3488,13 @@ export default function Portal({
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
                               className={`border rounded-2xl p-5 sm:p-6 space-y-4 overflow-hidden ${
-                                isDark ? 'bg-[#002525]/30 border-teal-800/35' : 'bg-slate-50 border-slate-200'
+                                isDark ? 'bg-[#0b2336]/30 border-teal-800/35' : 'bg-slate-50 border-slate-200'
                               }`}
                             >
                               <div className={`flex items-center gap-2 pb-2 border-b ${
                                 isDark ? 'border-teal-800/25' : 'border-slate-200/60'
                               }`}>
-                                <span className="h-5.5 w-1.5 bg-emerald-600 rounded-full" />
+                                <span className="h-5.5 w-1.5 bg-[#218caa] rounded-full" />
                                 <h3 className={`font-extrabold text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>
                                   {isRtl ? 'الحل المقترح من قبل مدير المدرسة' : 'Proposed Solution by School Principal'}
                                 </h3>
@@ -3509,10 +3507,10 @@ export default function Portal({
                                 <label className={`flex flex-col p-4 border rounded-xl cursor-pointer transition-all ${
                                   repProposedSolution === 'open_class'
                                     ? isDark
-                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#002e2d]/60'
+                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#0b2d42]/60'
                                       : 'border-emerald-500 ring-2 ring-emerald-500/10 bg-white'
                                     : isDark
-                                      ? 'border-teal-800/40 bg-[#001f1f]/50 hover:border-teal-700/60 text-teal-300'
+                                      ? 'border-teal-800/40 bg-[#092233]/50 hover:border-teal-700/60 text-teal-300'
                                       : 'border-slate-200 bg-white hover:border-slate-300'
                                 }`}>
                                   <div className="flex items-center gap-2 mb-2">
@@ -3540,10 +3538,10 @@ export default function Portal({
                                 <label className={`flex flex-col p-4 border rounded-xl cursor-pointer transition-all ${
                                   repProposedSolution === 'modify_budget'
                                     ? isDark
-                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#002e2d]/60'
+                                      ? 'border-emerald-400 ring-2 ring-emerald-950/40 bg-[#0b2d42]/60'
                                       : 'border-emerald-500 ring-2 ring-emerald-500/10 bg-white'
                                     : isDark
-                                      ? 'border-teal-800/40 bg-[#001f1f]/50 hover:border-teal-700/60 text-teal-300'
+                                      ? 'border-teal-800/40 bg-[#092233]/50 hover:border-teal-700/60 text-teal-300'
                                       : 'border-slate-200 bg-white hover:border-slate-300'
                                 }`}>
                                   <div className="flex items-center gap-2 mb-2">
@@ -3629,7 +3627,7 @@ export default function Portal({
                                             rows={2}
                                             className={`w-full px-4 py-3 text-xs sm:text-sm font-semibold rounded-xl outline-none transition-all resize-none border ${
                                               isDark
-                                                ? 'bg-[#002525] border-teal-850/50 text-white focus:bg-[#001c1c] focus:border-emerald-400'
+                                                ? 'bg-[#0b2336] border-teal-850/50 text-white focus:bg-[#061c24] focus:border-emerald-400'
                                                 : 'bg-white border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100/50 text-slate-900'
                                             }`}
                                             required
@@ -3660,7 +3658,7 @@ export default function Portal({
                                       rows={3}
                                       className={`w-full px-4 py-3 text-xs sm:text-sm font-semibold rounded-xl outline-none transition-all resize-none border ${
                                         isDark
-                                          ? 'bg-[#002525] border-teal-850/50 text-white focus:bg-[#001c1c] focus:border-emerald-400'
+                                          ? 'bg-[#0b2336] border-teal-850/50 text-white focus:bg-[#061c24] focus:border-emerald-400'
                                           : 'bg-white border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100/50 text-slate-900'
                                       }`}
                                       required
@@ -3679,8 +3677,8 @@ export default function Portal({
                             type="submit"
                             className={`w-full sm:w-auto px-6 py-3.5 text-white font-extrabold text-sm sm:text-base rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
                               isDark
-                                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-teal-950/40'
-                                : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/10'
+                                ? 'bg-gradient-to-r from-[#218caa] to-[#3078a6] hover:from-emerald-500 hover:to-teal-500 shadow-teal-950/40'
+                                : 'bg-[#218caa] hover:bg-emerald-500 shadow-emerald-600/10'
                             }`}
                             id="principal-submit-report-form-btn"
                           >
@@ -3704,7 +3702,7 @@ export default function Portal({
       {returnModalSurvey && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
           <div className={`w-full max-w-lg rounded-3xl p-6 shadow-2xl border space-y-5 ${
-            isDark ? 'bg-[#002222] border-teal-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+            isDark ? 'bg-[#071d2c] border-teal-700 text-white' : 'bg-white border-slate-200 text-slate-800'
           }`}>
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-3 border-b pb-4 dark:border-teal-800/40">
@@ -3751,7 +3749,7 @@ export default function Portal({
                     className={`p-2.5 rounded-xl text-xs text-start font-bold transition-all border cursor-pointer ${
                       returnReasonText === preset
                         ? 'bg-red-500/10 border-red-500 text-red-600 dark:text-red-300 shadow-2xs'
-                        : isDark ? 'bg-[#002b2b] border-teal-800/40 text-slate-300 hover:border-teal-700' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        : isDark ? 'bg-[#0a283c] border-teal-800/40 text-slate-300 hover:border-teal-700' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     • {preset}
@@ -3777,7 +3775,7 @@ export default function Portal({
                   returnReasonError
                     ? 'border-red-500 bg-red-50/50 dark:bg-red-950/30'
                     : isDark
-                      ? 'bg-[#001c1c] border-teal-800/60 text-white focus:border-red-400'
+                      ? 'bg-[#061c24] border-teal-800/60 text-white focus:border-red-400'
                       : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-red-500 focus:bg-white'
                 }`}
               />
@@ -3810,6 +3808,21 @@ export default function Portal({
           </div>
         </div>
       )}
+
+      {/* Student Admission Age Verification Modal */}
+      <AgeVerificationModal
+        isOpen={showAgeModal}
+        onClose={() => setShowAgeModal(false)}
+        onProceed={(details) => {
+          setShowAgeModal(false);
+          try {
+            localStorage.setItem('student_age_verification', JSON.stringify(details));
+          } catch (e) { /* ignore */ }
+          onSelectRole('parent');
+        }}
+        isDark={isDark}
+        isRtl={isRtl}
+      />
     </div>
   );
 }

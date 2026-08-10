@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AgeVerificationModal } from './AgeVerificationModal';
 import {
   User,
   Phone,
@@ -138,6 +139,30 @@ export default function SurveyForm({
   const [evalSubmitted, setEvalSubmitted] = useState(false); // True once Evaluation is submitted
   const [createdSurvey, setCreatedSurvey] = useState<SurveyResponse | null>(null);
   const [showNegativeAlert, setShowNegativeAlert] = useState(false);
+
+  // Age Verification State & LocalStorage Loader
+  const [showAgeModal, setShowAgeModal] = useState<boolean>(false);
+  const [verifiedAgeInfo, setVerifiedAgeInfo] = useState<{
+    status: 'direct' | 'exemption';
+    birthDate: string;
+    declarationAccepted: boolean;
+    stageName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('student_age_verification');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.status === 'direct' || parsed.status === 'exemption')) {
+          setVerifiedAgeInfo(parsed);
+          if (parsed.stageName && parsed.stageName.includes('الابتدائي')) {
+            setStage('Primary');
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Administrative Sector options
   const SECTORS = [
@@ -447,7 +472,7 @@ export default function SurveyForm({
           }`}
         >
           {/* Top visual confirmation band */}
-          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-teal-800 p-8 text-center text-white relative">
+          <div className="bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] p-8 text-center text-white relative">
             <div className="mx-auto w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-white mb-4 shadow-inner backdrop-blur-xs">
               <CheckCircle2 className="w-10 h-10 animate-bounce" />
             </div>
@@ -862,6 +887,53 @@ export default function SurveyForm({
         </p>
       </div>
 
+      {/* Age Verification Notification / Action Banner */}
+      <div className={`p-4 rounded-2xl border mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
+        verifiedAgeInfo
+          ? verifiedAgeInfo.status === 'direct'
+            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-900 dark:text-emerald-200'
+            : 'bg-amber-500/10 border-amber-500/40 text-amber-900 dark:text-amber-200'
+          : 'bg-teal-500/10 border-teal-500/30 text-teal-900 dark:text-teal-200'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`p-2.5 rounded-xl shrink-0 ${
+            verifiedAgeInfo?.status === 'direct'
+              ? 'bg-emerald-600 text-white'
+              : verifiedAgeInfo?.status === 'exemption'
+                ? 'bg-amber-600 text-white'
+                : 'bg-teal-600 text-white'
+          }`}>
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs sm:text-sm font-black">
+              {verifiedAgeInfo
+                ? isRtl
+                  ? `🛡️ حالة التثبت النظامي من السن: ${verifiedAgeInfo.stageName}`
+                  : `🛡️ Age Verification Status: ${verifiedAgeInfo.stageName}`
+                : isRtl
+                  ? '🛡️ التثبت النظامي من السن للقبول والتسجيل (الصف الأول الابتدائي)'
+                  : '🛡️ Primary Grade 1 Age Verification Checklist'}
+            </div>
+            <div className="text-[11px] font-semibold opacity-90 mt-0.5">
+              {verifiedAgeInfo
+                ? verifiedAgeInfo.status === 'direct'
+                  ? (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - القبول المباشر (6 سنوات فأكثر) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Direct Admission ✓`)
+                  : (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - فترة التجاوز الـ 90 يوماً (مقر بشرط إتمام الروضة) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Exemption with KG declaration ✓`)
+                : (isRtl ? 'انقر هنا للتحقق التلقائي والدقيق من السن النظامي للقبول والتأكد من استيفاء الشروط.' : 'Click to verify student age according to Ministry guidelines.')}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAgeModal(true)}
+          className="px-4 py-2 rounded-xl text-xs font-black bg-teal-600 hover:bg-teal-700 text-white cursor-pointer transition-all shrink-0 hover:scale-105 shadow-xs"
+        >
+          {verifiedAgeInfo ? (isRtl ? 'إعادة التثبت من السن 🔄' : 'Re-verify Age 🔄') : (isRtl ? 'التحقق من السن النظامي 🛡️' : 'Verify Age 🛡️')}
+        </button>
+      </div>
+
       {/* Form Content */}
       <form
         onSubmit={handlePhase1Submit}
@@ -1261,7 +1333,7 @@ export default function SurveyForm({
                   onChange={(e) => setEqualizationNotes(e.target.value)}
                   placeholder={isRtl ? 'اكتب الدولة الصادر منها المؤهل، والصف الدراسي السابق لطلب المعادلة...' : 'Enter country of issuance, last completed grade...'}
                   className={`w-full p-3.5 text-xs sm:text-sm font-semibold rounded-xl border outline-none ${
-                    isDark ? 'bg-[#001c1c] border-purple-800 text-white' : 'bg-white border-purple-300 text-slate-900'
+                    isDark ? 'bg-[#0b2336] border-[#218caa]/40 text-white' : 'bg-white border-[#218caa]/30 text-slate-900'
                   }`}
                   dir={isRtl ? 'rtl' : 'ltr'}
                 />
@@ -1272,7 +1344,7 @@ export default function SurveyForm({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 px-6 text-white text-sm font-black rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-4 px-6 text-white text-sm font-black rounded-2xl bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] hover:brightness-110 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <span className="flex items-center gap-2">
@@ -1716,6 +1788,24 @@ export default function SurveyForm({
         )}
 
       </form>
+
+      {/* Age Verification Modal */}
+      <AgeVerificationModal
+        isOpen={showAgeModal}
+        onClose={() => setShowAgeModal(false)}
+        onProceed={(details) => {
+          setShowAgeModal(false);
+          setVerifiedAgeInfo(details);
+          if (details.stageName && details.stageName.includes('الابتدائي')) {
+            setStage('Primary');
+          }
+          try {
+            localStorage.setItem('student_age_verification', JSON.stringify(details));
+          } catch (e) { /* ignore */ }
+        }}
+        isDark={isDark}
+        isRtl={isRtl}
+      />
     </div>
   );
 }

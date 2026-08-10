@@ -67,7 +67,8 @@ import {
   Clock,
   X,
   Zap,
-  MessageSquareHeart
+  MessageSquareHeart,
+  Edit
 } from 'lucide-react';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
@@ -571,8 +572,11 @@ function Dashboard({
   const [newUserAssignedGender, setNewUserAssignedGender] = useState('both');
   const [newUserAssignedSector, setNewUserAssignedSector] = useState('الكل');
 
-  // Navigation Tab
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'excel-view' | 'custom-reports' | 'vacancy-requests' | 'beneficiary-feedback'>('principal-reports');
+  // Navigation Tab - Default to beneficiary responses upon login
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'excel-view' | 'custom-reports' | 'vacancy-requests' | 'beneficiary-feedback'>('responses');
+
+  // Admin Editing Modal State
+  const [editingOfficer, setEditingOfficer] = useState<OfficerUser | null>(null);
 
   // Deletion Modal States
   const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
@@ -617,10 +621,44 @@ function Dashboard({
   const [reportRegion, setReportRegion] = useState<string>('all');
   const [reportGovernorate, setReportGovernorate] = useState<string>('all');
   const [reportClassificationType, setReportClassificationType] = useState<string>('1_by_region_gov_stage');
+  const [selectedClassifications, setSelectedClassifications] = useState<string[]>(['1_by_region_gov_stage']);
   const [reportGroupBy, setReportGroupBy] = useState<'school' | 'problemType' | 'sector' | 'employee'>('school');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [aiGenerating, setAiGenerating] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<string>('');
+
+  // Helper: Extract First Name and Last Name (الاسم الأول واللقب) from Quad Name
+  const extractFirstNameAndLastName = (fullName: string): string => {
+    if (!fullName || !fullName.trim()) return '';
+    const parts = fullName.trim().split(/\s+/).filter(p => p !== 'بن' && p !== 'بنت' && p !== 'آل');
+    if (parts.length === 0) return fullName;
+    if (parts.length === 1) return parts[0];
+    const firstName = parts[0];
+    const lastName = parts[parts.length - 1];
+    return `${firstName} ${lastName}`;
+  };
+
+  // Helper: Calculate Saudi Working Days Diff (excluding Friday and Saturday)
+  const getSaudiWorkingDaysDiff = (startDate: Date | string | number, endDate: Date | string | number = new Date()): number => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+    
+    let count = 0;
+    const cur = new Date(start);
+    cur.setHours(0, 0, 0, 0);
+    const target = new Date(end);
+    target.setHours(0, 0, 0, 0);
+
+    while (cur < target) {
+      cur.setDate(cur.getDate() + 1);
+      const day = cur.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+      if (day !== 5 && day !== 6) { // Exclude Friday (5) & Saturday (6)
+        count++;
+      }
+    }
+    return count;
+  };
 
   // Translation mapping helper functions
   const getStageName = (stage: string) => {
@@ -889,7 +927,11 @@ function Dashboard({
     );
   };
 
-  const handlePrintClick = () => {
+  const handlePrintClick = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     // Save current filtered list and active officer info to localStorage for the print page
     try {
       localStorage.setItem('temp_print_surveys', JSON.stringify(filteredReportSurveys.slice(0, 500)));
@@ -897,19 +939,7 @@ function Dashboard({
     } catch {
       /* ignore quota errors */
     }
-    
-    try {
-      const isIframe = window.self !== window.top;
-      if (isIframe) {
-        // Open print page in a new window to bypass iframe print blocks
-        const printUrl = window.location.origin + window.location.pathname + '?print-report=true';
-        window.open(printUrl, '_blank');
-      } else {
-        window.print();
-      }
-    } catch (err) {
-      window.print();
-    }
+    window.print();
   };
 
   // On-demand custom reports filtering & aggregation logic
@@ -2001,7 +2031,12 @@ Strategic Recommendations:
       if (s.isResolved) resolvedCount++;
     });
 
-    const negativeAlerts = filteredSurveys.filter((s) => s.staffSatisfaction < 3 || s.receptionSatisfaction < 3).length;
+    const negativeAlerts = filteredSurveys.filter((s) => {
+      const isLowRating = (s.staffSatisfaction < 3 || s.receptionSatisfaction < 3);
+      const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
+      const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
+      return isLowRating && isUnresolved && workingDays > 3;
+    }).length;
 
     return {
       total,
@@ -2489,7 +2524,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
   };
 
   // Export CSV Action
-  const handleExportCSV = () => {
+  const handleExportCSV = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     handleExportStyledExcel(surveys, 'Beneficiary_Satisfaction_Report');
   };
 
@@ -5320,7 +5359,12 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   {isRtl ? 'التنبيهات العاجلة المستهدفة' : 'Critical Sheet Alerts'}
                 </span>
                 <span className={`text-2xl sm:text-3xl font-black font-mono mt-1 block ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                  {surveysScope.filter(s => s.staffSatisfaction < 3 || s.receptionSatisfaction < 3).length}
+                  {surveysScope.filter(s => {
+                    const isLow = s.staffSatisfaction < 3 || s.receptionSatisfaction < 3;
+                    const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
+                    const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
+                    return isLow && isUnresolved && workingDays > 3;
+                  }).length}
                 </span>
               </div>
             </div>
@@ -7148,8 +7192,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       placeholder="مثال: سالم بن محمد بن علي الترجمي"
                       value={newUserFullNameQuad}
                       onChange={(e) => {
-                        setNewUserFullNameQuad(e.target.value);
-                        if (!newUserNameAr) setNewUserNameAr(e.target.value);
+                        const val = e.target.value;
+                        setNewUserFullNameQuad(val);
+                        const derivedName = extractFirstNameAndLastName(val);
+                        setNewUserNameAr(derivedName);
                       }}
                       className={`w-full px-3 py-2 text-xs sm:text-sm font-semibold border rounded-xl outline-none transition-all ${
                         isDark 
@@ -7504,6 +7550,47 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         </select>
                       </div>
                     )}
+
+                    {/* Excel school import for supervisor */}
+                    <div className="mt-2.5 p-2.5 rounded-xl border border-dashed border-purple-300 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/20">
+                      <label className={`block text-[11px] font-extrabold mb-1 flex items-center gap-1.5 cursor-pointer ${isDark ? 'text-purple-300' : 'text-purple-900'}`}>
+                        <Upload className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>{currentLang === 'ar' ? '📥 رفع قائمة مدارس من ملف إكسل (Excel / CSV) لرابطها للمشرف مباشرة:' : '📥 Upload Schools list from Excel/CSV to assign directly:'}</span>
+                      </label>
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls,.txt"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const content = event.target?.result as string;
+                            if (!content) return;
+                            const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                            const extractedNames: string[] = [];
+                            lines.forEach(line => {
+                              const cells = line.split(/[,;\t]/).map(c => c.replace(/["']/g, '').trim());
+                              const schoolCell = cells.find(c => c.includes('مدرسة') || c.includes('مجمع') || c.includes('ثانوية') || c.includes('ابتدائية') || c.includes('متوسطة') || (c.length > 3 && !c.includes('اسم') && !c.includes('ID')));
+                              if (schoolCell) {
+                                extractedNames.push(schoolCell);
+                              }
+                            });
+                            if (extractedNames.length > 0) {
+                              const uniqueSchools = Array.from(new Set(extractedNames)).join(', ');
+                              setNewUserSchoolsText(prev => prev ? `${prev}, ${uniqueSchools}` : uniqueSchools);
+                              alert(currentLang === 'ar' ? `تم استخراج وتربيط ${extractedNames.length} مدرسة من ملف الإكسل بنجاح!` : `Extracted ${extractedNames.length} schools from Excel!`);
+                            } else {
+                              alert(currentLang === 'ar' ? 'لم يتم العثور على أسماء مدارس بملف إكسل المرفق.' : 'No school names found in file.');
+                            }
+                          };
+                          reader.readAsText(file);
+                        }}
+                        className={`w-full text-[11px] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-black ${
+                          isDark ? 'text-teal-200 file:bg-purple-900 file:text-purple-200' : 'text-slate-600 file:bg-purple-100 file:text-purple-800'
+                        }`}
+                      />
+                    </div>
 
                     <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {currentLang === 'ar' ? 'سيتم تحويل المعاملات والبلاغات المسندة وفقاً لهذه المرحلة والجنس والقطاع والمدارس المحددة إلى حساب الموظف تلقائياً.' : 'Reports matching this stage, gender, sector, or specific assigned schools will be automatically routed to this user.'}
@@ -8091,6 +8178,23 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 <span>{isRtl ? 'حذف كلمة المرور' : 'Reset Pwd'}</span>
                               </button>
 
+                              {/* Edit Full User Data Button (Admin Only) */}
+                              {activeOfficer.role === 'admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingOfficer({ ...off })}
+                                  className={`p-2 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    isDark 
+                                      ? 'bg-blue-950/40 border-blue-800/50 text-blue-300 hover:bg-blue-900/60 hover:text-blue-100 hover:border-blue-600' 
+                                      : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white hover:border-blue-600'
+                                  }`}
+                                  title={isRtl ? 'تعديل كافة بيانات هذا المستخدم دون استثناء' : 'Edit All User Details'}
+                                >
+                                  <Edit className="w-4 h-4 shrink-0" />
+                                  <span>{isRtl ? 'تعديل كامل البيانات' : 'Edit Data'}</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={() => {
@@ -8142,6 +8246,176 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               </div>
             </div>
 
+            {/* Admin Full User Data Edit Modal */}
+            {editingOfficer && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                <div className={`w-full max-w-3xl rounded-3xl p-6 border shadow-2xl space-y-5 animate-scale-up ${
+                  isDark ? 'bg-slate-900 text-white border-teal-800' : 'bg-white text-slate-900 border-slate-200'
+                }`} dir={isRtl ? 'rtl' : 'ltr'}>
+                  
+                  <div className="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-slate-800">
+                    <h3 className="text-base sm:text-lg font-black flex items-center gap-2 text-teal-600 dark:text-teal-400">
+                      <Edit className="w-5 h-5" />
+                      <span>{isRtl ? `تعديل كامل بيانات المستخدم: ${editingOfficer.nameAr}` : `Edit All Data: ${editingOfficer.nameEn}`}</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setEditingOfficer(null)}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto px-1">
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'رقم السجل المدني:' : 'National ID:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.nationalId || ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, nationalId: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-mono font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'الاسم بالعربي:' : 'Arabic Name:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.nameAr || ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, nameAr: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'الاسم بالإنجليزي:' : 'English Name:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.nameEn || ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, nameEn: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'رقم الجوال:' : 'Mobile Number:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.mobile || ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, mobile: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-mono font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'كلمة السر:' : 'Password:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.password || ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, password: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-mono font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'الدور والصلاحية:' : 'Role:'}</label>
+                      <select
+                        value={editingOfficer.role}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, role: e.target.value as any })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      >
+                        <option value="supervisor">{isRtl ? 'مشرف قبول وتسجيل' : 'Admission Supervisor'}</option>
+                        <option value="equivalency_supervisor">{isRtl ? 'مشرف قبول معادلات الشهادات 📜' : 'Certificate Supervisor'}</option>
+                        <option value="school_leadership">{isRtl ? 'مسؤول القيادة لمتابعة التسكين 🏫' : 'Leadership Placement Supervisor'}</option>
+                        <option value="leadership_director">{isRtl ? 'مدير القيادة المدرسية 👔' : 'Leadership Director'}</option>
+                        <option value="school_planning">{isRtl ? 'مسؤول فتح الشواغر والفصول 🏫' : 'Class Vacancy Officer'}</option>
+                        <option value="director">{isRtl ? 'مدير' : 'Director'}</option>
+                        <option value="admin">{isRtl ? 'أدمن' : 'Admin'}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'المرحلة المسندة:' : 'Assigned Stage:'}</label>
+                      <select
+                        value={editingOfficer.assignedStage || 'الكل'}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, assignedStage: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      >
+                        <option value="الكل">{isRtl ? 'جميع المراحل' : 'All Stages'}</option>
+                        <option value="رياض الأطفال">{isRtl ? 'رياض الأطفال' : 'Kindergarten'}</option>
+                        <option value="الابتدائي">{isRtl ? 'الابتدائي' : 'Primary'}</option>
+                        <option value="المتوسط">{isRtl ? 'المتوسط' : 'Intermediate'}</option>
+                        <option value="الثانوي">{isRtl ? 'الثانوي' : 'Secondary'}</option>
+                        <option value="التربية الخاصة">{isRtl ? 'التربية الخاصة' : 'Special Ed'}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'الجنس المسند:' : 'Assigned Gender:'}</label>
+                      <select
+                        value={editingOfficer.assignedGender || 'both'}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, assignedGender: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      >
+                        <option value="both">{isRtl ? 'الكل (بنين وبنات)' : 'Both'}</option>
+                        <option value="boys">{isRtl ? 'بنين فقط' : 'Boys Only'}</option>
+                        <option value="girls">{isRtl ? 'بنات فقط' : 'Girls Only'}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'القطاع / المحافظة:' : 'Sector:'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.assignedSector || 'الكل'}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, assignedSector: e.target.value })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 md:col-span-3">
+                      <label className="block text-xs font-bold mb-1">{isRtl ? 'المدارس المسندة (مفصولة بفاصلة):' : 'Assigned Schools (comma-separated):'}</label>
+                      <input
+                        type="text"
+                        value={editingOfficer.schoolNames ? editingOfficer.schoolNames.join(', ') : ''}
+                        onChange={(e) => setEditingOfficer({ ...editingOfficer, schoolNames: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                        className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t flex justify-end gap-3 border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setEditingOfficer(null)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 cursor-pointer"
+                    >
+                      {isRtl ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!editingOfficer) return;
+                        const updated = officers.map(o => o.id === editingOfficer.id ? editingOfficer : o);
+                        saveOfficers(updated);
+                        if (editingOfficer.id === activeOfficer.id) {
+                          setActiveOfficer(editingOfficer);
+                          localStorage.setItem('active_officer', JSON.stringify(editingOfficer));
+                        }
+                        setEditingOfficer(null);
+                        alert(isRtl ? 'تم حفظ وتحديث كامل بيانات المستخدم بنجاح!' : 'User data updated successfully!');
+                      }}
+                      className="px-5 py-2 text-xs font-black rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 shadow-md cursor-pointer"
+                    >
+                      {isRtl ? 'حفظ كافة التعديلات' : 'Save Changes'}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -8150,7 +8424,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           <div className="space-y-8 animate-fade-in" id="panel-schools-manager">
             
             {/* Header Banner */}
-            <div className="bg-gradient-to-r from-teal-800 via-teal-700 to-emerald-700 p-6 sm:p-8 rounded-3xl text-white shadow-lg relative overflow-hidden">
+            <div className="bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] p-6 sm:p-8 rounded-3xl text-white shadow-lg relative overflow-hidden">
               <div className="absolute right-0 top-0 transform translate-x-1/3 -translate-y-1/3 opacity-10">
                 <Building2 className="w-96 h-96" />
               </div>
@@ -8832,7 +9106,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           <div className="space-y-8 animate-fade-in" id="panel-custom-reports">
             
             {/* Header Banner with Master Excel Export Button */}
-            <div className="bg-gradient-to-r from-teal-800 via-emerald-800 to-teal-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden border border-teal-700/50">
+            <div className="bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] p-6 sm:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden border border-[#218caa]/50">
               <div className="absolute right-0 top-0 transform translate-x-1/3 -translate-y-1/3 opacity-10">
                 <FileText className="w-96 h-96" />
               </div>
@@ -9067,18 +9341,41 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               </div>
             </div>
 
-            {/* 9 Official Report Classification Selector Grid */}
-            <div className={`p-6 rounded-3xl shadow-md space-y-4 border ${
+            {/* Official Report Classification Selector Grid - Supporting Multi-select */}
+            <div className={`p-6 rounded-3xl shadow-md space-y-4 border printable-charts-container ${
               isDark ? 'glass-card-dark border-teal-800/40 text-white' : 'bg-white border-slate-200/80'
             }`}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <h4 className={`text-sm font-black flex items-center gap-2 ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                   <FileText className={`w-4.5 h-4.5 ${isDark ? 'text-teal-400' : 'text-teal-600'}`} />
-                  {isRtl ? 'تصنيف خيارات التقارير والتحليلات التسعة (اختر التصنيف المباشر):' : '9 Official Executive Report Classifications:'}
+                  <span>{isRtl ? 'المدارس الأكثر طلباً بناءً على الرغبات وتصنيفات التقارير (تحديد متعدد):' : 'Most Requested Schools & Report Classifications (Multi-select):'}</span>
                 </h4>
-                <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/80 px-2.5 py-1 rounded-lg border border-teal-200/50">
-                  {isRtl ? 'موزعة معيارياً' : 'Standardized'}
-                </span>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = [
+                        'by_region_stage', 'by_resolution_days', 'by_returned_principals',
+                        'by_problem_type', 'by_nationality', 'by_residency_type',
+                        'by_beneficiary_pref', 'by_transport_carrier', 'by_channel', 'most_requested_schools'
+                      ];
+                      if (selectedClassifications.length === allIds.length) {
+                        setSelectedClassifications(['by_region_stage']);
+                      } else {
+                        setSelectedClassifications(allIds);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-black rounded-xl bg-teal-600 text-white hover:bg-teal-700 transition-all cursor-pointer shadow-sm"
+                  >
+                    {selectedClassifications.length === 10
+                      ? (isRtl ? 'إلغاء التحديد الكل' : 'Deselect All')
+                      : (isRtl ? '✓ تحديد الكل' : 'Select All')}
+                  </button>
+                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/80 px-2.5 py-1 rounded-lg border border-teal-200/50">
+                    {isRtl ? `محدد (${selectedClassifications.length})` : `Selected (${selectedClassifications.length})`}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -9092,25 +9389,50 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   { id: 'by_beneficiary_pref', labelAr: '7. وتفضيل المستفيدين (نقل / قريبة)', labelEn: '7. By Beneficiary Prefs' },
                   { id: 'by_transport_carrier', labelAr: '8. المعالجة والجهة الناقلة للطلاب', labelEn: '8. By Transport Carrier' },
                   { id: 'by_channel', labelAr: '9. حسب وسيلة القناة والتواصل', labelEn: '9. By Communication Channel' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setReportClassificationType(item.id)}
-                    className={`p-3.5 rounded-2xl text-xs font-extrabold text-start transition-all cursor-pointer border flex items-center justify-between gap-3 ${
-                      reportClassificationType === item.id
-                        ? isDark 
-                          ? 'bg-gradient-to-r from-teal-800 to-emerald-800 text-white border-teal-400 shadow-md ring-2 ring-teal-500/30' 
-                          : 'bg-gradient-to-r from-teal-700 to-emerald-700 text-white border-teal-600 shadow-md ring-2 ring-teal-500/30'
-                        : isDark
-                          ? 'bg-teal-950/30 text-teal-200 border-teal-850 hover:bg-teal-900/40 hover:border-teal-700'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span>{isRtl ? item.labelAr : item.labelEn}</span>
-                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${reportClassificationType === item.id ? 'bg-amber-400 animate-ping' : 'bg-slate-400/40'}`} />
-                  </button>
-                ))}
+                  { id: 'most_requested_schools', labelAr: '10. المدارس الأكثر طلباً بناءً على الرغبة الأولى والرغبات الأخرى ⭐', labelEn: '10. Most Requested Schools based on Preferences ⭐' },
+                ].map((item) => {
+                  const isSelected = selectedClassifications.includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        let newSelected: string[];
+                        if (isSelected) {
+                          if (selectedClassifications.length > 1) {
+                            newSelected = selectedClassifications.filter(id => id !== item.id);
+                          } else {
+                            newSelected = selectedClassifications;
+                          }
+                        } else {
+                          newSelected = [...selectedClassifications, item.id];
+                        }
+                        setSelectedClassifications(newSelected);
+                        setReportClassificationType(item.id);
+                      }}
+                      className={`p-3.5 rounded-2xl text-xs font-extrabold text-start transition-all cursor-pointer border flex items-center justify-between gap-3 ${
+                        isSelected
+                          ? isDark 
+                            ? 'bg-gradient-to-r from-teal-800 to-emerald-800 text-white border-teal-400 shadow-md ring-2 ring-teal-500/30' 
+                            : 'bg-gradient-to-r from-teal-700 to-emerald-700 text-white border-teal-600 shadow-md ring-2 ring-teal-500/30'
+                          : isDark
+                            ? 'bg-teal-950/30 text-teal-200 border-teal-850 hover:bg-teal-900/40 hover:border-teal-700'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}} // handled by parent button click
+                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 pointer-events-none"
+                        />
+                        <span>{isRtl ? item.labelAr : item.labelEn}</span>
+                      </div>
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isSelected ? 'bg-amber-400 animate-ping' : 'bg-slate-400/40'}`} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
