@@ -31,7 +31,8 @@ import {
   HelpCircle as HelpIcon,
   Star,
   Building2,
-  X
+  X,
+  ArrowRightLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Language, SurveyResponse, AppConfig, PrincipalReport, SchoolItem } from '../types';
@@ -416,6 +417,13 @@ export default function Portal({
 
   // Handler for Principal clicking "تم التسكين" (Approve Staffing & Finalize Request)
   const handleConfirmPlacement = (survey: SurveyResponse) => {
+    const confirmPrint = window.confirm(
+      isRtl
+        ? `⚠️ تنبيه تحذيري هام لمدير المدرسة:\n\nيرجى التأكد من طباعة الإثباتات ووثائق المعادلة المرفقة وحفظها في ملف الطالب الورقي الآن، حيث سيتم حذف المرفقات نهائياً من النظام والسيرفر فور القبول والتسكين لتفريغ المساحة.\n\nهل قمت بطباعة/حفظ المرفقات وترغب في إتمام القبول والتسكين فوراً؟`
+        : `Important Notice: Please make sure you printed all attached proofs and equivalency documents before placement. Attachments will be purged after staffing.\n\nDo you want to confirm placement now?`
+    );
+    if (!confirmPrint) return;
+
     const customNote = principalNotesMap[survey.id]?.trim() || (isRtl ? 'تم تسكين الطالب/ة بالمدرسة بنجاح وتأكيد الاعتماد النهائي من مدير/ة المدرسة.' : 'Student placed successfully by school principal.');
     const now = new Date().toISOString();
 
@@ -429,6 +437,9 @@ export default function Portal({
       staffingConfirmedBy: principalSession?.principalName || 'مدير المدرسة',
       staffingNote: customNote,
       unresolvedReason: isRtl ? 'تم التسكين بالمدرسة بنجاح وتأكيد الاعتماد النهائي من مدير/ة المدرسة' : 'Staffing confirmed by school principal',
+      transferAttachmentData: undefined,
+      transferAttachmentName: undefined,
+      attachmentsPurgedByPrincipal: true,
     };
 
     if (onUpdateSurvey) {
@@ -436,7 +447,7 @@ export default function Portal({
     }
 
     alert(isRtl 
-      ? `🎉 تم إتمام اعتماد تسكين الطالب/ة (${survey.beneficiaryName}) بالمدرسة بنجاح!\n\n• أُنهيت المعاملة وأُرشفت تلقائياً برقم مرجعي: (${survey.id}).\n• اختفت المعاملة من قائمة الطلبات النشطة لدى مدير المدرسة ومشرف القيادة.\n• أُظهرت النتيجة فوراً في حساب المستفيد ليتمكن من التقييم.` 
+      ? `🎉 تم إتمام اعتماد تسكين الطالب/ة (${survey.beneficiaryName}) بالمدرسة بنجاح!\n\n• أُنهيت المعاملة وحُذفت المرفقات لتفريغ المساحة بعد التأكد من الطباعة.\n• أُرشفت المعاملة تلقائياً برقم مرجعي: (${survey.id}).\n• أُظهرت النتيجة فوراً في حساب المستفيد ليتمكن من التقييم.` 
       : `Placement confirmed for ${survey.beneficiaryName}! Transaction finalized & archived automatically. Hidden from active lists and ready for beneficiary evaluation.`);
   };
 
@@ -464,14 +475,15 @@ export default function Portal({
       isResolved: false,
       vacancyRequestStatus: 'returned_no_vacancy',
       returnedByPrincipal: true,
+      sentToPlanningOfficer: true, // Automatically appears in Planning Officer account to open vacancy
+      sentToLeadership: true, // Automatically appears in School Leadership account to follow up
       principalReturnCount: returnCount,
       isSecondReturnByPrincipal: isSecondReturn,
-      sentToLeadership: isSecondReturn, // If second return, directly route to School Leadership Supervisor
       principalReturnReason: reasonClean,
       returnedAt: now,
       notes: isRtl
-        ? `🚨 أعيد الطلب (${isSecondReturn ? 'المرة الثانية - محال للقيادة المدرسية' : 'المرة الأولى'}) من مدير المدرسة (${principalSession?.principalName || 'مدير المدرسة'}). السبب: ${reasonClean}`
-        : `Request returned (${isSecondReturn ? '2nd Time' : '1st Time'}) by principal: ${reasonClean}`
+        ? `🚨 أعيد الطلب من مدير المدرسة (${principalSession?.principalName || 'مدير المدرسة'}) بسبب تعذر التسكين وعدم توفر شاغر بالصف/المرحلة. السبب: (${reasonClean}). ظهرت المعاملة أوتوماتيكياً في حساب مسؤول التخطيط لفتح شاغر وفي حساب القيادة المدرسية لمتابعة التسكين.`
+        : `Request returned by principal due to no vacancy: ${reasonClean}. Routed to Planning Officer and School Leadership automatically.`
     };
 
     if (onUpdateSurvey) {
@@ -481,8 +493,8 @@ export default function Portal({
     setReturnModalSurvey(null);
 
     alert(isRtl
-      ? `🚨 تم إعادة الطلب بنجاح لمسؤول القبول والتسجيل المحال منه الطلب!\n\n• سبب الإعادة: (${reasonClean})\n• أُضيفت شارة حمراء فائقة الأهمية على الطلب لتنبيه مسئول القبول ومسؤول التخطيط.\n• سيتم معالجة الطاقة الاستيعابية من مشرف التخطيط وإعادة التوجيه.`
-      : `Request returned to admission officer with high red priority due to no actual vacancy.`);
+      ? `🚨 تم إعادة الطلب لعدم توفر شاغر بنجاح!\n\n• سبب الإعادة: (${reasonClean})\n• ظهرت المعاملة أوتوماتيكياً في حساب مسؤول التخطيط لفتح شاغر بالمرحلة والصف المطلوبين.\n• ظهرت المعاملة أوتوماتيكياً في حساب القيادة المدرسية لمتابعة التسكين.`
+      : `Request returned to Planning Officer and School Leadership due to no vacancy.`);
   };
 
   // Handle principal report submit handler
@@ -748,7 +760,7 @@ export default function Portal({
                       {t.rolePrincipal}
                     </h3>
                     <p className={`text-[11px] sm:text-xs font-extrabold leading-relaxed ${isDark ? 'text-teal-400' : 'text-emerald-500'}`}>
-                      {isRtl ? 'يتطلب رمز المدرسة الوزاري آمن' : 'Requires secure ministerial code'}
+                      {isRtl ? 'يتطلب رمز أمن' : 'Requires secure code'}
                     </p>
                     <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
                       {t.rolePrincipalDesc}
@@ -849,14 +861,19 @@ export default function Portal({
               </p>
             </div>
 
-            {/* Grid of Two Choices */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+            {/* Grid of Three Choices */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
               
               {/* Option A: Submit Request */}
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
-                onClick={() => setShowAgeModal(true)}
-                className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                onClick={() => {
+                  try {
+                    localStorage.setItem('student_service_type', 'new');
+                  } catch {}
+                  setShowAgeModal(true);
+                }}
+                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-teal-400 hover:shadow-teal-500/5'
                     : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-xl'
@@ -866,19 +883,19 @@ export default function Portal({
                   isDark ? 'bg-teal-500/5 group-hover:bg-teal-500/10' : 'bg-blue-500/5 group-hover:bg-blue-500/10'
                 }`} />
 
-                <div className="space-y-6">
-                  <div className={`glass-icon-container p-4 ${
+                <div className="space-y-5">
+                  <div className={`glass-icon-container p-3.5 ${
                     isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#061c24]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
                   }`}>
-                    <Plus className="w-8 h-8" />
+                    <Plus className="w-7 h-7" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className={`font-extrabold text-xl transition-colors ${
+                  <div className="space-y-1.5">
+                    <h3 className={`font-extrabold text-lg transition-colors ${
                       isDark ? 'text-white group-hover:text-teal-300' : 'text-slate-800 group-hover:text-blue-600'
                     }`}>
                       {isRtl ? 'تقديم طلب جديد' : 'Submit New Request'}
                     </h3>
-                    <p className={`text-sm font-medium leading-relaxed pt-2 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                    <p className={`text-xs font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
                       {isRtl 
                         ? 'تعبئة استبيان قياس الرضا وتقديم بلاغ أو شكوى جديدة بخصوص القبول والتوجيه.' 
                         : 'Fill out the satisfaction survey and submit a new report or inquiry regarding admission.'}
@@ -886,7 +903,7 @@ export default function Portal({
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-2 pt-8 font-bold text-sm group-hover:gap-3 transition-all ${
+                <div className={`flex items-center gap-2 pt-6 font-bold text-xs group-hover:gap-3 transition-all ${
                   isDark ? 'text-teal-300' : 'text-blue-600'
                 }`}>
                   <span>{isRtl ? 'بدء تقديم الطلب' : 'Start Submission'}</span>
@@ -894,11 +911,72 @@ export default function Portal({
                 </div>
               </motion.div>
 
-              {/* Option B: Track Request by Name */}
+              {/* Option B: Transfer Student Request */}
+              <motion.div
+                whileHover={{ y: -6, scale: 1.01 }}
+                onClick={() => {
+                  try {
+                    localStorage.setItem('student_service_type', 'transfer');
+                  } catch {}
+                  onSelectRole('parent');
+                }}
+                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                  isDark
+                    ? 'glass-card-dark hover:border-emerald-400 hover:shadow-emerald-500/5'
+                    : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-xl'
+                }`}
+              >
+                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl transition-all ${
+                  isDark ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-emerald-500/5 group-hover:bg-emerald-500/10'
+                }`} />
+
+                <div className="space-y-5">
+                  <div className={`glass-icon-container p-3.5 ${
+                    isDark ? 'glass-icon-dark-blue group-hover:bg-emerald-400 group-hover:text-[#061c24]' : 'glass-icon-light-blue group-hover:bg-emerald-600 group-hover:text-white'
+                  }`}>
+                    <ArrowRightLeft className="w-7 h-7" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className={`font-extrabold text-lg transition-colors flex flex-wrap items-center gap-1.5 ${
+                      isDark ? 'text-white group-hover:text-emerald-300' : 'text-slate-800 group-hover:text-emerald-600'
+                    }`}>
+                      {isRtl ? (
+                        <>
+                          <span>طلب نقل طالب</span>
+                          <span className="inline-block px-2.5 py-0.5 text-xs sm:text-sm font-black rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-xs">
+                            ومعادلة المؤهلات
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Transfer Student Request</span>
+                          <span className="inline-block px-2 py-0.5 text-xs font-black rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            & Qualifications
+                          </span>
+                        </>
+                      )}
+                    </h3>
+                    <p className={`text-xs font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                      {isRtl 
+                        ? 'تقديم طلب نقل طالب إلى مدرسة أخرى، أو تقديم طلب معادلة المؤهلات الدراسية.' 
+                        : 'Submit student transfer to another school or qualification equivalency request.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`flex items-center gap-2 pt-6 font-bold text-xs group-hover:gap-3 transition-all ${
+                  isDark ? 'text-emerald-300' : 'text-emerald-600'
+                }`}>
+                  <span>{isRtl ? 'تقديم طلب نقل' : 'Apply for Transfer'}</span>
+                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                </div>
+              </motion.div>
+
+              {/* Option C: Track Request by Name */}
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
                 onClick={() => setView('parent-track')}
-                className={`group relative rounded-3xl p-8 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-amber-400 hover:shadow-amber-500/5'
                     : 'bg-white border-slate-200 hover:border-amber-500 hover:shadow-xl'
@@ -908,19 +986,19 @@ export default function Portal({
                   isDark ? 'bg-amber-500/5 group-hover:bg-amber-500/10' : 'bg-amber-500/5 group-hover:bg-amber-500/10'
                 }`} />
 
-                <div className="space-y-6">
-                  <div className={`glass-icon-container p-4 ${
+                <div className="space-y-5">
+                  <div className={`glass-icon-container p-3.5 ${
                     isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#061c24]' : 'glass-icon-light-indigo group-hover:bg-amber-600 group-hover:text-white'
                   }`}>
-                    <Eye className="w-8 h-8" />
+                    <Eye className="w-7 h-7" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className={`font-extrabold text-xl transition-colors ${
+                  <div className="space-y-1.5">
+                    <h3 className={`font-extrabold text-lg transition-colors ${
                       isDark ? 'text-white group-hover:text-amber-300' : 'text-slate-800 group-hover:text-amber-600'
                     }`}>
                       {isRtl ? 'متابعة الطلب والتقييم بالاسم' : 'Track & Evaluate Request by Name'}
                     </h3>
-                    <p className={`text-sm font-medium leading-relaxed pt-2 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                    <p className={`text-xs font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
                       {isRtl 
                         ? 'الاستعلام الفوري عن حالة المعالجة للطلب الخاص بك باسمك، وتعبئة التقييم مباشرة.' 
                         : 'Check resolution status instantly using the beneficiary’s name and complete the rating.'}
@@ -928,7 +1006,7 @@ export default function Portal({
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-2 pt-8 font-bold text-sm group-hover:gap-3 transition-all ${
+                <div className={`flex items-center gap-2 pt-6 font-bold text-xs group-hover:gap-3 transition-all ${
                   isDark ? 'text-amber-300' : 'text-amber-600'
                 }`}>
                   <span>{isRtl ? 'متابعة وتقييم الآن' : 'Track & Rate Now'}</span>
@@ -1113,7 +1191,7 @@ export default function Portal({
                                     : survey.problemType === 'cert_intermediate_eq' ? 'معادلة شهادة متوسطة'
                                     : survey.problemType === 'cert_secondary_eq' ? 'معادلة شهادة ثانوية'
                                     : survey.problemType === 'distance_from_school' ? 'بعد السكن عن المدرسة'
-                                    : survey.problemType === 'unregistered_desire' ? 'مسجل في رغبة غير مسجلة'
+                                    : survey.problemType === 'unregistered_desire' ? (isRtl ? 'طلب قبول ومعادلة شهادة' : 'Admission & Equivalency Request')
                                     : 'أخرى / ملاحظات عامة')
                                   : survey.problemType
                                 }
@@ -1168,6 +1246,64 @@ export default function Portal({
                                   )}
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {/* Scheduled Review Appointment Box for Equivalency */}
+                          {((survey as any).hasReviewAppointment || (survey as any).appointmentDate) && (
+                            <div className={`p-4 rounded-2xl border text-start space-y-3 shadow-sm ${
+                              isDark ? 'bg-amber-950/40 border-amber-500/50 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-950'
+                            }`}>
+                              <div className="flex items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-800/60 pb-2.5">
+                                <div className="flex items-center gap-2 font-black text-sm text-amber-900 dark:text-amber-200">
+                                  <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                  <span>{isRtl ? '📅 موعد مراجعة إدارة القبول لمعادلة المؤهلات:' : '📅 Equivalency Review Appointment:'}</span>
+                                </div>
+                                {(survey as any).appointmentSetAt && (
+                                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-200/70 dark:bg-amber-900/60 font-bold text-amber-900 dark:text-amber-200">
+                                    {new Date((survey as any).appointmentSetAt).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-bold">
+                                <div className="p-2.5 rounded-xl bg-white/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800">
+                                  <span className="text-[10px] font-extrabold text-amber-800 dark:text-amber-400 block">{isRtl ? 'يوم وتاريخ المراجعة:' : 'Appointment Date:'}</span>
+                                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                                    {(survey as any).appointmentDate || 'لم يحدد'}
+                                  </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-white/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800">
+                                  <span className="text-[10px] font-extrabold text-amber-800 dark:text-amber-400 block">{isRtl ? 'ساعة المراجعة:' : 'Appointment Time:'}</span>
+                                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                                    {(survey as any).appointmentTime || '09:00 صباحاً'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {(survey as any).appointmentLocationLink && (
+                                <div className="pt-1">
+                                  <a
+                                    href={(survey as any).appointmentLocationLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-xs transition-all cursor-pointer"
+                                  >
+                                    <span>📍 {isRtl ? 'فتح موقع المقر والمراجعة على خرائط Google' : 'Open Location on Google Maps'}</span>
+                                  </a>
+                                </div>
+                              )}
+
+                              {/* Prominent Warning Message to Beneficiary */}
+                              <div className="p-3.5 rounded-xl bg-red-600 text-white font-extrabold text-xs shadow-md border-2 border-red-700 flex items-start gap-2.5">
+                                <AlertTriangle className="w-5 h-5 text-yellow-300 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <span className="font-black underline block text-yellow-300 text-sm">{isRtl ? '⚠️ تنبيه تحذيري هام جداً لولي الأمر:' : '⚠️ Critical Warning Notice:'}</span>
+                                  <p className="leading-relaxed text-xs">
+                                    {(survey as any).appointmentNote || (isRtl ? 'يرجى إحضار جميع المستندات والمؤهلات الرسمية والأصلية والشهادات الدراسية عند مراجعة الإدارة في الموعد المحدد لعمل المعادلة.' : 'Please bring all official documents, qualifications, and original certificates upon visiting the administration at the appointed date.')}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           )}
 
@@ -2601,6 +2737,36 @@ export default function Portal({
 
                             {/* Placement Execution Action Block */}
                             <div className="pt-3 border-t dark:border-teal-800/20 space-y-3">
+                              {/* Principal Attachment Print & Purge Warning Notice */}
+                              {req.transferAttachmentData ? (
+                                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs space-y-2">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <p className="font-bold leading-relaxed">
+                                      {isRtl
+                                        ? 'تنبيه هام لمدير المدرسة: يرجى طباعة الإثباتات المرفقة وحفظها في ملف الطالب الورقي، حيث سيتم حذف كافة المرفقات نهائياً من النظام والسيرفر فور القبول والتسكين لتفريغ المساحة.'
+                                        : 'Important Notice: Please print attached proofs and save in student paper file; they will be deleted permanently from system after placement confirmation to save storage.'}
+                                    </p>
+                                  </div>
+                                  <div className="pt-1">
+                                    <a
+                                      href={req.transferAttachmentData}
+                                      download={req.transferAttachmentName || 'transfer-proof'}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                                    >
+                                      <span>🖨️ طباعة / معاينة الإثبات المرفق ({req.transferAttachmentName || 'الملف المرفق'})</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              ) : req.attachmentsPurgedByPrincipal ? (
+                                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-500 text-[11px] font-bold flex items-center gap-1.5">
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span>{isRtl ? 'تم طباعة الإثبات وحذف المرفق تلقائياً من النظام بعد التسكين لتفريغ المساحة.' : 'Attachment printed and purged from system.'}</span>
+                                </div>
+                              ) : null}
+
                               {!isConfirmed ? (
                                 <div className="space-y-3">
                                   <div className="space-y-1">

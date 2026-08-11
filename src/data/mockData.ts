@@ -121,7 +121,7 @@ export const TRANSLATIONS = {
     probIntermediateEq: 'معادلة الشهادة للمرحلة المتوسطة',
     probSecondaryEq: 'معادلة الشهادة للمرحلة الثانوية',
     probDistance: 'نقل بسبب بعد السكن عن المدرسة',
-    probUnregistered: 'مسجل في رغبة غير مسجلة',
+    probUnregistered: 'طلب قبول ومعادلة شهادة',
     probOther: 'أخرى / ملاحظة عامة',
     serviceEmployee: 'اسم الموظف مقدم الخدمة',
     employeeSelect: 'اختر الموظف مقدم الخدمة',

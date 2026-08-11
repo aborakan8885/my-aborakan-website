@@ -31,7 +31,8 @@ import {
   Clock,
   ThumbsUp,
   FileText,
-  Bookmark
+  Bookmark,
+  Upload
 } from 'lucide-react';
 import { Language, SurveyResponse, ProblemType, AppConfig, SchoolItem } from '../types';
 import { TRANSLATIONS, INITIAL_SCHOOLS } from '../data/mockData';
@@ -92,8 +93,28 @@ export default function SurveyForm({
   const [residencyType, setResidencyType] = useState<'regular' | 'visit' | 'other' | ''>('regular');
   const [customResidencyType, setCustomResidencyType] = useState('');
 
+  // Service Type & Transfer Mode states
+  const [serviceType] = useState<'new' | 'transfer'>(() => {
+    try {
+      const stored = localStorage.getItem('student_service_type');
+      if (stored === 'transfer') return 'transfer';
+    } catch { /* ignore */ }
+    return 'new';
+  });
+  const isTransferMode = serviceType === 'transfer';
+
+  // Transfer-specific fields
+  const [transferReason, setTransferReason] = useState<string>('registered_unlisted_desire');
+  const [transferReasonCustom, setTransferReasonCustom] = useState<string>('');
+  const [transferAttachmentName, setTransferAttachmentName] = useState<string>('');
+  const [transferAttachmentData, setTransferAttachmentData] = useState<string>('');
+  const [transferAttachmentType, setTransferAttachmentType] = useState<string>('');
+  const [transferAttachmentSize, setTransferAttachmentSize] = useState<number>(0);
+  const [transferAttachmentError, setTransferAttachmentError] = useState<string>('');
+  const [guardianTransferPledge, setGuardianTransferPledge] = useState<boolean>(true);
+
   // Student Category Selection: 'fresh' (مستجد) or 'non_fresh' (غير مستجد)
-  const [studentCategoryType, setStudentCategoryType] = useState<'fresh' | 'non_fresh'>('fresh');
+  const [studentCategoryType, setStudentCategoryType] = useState<'fresh' | 'non_fresh'>(() => isTransferMode ? 'non_fresh' : 'fresh');
   const [equalizationStage, setEqualizationStage] = useState<'primary' | 'intermediate' | 'secondary' | ''>('');
   const [equalizationNotes, setEqualizationNotes] = useState('');
 
@@ -151,6 +172,14 @@ export default function SurveyForm({
 
   useEffect(() => {
     try {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } catch { /* ignore */ }
+
+    if (isTransferMode) {
+      setStudentCategoryType('non_fresh');
+    }
+
+    try {
       const stored = localStorage.getItem('student_age_verification');
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -162,7 +191,34 @@ export default function SurveyForm({
         }
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [isTransferMode]);
+
+  // File Upload Handler for Supporting Documents (< 3MB)
+  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setTransferAttachmentError('');
+    if (!file) return;
+
+    if (file.size > 3 * 1024 * 1024) {
+      setTransferAttachmentError(isRtl ? '⚠️ حجم الملف يتجاوز الحد الأقصى (3 ميجابايت).' : 'File size exceeds 3MB limit.');
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      setTransferAttachmentError(isRtl ? '⚠️ نوع الملف غير مدعوم. يرجى إرفاق صورة (JPG/PNG) أو ملف (PDF).' : 'Unsupported file type. Upload image or PDF.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setTransferAttachmentData(reader.result as string);
+      setTransferAttachmentName(file.name);
+      setTransferAttachmentType(file.type);
+      setTransferAttachmentSize(file.size);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Administrative Sector options
   const SECTORS = [
@@ -248,47 +304,81 @@ export default function SurveyForm({
       newErrors.gender = isRtl ? 'يرجى اختيار جنس الطالب / الطالبة' : 'Please select gender';
     }
 
-    // If Non-Fresh student (Equalization Request)
-    if (studentCategoryType === 'non_fresh') {
-      if (!equalizationStage) {
-        newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+    if (isTransferMode) {
+      // Transfer Mode Validation
+      if (studentCategoryType === 'non_fresh' && equalizationStage !== '') {
+        // Equalization branch in transfer mode
+        if (!equalizationStage) {
+          newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+        }
+      } else {
+        // School Transfer branch
+        if (!stage) {
+          newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
+        }
+        if (!grade) {
+          newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
+        }
+        if (!sector) {
+          newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
+        }
+        if (!neighborhood.trim()) {
+          newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
+        }
+        if (!schoolName.trim()) {
+          newErrors.schoolName = isRtl ? 'يرجى إدخال/اختيار المدرسة المطلوب النقل لها' : 'Please select target transfer school';
+        }
+        if (!transferReason) {
+          newErrors.transferReason = isRtl ? 'يرجى اختيار سبب النقل' : 'Please select reason for transfer';
+        }
+        if (transferReason === 'other' && !transferReasonCustom.trim()) {
+          newErrors.transferReasonCustom = isRtl ? 'يرجى تحديد سبب النقل بالتفصيل' : 'Please specify custom transfer reason';
+        }
+        if (!contactedSchool) {
+          newErrors.contactedSchool = isRtl ? 'يرجى تحديد ما إذا تم التواصل مع المدرسة' : 'Please state if you contacted school';
+        }
+        if (contactedSchool === 'yes' && !schoolFeedback.trim()) {
+          newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
+        }
+        if (!guardianTransferPledge) {
+          newErrors.guardianTransferPledge = isRtl ? 'يرجى الموافقة والتأكيد على التعهد والإقرار' : 'Please accept the guardian pledge';
+        }
       }
     } else {
-      // Fresh Student validation
-      if (!stage) {
-        newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
-      }
+      // Standard Request Validation
+      if (studentCategoryType === 'non_fresh') {
+        if (!equalizationStage) {
+          newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+        }
+      } else {
+        // Fresh Student validation
+        if (!stage) {
+          newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
+        }
 
-      if (!grade) {
-        newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
-      }
+        if (!grade) {
+          newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
+        }
 
-      if (!sector) {
-        newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
-      }
+        if (!sector) {
+          newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
+        }
 
-      if (!neighborhood.trim()) {
-        newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
-      }
+        if (!neighborhood.trim()) {
+          newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
+        }
 
-      if (!schoolName.trim()) {
-        newErrors.schoolName = isRtl ? 'يرجى إدخال اسم المدرسة المعنية' : 'Please enter school name';
-      }
+        if (!schoolName.trim()) {
+          newErrors.schoolName = isRtl ? 'يرجى إدخال اسم المدرسة المعنية' : 'Please enter school name';
+        }
 
-      if (!problemType) {
-        newErrors.problemType = isRtl ? 'يرجى اختيار نوع المشكلة الرئيسي' : 'Please select main problem type';
-      }
+        if (!problemType) {
+          newErrors.problemType = isRtl ? 'يرجى اختيار نوع المشكلة الرئيسي' : 'Please select main problem type';
+        }
 
-      if (problemType === 'other' && !otherProblemDetails.trim()) {
-        newErrors.otherProblemDetails = isRtl ? 'يرجى تحديد تفاصيل أخرى للمشكلة' : 'Please enter other problem details';
-      }
-
-      if (!contactedSchool) {
-        newErrors.contactedSchool = isRtl ? 'يرجى تحديد ما إذا تم التواصل مع المدرسة' : 'Please state if you contacted school';
-      }
-
-      if (contactedSchool === 'yes' && !schoolFeedback.trim()) {
-        newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
+        if (problemType === 'other' && !otherProblemDetails.trim()) {
+          newErrors.otherProblemDetails = isRtl ? 'يرجى تحديد تفاصيل أخرى للمشكلة' : 'Please enter other problem details';
+        }
       }
     }
 
@@ -313,6 +403,72 @@ export default function SurveyForm({
     setIsSubmitting(true);
 
     setTimeout(() => {
+      if (isTransferMode) {
+        const isEq = studentCategoryType === 'non_fresh' && equalizationStage !== '';
+        const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
+        const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
+
+        const transferReasonLabelMap: Record<string, string> = {
+          'registered_unlisted_desire': 'مسجل في رغبة غير مدرجة من قبلي ( تتطلب الاثبات )',
+          'registered_far_residence': 'مسجل في رغبة بعيدة عن السكن ( تتطلب الاثبات )',
+          'school_in_same_neighborhood': 'المدرسة في نفس الحي الذي أسكن به ( تتطلب الاثبات )',
+          'other': transferReasonCustom ? `أخرى: ${transferReasonCustom.trim()}` : 'سبب آخر'
+        };
+
+        const response = onSubmit({
+          beneficiaryName: beneficiaryName.trim(),
+          parentName: parentName.trim() || undefined,
+          phoneNumber: phoneNumber.trim(),
+          nationality: nationality.trim(),
+          residencyType: residencyType || undefined,
+          customResidencyType: residencyType === 'other' ? customResidencyType.trim() : undefined,
+          studentCategoryType: 'non_fresh',
+          isNonFreshStudent: true,
+          isEqualizationRequest: isEq,
+          equalizationStage: isEq ? equalizationStage : undefined,
+
+          serviceType: 'transfer',
+          transferReason: isEq ? undefined : (transferReasonLabelMap[transferReason] || transferReason),
+          transferReasonCustom: isEq ? undefined : (transferReason === 'other' ? transferReasonCustom.trim() : undefined),
+          transferAttachmentName: isEq ? undefined : (transferAttachmentName || undefined),
+          transferAttachmentData: isEq ? undefined : (transferAttachmentData || undefined),
+          transferAttachmentType: isEq ? undefined : (transferAttachmentType || undefined),
+          transferAttachmentSize: isEq ? undefined : (transferAttachmentSize || undefined),
+          guardianTransferPledge: guardianTransferPledge,
+
+          stage: isEq ? eqStageMapped : stage,
+          sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
+          schoolName: isEq ? `وحدة القبول المعدلات (${eqStageLabelAr})` : schoolName.trim(),
+          schoolCode: isEq ? undefined : (schoolCode.trim() || undefined),
+          secondSchoolName: isEq ? undefined : (secondSchoolName.trim() || undefined),
+          thirdSchoolName: isEq ? undefined : (thirdSchoolName.trim() || undefined),
+          agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
+          problemType: 'unregistered_desire',
+          serviceEmployee: '',
+          isResolved: false,
+          staffSatisfaction: 0,
+          receptionSatisfaction: 0,
+          notes: isEq 
+            ? `🎓 طلب معادلة شهادة ومؤهل لـ (${eqStageLabelAr}). ${equalizationNotes ? 'تفاصيل المؤهل: ' + equalizationNotes.trim() : ''}`
+            : `🔄 طلب نقل طالب إلى مدرسة (${schoolName.trim()}). السبب: ${transferReasonLabelMap[transferReason] || transferReason}`,
+          isOfflineCreated: !isOnline,
+
+          gender: gender ? (gender as 'boys' | 'girls') : 'boys',
+          grade: isEq ? `معادلة ${eqStageLabelAr}` : grade,
+          neighborhood: neighborhood.trim() || undefined,
+          contactedSchool: isEq ? 'no' : ((contactedSchool as 'yes' | 'no') || 'no'),
+          schoolFeedback: (!isEq && contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
+          isVacancyRequest: true,
+          vacancyRequestStatus: 'pending_vacancy'
+        });
+
+        setCreatedSurvey(response);
+        setIsSubmitting(false);
+        setIsSuccess(true);
+        return;
+      }
+
+      // Standard Flow Submission
       const isEq = studentCategoryType === 'non_fresh';
       const isVac = !isEq && problemType === 'vacancies_unavailable';
 
@@ -334,7 +490,7 @@ export default function SurveyForm({
 
         stage: isEq ? eqStageMapped : stage,
         sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-        schoolName: isEq ? `مكتب معادلة الشهادات (${eqStageLabelAr})` : schoolName.trim(),
+        schoolName: isEq ? `وحدة القبول المعدلات (${eqStageLabelAr})` : schoolName.trim(),
         schoolCode: isEq ? undefined : (schoolCode.trim() || undefined),
         problemType: isEq ? 'other' : (problemType as ProblemType),
         serviceEmployee: '',
@@ -350,8 +506,8 @@ export default function SurveyForm({
         gender: gender ? (gender as 'boys' | 'girls') : 'boys',
         grade: isEq ? `معادلة ${eqStageLabelAr}` : grade,
         neighborhood: neighborhood.trim() || undefined,
-        contactedSchool: isEq ? 'no' : (contactedSchool as 'yes' | 'no'),
-        schoolFeedback: (!isEq && contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
+        contactedSchool: 'no',
+        schoolFeedback: undefined,
         otherProblemDetails: isEq 
           ? `طلب معادلة شهادة دراسية للمرحلة (${eqStageLabelAr})` 
           : (problemType === 'other' ? otherProblemDetails.trim() : undefined),
@@ -878,61 +1034,65 @@ export default function SurveyForm({
       {/* Intro Header */}
       <div className="text-center mb-8">
         <h2 className={`text-xl sm:text-3xl font-black font-sans mb-2 ${isDark ? 'text-teal-200' : 'text-slate-900'}`}>
-          {t.formTitle}
+          {isTransferMode
+            ? (isRtl ? 'نموذج تقديم طلب نقل طالب إلى مدرسة أخرى' : 'Student Transfer Request Form')
+            : t.formTitle}
         </h2>
         <p className={`text-xs sm:text-base max-w-xl mx-auto leading-relaxed ${isDark ? 'text-teal-300/80' : 'text-slate-500'}`}>
-          {isRtl
-            ? 'فضلاً يرجى تعبئة بيانات الطلب أو الشكوى الخاصة بنجلك وتحديد المعوقات المصادفة لتيسير الإجراء والتوجيه السليم.'
-            : 'Please specify the educational request details below to resolve constraints immediately.'}
+          {isTransferMode
+            ? (isRtl ? 'نظام نقل الطلاب وتوزيع الرغبات وإرفاق الإثباتات المستندية - إدارة التعليم بالمدينة المنورة' : 'Student transfer & placement portal')
+            : (isRtl ? 'فضلاً يرجى تعبئة بيانات الطلب أو الشكوى الخاصة بنجلك وتحديد المعوقات المصادفة لتيسير الإجراء والتوجيه السليم.' : 'Please specify the educational request details below to resolve constraints immediately.')}
         </p>
       </div>
 
-      {/* Age Verification Notification / Action Banner */}
-      <div className={`p-4 rounded-2xl border mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
-        verifiedAgeInfo
-          ? verifiedAgeInfo.status === 'direct'
-            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-900 dark:text-emerald-200'
-            : 'bg-amber-500/10 border-amber-500/40 text-amber-900 dark:text-amber-200'
-          : 'bg-teal-500/10 border-teal-500/30 text-teal-900 dark:text-teal-200'
-      }`}>
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-xl shrink-0 ${
-            verifiedAgeInfo?.status === 'direct'
-              ? 'bg-emerald-600 text-white'
-              : verifiedAgeInfo?.status === 'exemption'
-                ? 'bg-amber-600 text-white'
-                : 'bg-teal-600 text-white'
-          }`}>
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs sm:text-sm font-black">
-              {verifiedAgeInfo
-                ? isRtl
-                  ? `🛡️ حالة التثبت النظامي من السن: ${verifiedAgeInfo.stageName}`
-                  : `🛡️ Age Verification Status: ${verifiedAgeInfo.stageName}`
-                : isRtl
-                  ? '🛡️ التثبت النظامي من السن للقبول والتسجيل (الصف الأول الابتدائي)'
-                  : '🛡️ Primary Grade 1 Age Verification Checklist'}
+      {/* Age Verification Notification / Action Banner (Hidden in Transfer Mode) */}
+      {!isTransferMode && (
+        <div className={`p-4 rounded-2xl border mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
+          verifiedAgeInfo
+            ? verifiedAgeInfo.status === 'direct'
+              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-900 dark:text-emerald-200'
+              : 'bg-amber-500/10 border-amber-500/40 text-amber-900 dark:text-amber-200'
+            : 'bg-teal-500/10 border-teal-500/30 text-teal-900 dark:text-teal-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl shrink-0 ${
+              verifiedAgeInfo?.status === 'direct'
+                ? 'bg-emerald-600 text-white'
+                : verifiedAgeInfo?.status === 'exemption'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-teal-600 text-white'
+            }`}>
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <div className="text-[11px] font-semibold opacity-90 mt-0.5">
-              {verifiedAgeInfo
-                ? verifiedAgeInfo.status === 'direct'
-                  ? (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - القبول المباشر (6 سنوات فأكثر) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Direct Admission ✓`)
-                  : (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - فترة التجاوز الـ 90 يوماً (مقر بشرط إتمام الروضة) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Exemption with KG declaration ✓`)
-                : (isRtl ? 'انقر هنا للتحقق التلقائي والدقيق من السن النظامي للقبول والتأكد من استيفاء الشروط.' : 'Click to verify student age according to Ministry guidelines.')}
+            <div>
+              <div className="text-xs sm:text-sm font-black">
+                {verifiedAgeInfo
+                  ? isRtl
+                    ? `🛡️ حالة التثبت النظامي من السن: ${verifiedAgeInfo.stageName}`
+                    : `🛡️ Age Verification Status: ${verifiedAgeInfo.stageName}`
+                  : isRtl
+                    ? '🛡️ التثبت النظامي من السن للقبول والتسجيل (الصف الأول الابتدائي)'
+                    : '🛡️ Primary Grade 1 Age Verification Checklist'}
+              </div>
+              <div className="text-[11px] font-semibold opacity-90 mt-0.5">
+                {verifiedAgeInfo
+                  ? verifiedAgeInfo.status === 'direct'
+                    ? (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - القبول المباشر (6 سنوات فأكثر) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Direct Admission ✓`)
+                    : (isRtl ? `تاريخ الميلاد: ${verifiedAgeInfo.birthDate} - فترة التجاوز الـ 90 يوماً (مقر بشرط إتمام الروضة) ✓` : `DOB: ${verifiedAgeInfo.birthDate} - Exemption with KG declaration ✓`)
+                  : (isRtl ? 'انقر هنا للتحقق التلقائي والدقيق من السن النظامي للقبول والتأكد من استيفاء الشروط.' : 'Click to verify student age according to Ministry guidelines.')}
+              </div>
             </div>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAgeModal(true)}
-          className="px-4 py-2 rounded-xl text-xs font-black bg-teal-600 hover:bg-teal-700 text-white cursor-pointer transition-all shrink-0 hover:scale-105 shadow-xs"
-        >
-          {verifiedAgeInfo ? (isRtl ? 'إعادة التثبت من السن 🔄' : 'Re-verify Age 🔄') : (isRtl ? 'التحقق من السن النظامي 🛡️' : 'Verify Age 🛡️')}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setShowAgeModal(true)}
+            className="px-4 py-2 rounded-xl text-xs font-black bg-teal-600 hover:bg-teal-700 text-white cursor-pointer transition-all shrink-0 hover:scale-105 shadow-xs"
+          >
+            {verifiedAgeInfo ? (isRtl ? 'إعادة التثبت من السن 🔄' : 'Re-verify Age 🔄') : (isRtl ? 'التحقق من السن النظامي 🛡️' : 'Verify Age 🛡️')}
+          </button>
+        </div>
+      )}
 
       {/* Form Content */}
       <form
@@ -1042,27 +1202,29 @@ export default function SurveyForm({
               )}
             </div>
 
-            {/* Student Age */}
-            <div id="field-studentAge">
-              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
-                {isRtl ? 'العمر' : 'Age'}
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                  <Clock className="w-4 h-4" />
-                </span>
-                <input
-                  type="text"
-                  value={studentAge}
-                  onChange={(e) => setStudentAge(e.target.value)}
-                  placeholder={isRtl ? 'أدخل العمر (مثال: 7 سنوات)' : 'e.g. 7 years'}
-                  className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                    isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
-                  } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
-                  dir={isRtl ? 'rtl' : 'ltr'}
-                />
+            {/* Student Age (Hidden in Transfer Mode) */}
+            {!isTransferMode && (
+              <div id="field-studentAge">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
+                  {isRtl ? 'العمر' : 'Age'}
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                    <Clock className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={studentAge}
+                    onChange={(e) => setStudentAge(e.target.value)}
+                    placeholder={isRtl ? 'أدخل العمر (مثال: 7 سنوات)' : 'e.g. 7 years'}
+                    className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                      isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
+                    } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
+                    dir={isRtl ? 'rtl' : 'ltr'}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Nationality (الجنسية مع قائمة منسدلة قابلة للبحث) */}
             <div id="field-nationality" className="relative">
@@ -1221,61 +1383,71 @@ export default function SurveyForm({
           <div className="flex items-center gap-2 mb-4">
             <GraduationCap className={`w-5 h-5 ${isDark ? 'text-teal-300' : 'text-emerald-600'}`} />
             <h3 className="font-extrabold text-base sm:text-lg">
-              {isRtl ? 'تحديد صفة ومسار الطالب المتقدم' : 'Student Status & Category'}
+              {isRtl ? 'تحديد صفة ومسار الطلب المقدم' : 'Request Status & Category'}
             </h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Card 1: Fresh Student */}
+            {/* Card 1 */}
             <button
               type="button"
-              onClick={() => setStudentCategoryType('fresh')}
+              onClick={() => {
+                setStudentCategoryType(isTransferMode ? 'non_fresh' : 'fresh');
+                setEqualizationStage('');
+              }}
               className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
-                studentCategoryType === 'fresh'
+                (isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh')
                   ? 'bg-emerald-500/10 border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
                   : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-black ${studentCategoryType === 'fresh' ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
-                  🟢 {isRtl ? 'طالب مستجد (تسجيل جديد)' : 'Fresh Student (New Registration)'}
+                <span className={`text-sm font-black ${(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh') ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                  {isTransferMode
+                    ? (isRtl ? 'طلب نقل الى مدرسة أخرى - طالب غير مستجد' : 'Transfer to Another School - Non-Fresh Student')
+                    : (isRtl ? '🟢 طالب مستجد (تسجيل جديد)' : 'Fresh Student (New Registration)')}
                 </span>
-                {studentCategoryType === 'fresh' && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
+                {(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh') && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
               </div>
               <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                {isRtl 
-                  ? 'تسجيل طالب جديد لأول مرة في مراحل التعليم العام وتحديد رغبات المدارس ومتابعة الشواغر.' 
-                  : 'New student registration for general education stages.'}
+                {isTransferMode
+                  ? (isRtl ? 'تقديم طلب نقل طالب مقيد سابقاً إلى مدرسة أخرى وتحديد رغبات المدارس وإرفاق الإثباتات اللازمة.' : 'Request school transfer for registered student.')
+                  : (isRtl ? 'تسجيل طالب جديد لأول مرة في مراحل التعليم العام وتحديد رغبات المدارس ومتابعة الشواغر.' : 'New student registration for general education stages.')}
               </p>
             </button>
 
-            {/* Card 2: Non-Fresh Student (Equalization) */}
+            {/* Card 2 */}
             <button
               type="button"
-              onClick={() => setStudentCategoryType('non_fresh')}
+              onClick={() => {
+                setStudentCategoryType('non_fresh');
+                setEqualizationStage('primary');
+              }}
               className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
-                studentCategoryType === 'non_fresh'
+                studentCategoryType === 'non_fresh' && equalizationStage !== ''
                   ? 'bg-purple-500/10 border-purple-600 shadow-md ring-2 ring-purple-500/20'
                   : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
-                  📘 {isRtl ? 'طالب غير مستجد (معادلة المؤهلات)' : 'Non-Fresh Student (Certificate Equalization)'}
+                <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' && equalizationStage !== '' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                  {isTransferMode
+                    ? (isRtl ? 'طلب معادلة المؤهلات' : 'Qualification Equivalency Request')
+                    : (isRtl ? '📘 طالب غير مستجد (معادلة المؤهلات)' : 'Non-Fresh Student (Certificate Equalization)')}
                 </span>
-                {studentCategoryType === 'non_fresh' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
+                {studentCategoryType === 'non_fresh' && equalizationStage !== '' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
               </div>
               <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-purple-200' : 'text-purple-900'}`}>
-                {isRtl 
-                  ? 'أي الطالب حاصل على شهادات في صفوف متقدمة خارج المملكة أو من نظام تعليمي آخر ويرغب بمعادلة المؤهل الدراسي.' 
-                  : 'Student holds advanced certificates from outside KSA or needs formal equivalency evaluation.'}
+                {isTransferMode
+                  ? (isRtl ? 'تقديم طلب معادلة مؤهل دراسي صادر من خارج المملكة أو من نظام تعليمي آخر.' : 'Request certificate equivalency for foreign qualifications.')
+                  : (isRtl ? 'أي الطالب حاصل على شهادات في صفوف متقدمة خارج المملكة أو من نظام تعليمي آخر ويرغب بمعادلة المؤهل الدراسي.' : 'Student holds advanced certificates from outside KSA or needs formal equivalency evaluation.')}
               </p>
             </button>
           </div>
         </div>
 
         {/* Dynamic View based on Category Selection */}
-        {studentCategoryType === 'non_fresh' ? (
+        {(studentCategoryType === 'non_fresh' && (!isTransferMode || equalizationStage !== '')) ? (
           /* SECTION: EQUALIZATION REQUEST FORM FOR NON-FRESH STUDENTS */
           <motion.div
             initial={{ opacity: 0, y: 15 }}
@@ -1523,7 +1695,7 @@ export default function SurveyForm({
                       setSchoolName(name);
                       if (code) setSchoolCode(code);
                     }}
-                    label={isRtl ? 'المدرسة المطلوبة (الرغبة الأولى)' : 'Primary Preferred School'}
+                    label={isTransferMode ? (isRtl ? 'المدرسة المطلوب النقل لها ( الرغبة الأولى )' : 'Target School (First Choice)') : (isRtl ? 'المدرسة المطلوبة (الرغبة الأولى)' : 'Primary Preferred School')}
                     required
                     isDark={isDark}
                     isRtl={isRtl}
@@ -1559,27 +1731,204 @@ export default function SurveyForm({
                   />
                 </div>
 
-                {/* Guardian Pledge / Undertaking Checkbox */}
-                <div className="md:col-span-2 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-start space-y-2">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={agreedToAlternativeSchoolPlacement}
-                      onChange={(e) => setAgreedToAlternativeSchoolPlacement(e.target.checked)}
-                      className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <span className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200 leading-relaxed">
-                      {isRtl
-                        ? '☑️ تعهد وإقرار ولي الأمر: أقر وأتعهد بأنه في حال عدم إمكانية تسجيل الطالب/ة في الرغبات المحددة أعلاه، فإنني أوافق على تسكينه/ا في أقرب مدرسة متاحة لضمان التحاقه بالتعليم.'
-                        : '☑️ Guardian Pledge: In case of impossibility to register in the above choices, I agree to place the student in the nearest available school to ensure education enrollment.'}
-                    </span>
-                  </label>
-                </div>
+                {/* Transfer Specific Fields: Reason for Transfer, Attachments & Updated Pledge */}
+                {isTransferMode ? (
+                  <>
+                    {/* Reason for Transfer Dropdown */}
+                    <div id="field-transferReason" className="md:col-span-2 space-y-2 pt-2">
+                      <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-teal-200">
+                        {isRtl ? 'سبب النقل' : 'Reason for Transfer'} <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={transferReason}
+                        onChange={(e) => setTransferReason(e.target.value)}
+                        className={`w-full p-3.5 text-xs sm:text-sm font-bold rounded-xl border outline-none transition-all ${
+                          isDark ? 'bg-teal-950/80 text-white border-teal-800/60' : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white'
+                        } ${errors.transferReason ? 'border-red-500' : ''}`}
+                        dir={isRtl ? 'rtl' : 'ltr'}
+                      >
+                        <option value="registered_unlisted_desire">{isRtl ? 'مسجل في رغبة غير مدرجة من قبلي ( تتطلب الاثبات )' : 'Registered in unlisted desire (requires proof)'}</option>
+                        <option value="registered_far_residence">{isRtl ? 'مسجل في رغبة بعيدة عن السكن ( تتطلب الاثبات )' : 'Registered in desire far from residence (requires proof)'}</option>
+                        <option value="school_in_same_neighborhood">{isRtl ? 'المدرسة في نفس الحي الذي أسكن به ( تتطلب الاثبات )' : 'School is in the same neighborhood (requires proof)'}</option>
+                        <option value="other">{isRtl ? 'أخرى' : 'Other'}</option>
+                      </select>
+                      {errors.transferReason && (
+                        <p className="text-xs text-red-500 font-bold">{errors.transferReason}</p>
+                      )}
+                    </div>
+
+                    {/* Custom Transfer Reason if Other selected */}
+                    {transferReason === 'other' && (
+                      <div id="field-transferReasonCustom" className="md:col-span-2 space-y-2">
+                        <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                          {isRtl ? 'تحديد سبب النقل بالتفصيل:' : 'Specify Transfer Reason:'} <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={transferReasonCustom}
+                          onChange={(e) => setTransferReasonCustom(e.target.value)}
+                          placeholder={isRtl ? 'اكتب سبب طلب النقل بالتفصيل هنا...' : 'Write custom transfer reason details...'}
+                          className={`w-full p-3 text-xs sm:text-sm font-semibold rounded-xl border outline-none ${
+                            isDark ? 'bg-teal-950/80 text-white border-teal-800' : 'bg-white border-slate-200 text-slate-900'
+                          } ${errors.transferReasonCustom ? 'border-red-500' : ''}`}
+                          dir={isRtl ? 'rtl' : 'ltr'}
+                        />
+                        {errors.transferReasonCustom && (
+                          <p className="text-xs text-red-500 font-bold">{errors.transferReasonCustom}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Attachment Upload Box */}
+                    <div className="md:col-span-2 space-y-2 p-4 rounded-2xl bg-teal-500/5 dark:bg-teal-950/40 border border-teal-500/20">
+                      <label className="block text-xs sm:text-sm font-extrabold text-teal-900 dark:text-teal-200">
+                        {isRtl ? '📎 مرفقات إثبات سبب النقل (صورة أو ملف PDF أقل من 3 ميجابايت)' : 'Attach Transfer Proof Documents (Image/PDF < 3MB)'}
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all shadow-xs shrink-0">
+                          <Upload className="w-4 h-4" />
+                          <span>{isRtl ? 'اختيار ملف الإثبات' : 'Select Proof File'}</span>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={handleAttachmentChange}
+                            className="hidden"
+                          />
+                        </label>
+                        <div className="text-xs font-semibold truncate text-slate-600 dark:text-teal-300">
+                          {transferAttachmentName ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              ✓ {transferAttachmentName} ({(transferAttachmentSize / 1024).toFixed(1)} KB)
+                            </span>
+                          ) : (
+                            <span className="opacity-70">{isRtl ? 'لم يتم اختيار ملف إثبات حتى الآن' : 'No document selected'}</span>
+                          )}
+                        </div>
+                      </div>
+                      {transferAttachmentError && (
+                        <p className="text-xs text-red-500 font-bold mt-1">{transferAttachmentError}</p>
+                      )}
+                    </div>
+
+                    {/* Prior Communication with School (Transfer Mode) */}
+                    <div className="md:col-span-2 space-y-3 pt-2">
+                      <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-teal-200">
+                        {isRtl ? 'هل تم التواصل مع المدرسة المطلوب النقل لها مسبقاً؟' : 'Have you contacted the target transfer school in advance?'} <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-4 max-w-sm" id="field-contactedSchool">
+                        <button
+                          type="button"
+                          onClick={() => setContactedSchool('yes')}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                            contactedSchool === 'yes'
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                              : isDark
+                              ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{isRtl ? 'نعم' : 'Yes'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setContactedSchool('no');
+                            setSchoolFeedback('');
+                          }}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
+                            contactedSchool === 'no'
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                              : isDark
+                              ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{isRtl ? 'لا' : 'No'}</span>
+                        </button>
+                      </div>
+                      {errors.contactedSchool && (
+                        <p className="text-xs text-red-500 font-bold">{errors.contactedSchool}</p>
+                      )}
+
+                      <AnimatePresence>
+                        {contactedSchool === 'yes' && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="space-y-2 overflow-hidden pt-2"
+                            id="field-schoolFeedback"
+                          >
+                            <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
+                              {isRtl ? 'إفادة المدرسة التي تم استلامها:' : 'What feedback response was given by the school?'} <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                              value={schoolFeedback}
+                              onChange={(e) => setSchoolFeedback(e.target.value)}
+                              placeholder={isRtl ? 'يرجى كتابة الرد أو التبرير الذي أفادتكم به إدارة المدرسة بالتفصيل...' : 'Please input school feedback detail...'}
+                              rows={3}
+                              className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
+                                isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                              } ${
+                                errors.schoolFeedback
+                                  ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                                  : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
+                              }`}
+                              dir={isRtl ? 'rtl' : 'ltr'}
+                            />
+                            {errors.schoolFeedback && (
+                              <p className="text-xs text-red-500 font-bold">{errors.schoolFeedback}</p>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* Transfer Guardian Pledge Checkbox */}
+                    <div id="field-guardianTransferPledge" className="md:col-span-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-start space-y-2">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={guardianTransferPledge}
+                          onChange={(e) => setGuardianTransferPledge(e.target.checked)}
+                          className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <span className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200 leading-relaxed">
+                          {isRtl
+                            ? '☑️ تعهد وإقرار ولي الأمر: أقر وأتعهد بأن جميع الاثباتات المرفقة صحيحة وفي حال عدم صحتها أتحمل كافة الاجراءات النظامية حيال ذلك'
+                            : '☑️ Guardian Undertaking: I pledge that all attached proofs are authentic, otherwise I bear full legal responsibility.'}
+                        </span>
+                      </label>
+                      {errors.guardianTransferPledge && (
+                        <p className="text-xs text-red-500 font-bold mt-1">{errors.guardianTransferPledge}</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* Standard Guardian Pledge / Undertaking Checkbox */
+                  <div className="md:col-span-2 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-start space-y-2">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={agreedToAlternativeSchoolPlacement}
+                        onChange={(e) => setAgreedToAlternativeSchoolPlacement(e.target.checked)}
+                        className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <span className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200 leading-relaxed">
+                        {isRtl
+                          ? '☑️ تعهد وإقرار ولي الأمر: أقر وأتعهد بأنه في حال عدم إمكانية تسجيل الطالب/ة في الرغبات المحددة أعلاه، فإنني أوافق على تسكينه/ا في أقرب مدرسة متاحة لضمان التحاقه بالتعليم.'
+                          : '☑️ Guardian Pledge: In case of impossibility to register in the above choices, I agree to place the student in the nearest available school to ensure education enrollment.'}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Section 3: Problem Nature */}
-            <div>
+            {!isTransferMode && (
+              <>
+                <div>
               <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
                 <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
                   <FileQuestion className="w-4.5 h-4.5" />
@@ -1615,14 +1964,8 @@ export default function SurveyForm({
                       dir={isRtl ? 'rtl' : 'ltr'}
                     >
                       <option value="">{t.problemSelect}</option>
-                      <option value="new_registration_saudi">{isRtl ? 'تسجيل مستجد سعودي' : 'New Registration (Saudi)'}</option>
-                      <option value="new_registration_resident">{isRtl ? 'تسجيل مستجد مقيم' : 'New Registration (Resident)'}</option>
-                      <option value="vacancies_unavailable">{t.probVacancies}</option>
-                      <option value="student_density">{t.probDensity}</option>
-                      <option value="unjustified_rejection">{t.probRejection}</option>
-                      <option value="distance_from_school">{t.probDistance}</option>
-                      <option value="unregistered_desire">{t.probUnregistered}</option>
-                      <option value="other">{t.probOther}</option>
+                      <option value="new_registration_saudi">{isRtl ? 'تسجيل طالب سعودي مستجد' : 'New Registration (Saudi Student)'}</option>
+                      <option value="new_registration_resident">{isRtl ? 'تسجيل طالب مستجد مقيم' : 'New Registration (Resident Student)'}</option>
                     </select>
                   </div>
                   {errors.problemType && (
@@ -1665,101 +2008,14 @@ export default function SurveyForm({
                 </AnimatePresence>
               </div>
             </div>
-
-            {/* Section 4: Contacted School status */}
-            <div>
-              <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
-                <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                  <UserCheck className="w-4.5 h-4.5" />
-                </span>
-                <h3 className="font-extrabold text-base sm:text-lg">
-                  {isRtl ? 'التواصل المسبق مع المدرسة المعنية' : 'Prior Communication with School'}
-                </h3>
-              </div>
-
-              <div className="space-y-4">
-                {/* Contacted school question */}
-                <div id="field-contactedSchool" className="space-y-3">
-                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
-                    {isRtl ? 'هل تم التواصل مع المدرسة المعنية مسبقاً بخصوص هذا العائق؟' : 'Have you contacted the target school regarding this constraint?'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-4 max-w-sm">
-                    <button
-                      type="button"
-                      onClick={() => setContactedSchool('yes')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
-                        contactedSchool === 'yes'
-                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
-                          : isDark
-                          ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{isRtl ? 'نعم' : 'Yes'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setContactedSchool('no');
-                        setSchoolFeedback(''); // reset feedback
-                      }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl border transition-all cursor-pointer ${
-                        contactedSchool === 'no'
-                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
-                          : isDark
-                          ? 'bg-teal-900/20 border-teal-800/40 text-teal-300 hover:bg-teal-900/35'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{isRtl ? 'لا' : 'No'}</span>
-                    </button>
-                  </div>
-                  {errors.contactedSchool && (
-                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.contactedSchool}</p>
-                  )}
-                </div>
-
-                {/* School feedback details if answered Yes */}
-                <AnimatePresence>
-                  {contactedSchool === 'yes' && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-2 overflow-hidden pt-2"
-                      id="field-schoolFeedback"
-                    >
-                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
-                        {isRtl ? 'إفادة المدرسة التي تم استلامها:' : 'What feedback response was given by the school?'} <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        value={schoolFeedback}
-                        onChange={(e) => setSchoolFeedback(e.target.value)}
-                        placeholder={isRtl ? 'يرجى كتابة الرد أو التبرير الذي أفادتكم به إدارة المدرسة بالتفصيل...' : 'Please input school feedback detail...'}
-                        rows={3}
-                        className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                          isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
-                        } ${
-                          errors.schoolFeedback
-                            ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
-                            : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
-                        }`}
-                        dir={isRtl ? 'rtl' : 'ltr'}
-                      />
-                      {errors.schoolFeedback && (
-                        <p className="text-xs text-red-500 font-bold">{errors.schoolFeedback}</p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+          </>
+        )}
 
             {/* Submit Bar with encryption details */}
             <div className={`pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
               <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
                 <ShieldCheck className="w-5 h-5 text-teal-600 shrink-0" />
-                <span>{isRtl ? 'تشفير عسكري لحماية خصوصية المستند والبيانات (AES-256)' : 'Encrypted via SHA-256 and stored cipher locked'}</span>
+                <span>{isRtl ? 'تشفير عالي لحماية خصوصية المستندات والبيانات (AES-256)' : 'High-level encryption for document and data privacy (AES-256)'}</span>
               </div>
 
               <button

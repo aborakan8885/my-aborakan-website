@@ -283,9 +283,9 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md overflow-y-auto p-3 sm:p-6 flex items-start justify-center animate-fade-in">
       <div
-        className={`w-full max-w-2xl rounded-3xl p-5 sm:p-7 border shadow-2xl relative transition-all ${
+        className={`w-full max-w-2xl rounded-3xl p-5 sm:p-7 border shadow-2xl relative transition-all my-auto max-h-[90vh] flex flex-col ${
           isDark
             ? 'bg-slate-900/95 text-white border-teal-800/80 shadow-teal-950/50'
             : 'bg-white text-slate-900 border-slate-200 shadow-slate-300/50'
@@ -293,7 +293,7 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
         dir={isRtl ? 'rtl' : 'ltr'}
       >
         {/* Header Ribbon */}
-        <div className="flex items-start justify-between border-b pb-4 mb-5 border-slate-200/80 dark:border-slate-800">
+        <div className="shrink-0 flex items-start justify-between border-b pb-4 mb-4 border-slate-200/80 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-teal-600/10 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400 border border-teal-500/20">
               <ShieldCheck className="w-7 h-7" />
@@ -318,16 +318,17 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
           </button>
         </div>
 
-        {/* Stage Selector */}
-        <div className="mb-5 space-y-2">
+        {/* Scrollable Modal Body */}
+        <div className="flex-1 overflow-y-auto pr-1 pl-1 space-y-4 min-h-0">
+          {/* Stage Selector */}
+          <div className="mb-4 space-y-2">
           <label className="block text-xs font-black text-slate-700 dark:text-slate-300">
             {isRtl ? '1️⃣ حدد المرحلة التعليمية المراد التسجيل فيها:' : '1️⃣ Select Educational Stage:'}
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[
               { id: 'primary_grade1', labelAr: 'الصف الأول الابتدائي 🎒', descAr: 'خاضع لاحتساب السن النظامي' },
               { id: 'kindergarten', labelAr: 'رياض الأطفال 👶', descAr: 'المستوى الأول / الثاني / الثالث' },
-              { id: 'other', labelAr: 'المراحل الأعلى 🏫', descAr: 'تحويل أو نقل لصفوف أخرى' },
             ].map((stg) => (
               <button
                 key={stg.id}
@@ -677,9 +678,10 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
               : 'Selected stage does not require primary 1st grade age verification. You can proceed directly.'}
           </div>
         )}
+        </div>
 
         {/* Modal Action Footer */}
-        <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="shrink-0 mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}

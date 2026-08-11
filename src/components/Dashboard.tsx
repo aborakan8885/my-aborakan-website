@@ -68,7 +68,12 @@ import {
   X,
   Zap,
   MessageSquareHeart,
-  Edit
+  Edit,
+  Inbox,
+  Calendar,
+  MapPin,
+  FileUp,
+  Building
 } from 'lucide-react';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
@@ -1717,9 +1722,21 @@ Strategic Recommendations:
 
   // Filter based on Supervisor role scope or showOnlyMySurveys toggle first
   const surveysScope = useMemo(() => {
+    const isEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
+
+    // Role 0: Equivalency Supervisor (مسؤول معادلة الشهادات)
+    if (activeOfficer.role === 'equivalency_supervisor') {
+      return surveys.filter((s) => {
+        if (!s) return false;
+        return !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+      });
+    }
+
     if (activeOfficer.role === 'school_planning') {
       return surveys.filter((s) => {
         if (!s) return false;
+        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        if (isEqItem && !isEqAuthUser) return false;
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id) return true;
         if (
           (s as any).isVacancyRequest ||
@@ -1739,6 +1756,13 @@ Strategic Recommendations:
     if (activeOfficer.role === 'school_leadership') {
       return surveys.filter((s) => {
         if (!s) return false;
+        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        
+        if (isEqItem && !isEqAuthUser) {
+          const isSentToLead = (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || (s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+          if (!isSentToLead) return false;
+        }
+
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
         
         const st = (s as any).vacancyRequestStatus;
@@ -1756,18 +1780,35 @@ Strategic Recommendations:
           (s as any).sentToSchoolPrincipal ||
           (s as any).principalConfirmedStaffing ||
           s.problemType === 'vacancies_unavailable' ||
-          (s.problemType as string) === 'vacancies_closed';
+          (s.problemType as string) === 'vacancies_closed' ||
+          isEqItem;
 
         if (isVacancyOrPlacement) {
-          return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
+          if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+            if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
+          }
+          const studentStageCat = getSurveyStageCategory(s);
+          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+          const studentGender = isGirls ? 'girls' : 'boys';
+
+          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+          if (genderOk && stageOk && sectorOk) return true;
         }
         return false;
       });
     }
 
-    if (activeOfficer.role === 'supervisor' || showOnlyMySurveys) {
+    if (activeOfficer.role === 'supervisor' || showOnlyMySurveys || activeOfficer.role === 'stage_supervisor') {
       return surveys.filter((s) => {
         if (!s) return false;
+        // STRICT ISOLATION: Equivalency requests MUST NOT appear in normal admission officers' lists!
+        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        if (isEqItem && !isEqAuthUser) return false;
+
         // Unreceived / unassigned requests appear for supervisors so they can receive them
         if (!s.assignedOfficerId || !s.isReceived) return true;
         if (s.assignedOfficerId === activeOfficer.id || (s as any).referringOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
@@ -1791,6 +1832,11 @@ Strategic Recommendations:
         return false;
       });
     }
+
+    if (!isEqAuthUser) {
+      return surveys.filter((s) => !((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage));
+    }
+
     return surveys;
   }, [surveys, activeOfficer, showOnlyMySurveys]);
 
@@ -1834,7 +1880,10 @@ Strategic Recommendations:
     return surveys.filter(s => {
       if (!s) return false;
       const st = (s as any).vacancyRequestStatus;
+      const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+
       const isPlacement = (s as any).isVacancyRequest ||
+        isEqItem ||
         st === 'pending' ||
         st === 'pending_vacancy' ||
         st === 'approved' ||
@@ -1864,6 +1913,26 @@ Strategic Recommendations:
       if (activeOfficer.role === 'school_planning') {
         if (s.isResolved || st === 'approved' || st === 'executed' || st === 'archived') return false;
         return st === 'pending_vacancy' || st === 'pending' || !st || isReturned;
+      }
+      if (activeOfficer.role === 'school_leadership') {
+        if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) return false;
+        if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) return true;
+        if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || isReturned) {
+          if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+            if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
+          }
+          const studentStageCat = getSurveyStageCategory(s);
+          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+          const studentGender = isGirls ? 'girls' : 'boys';
+
+          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+          if (genderOk && stageOk && sectorOk) return true;
+        }
+        return false;
       }
       return !s.isResolved;
     });
@@ -1904,6 +1973,106 @@ Strategic Recommendations:
   const [eqTargetSchoolMap, setEqTargetSchoolMap] = useState<Record<string, string>>({});
   const [eqGradeMap, setEqGradeMap] = useState<Record<string, string>>({});
   const [eqNotesMap, setEqNotesMap] = useState<Record<string, string>>({});
+  const [eqApptDateMap, setEqApptDateMap] = useState<Record<string, string>>({});
+  const [eqApptTimeMap, setEqApptTimeMap] = useState<Record<string, string>>({});
+  const [eqApptNotesMap, setEqApptNotesMap] = useState<Record<string, string>>({});
+  const [eqApptLocationMap, setEqApptLocationMap] = useState<Record<string, string>>({});
+  const [showApptPickerMap, setShowApptPickerMap] = useState<Record<string, boolean>>({});
+  const [eqDocAttachedMap, setEqDocAttachedMap] = useState<Record<string, boolean>>({});
+  const [eqDocNameMap, setEqDocNameMap] = useState<Record<string, string>>({});
+  const [eqDocDataMap, setEqDocDataMap] = useState<Record<string, string>>({});
+  const [eqLeadershipNotesMap, setEqLeadershipNotesMap] = useState<Record<string, string>>({});
+  const [eqSelectedLeadershipOfficerMap, setEqSelectedLeadershipOfficerMap] = useState<Record<string, string>>({});
+  const [eqTargetSchoolSearchMap, setEqTargetSchoolSearchMap] = useState<Record<string, string>>({});
+  const [eqSchoolDropdownOpenMap, setEqSchoolDropdownOpenMap] = useState<Record<string, boolean>>({});
+  
+  // Date Mode (Gregorian vs Hijri) and Hijri state
+  const [eqApptDateModeMap, setEqApptDateModeMap] = useState<Record<string, 'gregorian' | 'hijri'>>({});
+  const [eqHijriDayMap, setEqHijriDayMap] = useState<Record<string, string>>({});
+  const [eqHijriMonthMap, setEqHijriMonthMap] = useState<Record<string, string>>({});
+  const [eqHijriYearMap, setEqHijriYearMap] = useState<Record<string, string>>({});
+
+  const HIJRI_MONTHS_NAMES = [
+    "محرم", "صفر", "ربيع الأول", "ربيع الآخر",
+    "جمادى الأولى", "جمادى الآخرة", "رجب", "شعبان",
+    "رمضان", "شوال", "ذو القعدة", "ذو الحجة"
+  ];
+
+  const getHijriDateFromGregorian = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    try {
+      const cleanStr = dateStr.split('م')[0].split('(')[0].trim();
+      const parts = cleanStr.split('-');
+      if (parts.length < 3) return '';
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      if (isNaN(d.getTime())) return '';
+      return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }).format(d);
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const getSurveyStageCategory = (surveyObj: any): 'Primary' | 'Intermediate' | 'Secondary' => {
+    const stage = surveyObj.stage || surveyObj.schoolStage || '';
+    const grade = surveyObj.grade || '';
+    const reqType = surveyObj.requestType || surveyObj.equalizationStage || surveyObj.problemType || '';
+
+    if (stage === 'Primary' || grade.includes('ابتدائي') || reqType.includes('primary') || reqType.includes('ابتدائ')) return 'Primary';
+    if (stage === 'Intermediate' || grade.includes('متوسط') || reqType.includes('intermediate') || reqType.includes('متوسط')) return 'Intermediate';
+    if (stage === 'Secondary' || grade.includes('ثانوي') || reqType.includes('secondary') || reqType.includes('ثانو')) return 'Secondary';
+    return 'Primary';
+  };
+
+  const getMatchedLeadershipSupervisor = (surveyObj: any, officersList: OfficerUser[]): OfficerUser | undefined => {
+    const leadershipOfficers = officersList.filter(
+      o => o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director' || o.role === 'leadership_director')
+    );
+    if (leadershipOfficers.length === 0) return undefined;
+
+    // Determine student gender
+    const isGirls = surveyObj.gender === 'girls' || 
+                    surveyObj.schoolName?.includes('بنات') || 
+                    surveyObj.secondSchoolName?.includes('بنات') || 
+                    surveyObj.thirdSchoolName?.includes('بنات') ||
+                    surveyObj.beneficiaryName?.includes('نورة') ||
+                    surveyObj.studentName?.includes('فاطمة') ||
+                    surveyObj.studentName?.includes('مريم');
+    
+    const studentGender = isGirls ? 'girls' : 'boys';
+    const studentStageCat = getSurveyStageCategory(surveyObj);
+    const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+
+    // 1. Try match on assignedGender and assignedStage
+    let bestMatch = leadershipOfficers.find(o => {
+      const genderMatches = !o.assignedGender || o.assignedGender === 'both' || o.assignedGender === studentGender;
+      const stageMatches = !o.assignedStage || o.assignedStage === 'الكل' || o.assignedStage.includes(stageAr) || o.assignedStage.includes(studentStageCat);
+      return genderMatches && stageMatches;
+    });
+
+    // 2. Try match on workField or roleDescription or nameAr text
+    if (!bestMatch) {
+      const genderText = isGirls ? 'بنات' : 'بنين';
+      bestMatch = leadershipOfficers.find(o => {
+        const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.nameAr || ''}`;
+        return text.includes(genderText) && (text.includes(stageAr) || text.includes(studentStageCat));
+      });
+    }
+
+    // 3. Fallback to match gender only
+    if (!bestMatch) {
+      const genderText = isGirls ? 'بنات' : 'بنين';
+      bestMatch = leadershipOfficers.find(o => {
+        const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.assignedGender || ''}`;
+        return text.includes(genderText) || o.assignedGender === studentGender;
+      });
+    }
+
+    return bestMatch || leadershipOfficers[0];
+  };
 
   // Helper for lookup of school principal details
   const getSchoolPrincipalDetails = useCallback((schoolNameStr: string) => {
@@ -1972,15 +2141,15 @@ Strategic Recommendations:
       if (supervisorFilterTab === 'new_unreceived') {
         if (s.isReceived && s.assignedOfficerId) return false;
       } else if (supervisorFilterTab === 'my_received') {
-        if ((s.assignedOfficerId !== activeOfficer.id && (s as any).referringOfficerId !== activeOfficer.id) || s.isResolved) return false;
+        if ((s.assignedOfficerId !== activeOfficer.id && (s as any).referringOfficerId !== activeOfficer.id && (s as any).assignedLeadershipOfficerId !== activeOfficer.id) || s.isResolved) return false;
       } else if (supervisorFilterTab === 'vacancy_approved') {
         if (s.vacancyRequestStatus !== 'approved' || s.isResolved) return false;
       } else if (supervisorFilterTab === 'sent_leadership') {
-        if (s.vacancyRequestStatus !== 'sent_to_leadership' || s.isResolved) return false;
+        if ((s.vacancyRequestStatus !== 'sent_to_leadership' && !(s as any).sentToLeadership) || s.isResolved) return false;
       } else if (supervisorFilterTab === 'sent_principal') {
-        if (s.vacancyRequestStatus !== 'sent_to_school_principal' || s.isResolved) return false;
+        if ((s.vacancyRequestStatus !== 'sent_to_school_principal' && !(s as any).sentToSchoolPrincipal) || s.isResolved) return false;
       } else if (supervisorFilterTab === 'staffing_confirmed') {
-        if (s.vacancyRequestStatus !== 'staffing_confirmed' && !s.principalConfirmedStaffing) return false;
+        if (s.vacancyRequestStatus !== 'staffing_confirmed' && !(s as any).principalConfirmedStaffing) return false;
       } else if (supervisorFilterTab === 'archived') {
         if (!s.isResolved && s.vacancyRequestStatus !== 'executed' && s.vacancyRequestStatus !== 'archived') return false;
       }
@@ -2049,7 +2218,7 @@ Strategic Recommendations:
   const tabsConfig = useMemo(() => [
     {
       id: 'responses',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor',
+      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations,
       label: t.tabResponses,
       icon: Table,
       color: 'teal',
@@ -2071,7 +2240,7 @@ Strategic Recommendations:
     },
     {
       id: 'vacancy-requests',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning' || activeOfficer.role === 'school_leadership' || activeOfficer.role === 'returned_followup' || activeOfficer.role === 'leadership_director' || activeOfficer.id === vacancySupervisorId,
+      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning' || activeOfficer.role === 'school_leadership' || activeOfficer.role === 'returned_followup' || activeOfficer.role === 'leadership_director' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.id === vacancySupervisorId,
       label: isRtl ? 'طلبات التسكين والمتابعة بالمدارس 🏫' : 'Placement & School Routing 🏫',
       icon: School,
       color: 'teal',
@@ -2080,7 +2249,7 @@ Strategic Recommendations:
     },
     {
       id: 'alerts',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor',
+      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations,
       label: t.tabAlerts,
       icon: Mail,
       color: 'rose',
@@ -4495,7 +4664,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           <div className="space-y-6 animate-fade-in" id="panel-responses">
             
             {/* Admin/Director Personal Filter Toggle */}
-            {activeOfficer.role !== 'supervisor' && (
+            {activeOfficer.role !== 'supervisor' && activeOfficer.role !== 'equivalency_supervisor' && (
               <div className={`p-4 rounded-3xl gap-4 border flex flex-col sm:flex-row justify-between items-start sm:items-center ${
                 isDark ? 'bg-teal-950/20 border-teal-800/30' : 'bg-blue-50/40 border-blue-150'
               }`}>
@@ -4535,7 +4704,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
             )}
             
             {/* Supervisor Pipeline Quick Filter Bar */}
-            {(activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director') && (
+            {(activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director') && (
               <div className={`p-4 rounded-2xl border space-y-3 ${
                 isDark ? 'bg-teal-950/30 border-teal-800/40' : 'bg-slate-50 border-slate-200/80 shadow-xs'
               }`}>
@@ -4889,7 +5058,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             {survey.vacancyRequestStatus === 'approved'
                                               ? (isRtl ? '🔓 تم فتح الشاغر بالمدرسة' : 'Vacancy Approved')
                                               : survey.vacancyRequestStatus === 'pending_vacancy'
-                                                ? (isRtl ? '⏳ بانتظار فتح الشاغر' : 'Pending Vacancy')
+                                                ? (isRtl ? '⏳ قيد الدراسة والمتابعة' : 'Under Review & Study')
                                                 : survey.assignedOfficerId
                                                   ? (isRtl ? '👤 مستلم قيد المتابعة' : 'Received')
                                                   : (isRtl ? '📥 وارد جديد غير مستلم' : 'New Unreceived')}
@@ -4922,161 +5091,703 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   </button>
                                 )}
 
-                                {/* WORKFLOW BUTTONS FOR ADMISSION SUPERVISOR */}
-                                {!survey.isResolved && (survey.assignedOfficerId === activeOfficer.id || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor') && (
-                                  <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-
-                                    {/* ACTION 2: Request Vacancy Opening (Direct button - No name picking!) */}
-                                    {survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
-                                      <button
-                                        onClick={() => {
-                                          if (onUpdateSurvey) {
-                                            onUpdateSurvey({
-                                              ...survey,
-                                              isVacancyRequest: true,
-                                              vacancyRequestStatus: 'pending_vacancy',
-                                              referringOfficerId: activeOfficer.id,
-                                              referringOfficerName: activeOfficer.nameAr,
-                                              referralNotes: `طلب فتح شاغر بمدرسة (${survey.schoolName}) مرفوع بواسطة مشرف القبول (${activeOfficer.nameAr})`
-                                            });
-                                            alert(isRtl ? `✓ تم إرسال طلب فتح الشاغر في مدرسة (${survey.schoolName}) لمسؤول فتح الشواغر بنجاح!` : 'Vacancy opening request sent!');
-                                          }
-                                        }}
-                                        disabled={survey.vacancyRequestStatus === 'pending_vacancy'}
-                                        className={`w-full py-1.5 px-3 font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 border ${
-                                          survey.vacancyRequestStatus === 'pending_vacancy'
-                                            ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 opacity-80 cursor-not-allowed'
-                                            : 'bg-amber-600 hover:bg-amber-700 text-white border-amber-700 shadow-xs'
-                                        }`}
-                                      >
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                        <span>
-                                          {survey.vacancyRequestStatus === 'pending_vacancy'
-                                            ? (isRtl ? '⏳ طلب فتح الشاغر قيد المراجعة' : 'Vacancy Request Pending')
-                                            : (isRtl ? 'طلب فتح الشاغر 🔓' : 'Request Vacancy Opening 🔓')}
+                                {/* WORKFLOW BUTTONS FOR ADMISSION & EQUIVALENCY SUPERVISOR */}
+                                {!survey.isResolved && (survey.assignedOfficerId === activeOfficer.id || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) && (
+                                  (activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || (survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') ? (
+                                    <div className="space-y-2 p-2.5 rounded-2xl bg-purple-50/50 dark:bg-slate-900/90 border border-purple-200 dark:border-purple-800/80 shadow-xs text-start mt-2">
+                                      <div className="flex items-center justify-between pb-1.5 border-b border-purple-200/80 dark:border-purple-900/60">
+                                        <span className="text-[11px] font-black text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                                          📜 {isRtl ? "إجراءات مسؤول معادلات الشهادات:" : "Equivalency Actions:"}
                                         </span>
-                                      </button>
-                                    )}
+                                      </div>
 
-                                    {/* ACTION 3: Route to School Leadership Officer for Follow-up (إرسال لمشرف القيادة للمتابعة - مستقل) */}
-                                    <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
-                                      <label className="block text-[10px] font-black text-indigo-900 dark:text-indigo-300">
-                                        {isRtl ? 'إحالة لمشرف القيادة للمتابعة:' : 'Route to Leadership Officer:'}
-                                      </label>
-                                      <div className="space-y-1">
-                                        <select
-                                          value={selectedCategoryMap[survey.id] || getDefaultCategory(survey)}
-                                          onChange={(e) => setSelectedCategoryMap({ ...selectedCategoryMap, [survey.id]: e.target.value })}
-                                          className="w-full text-[11px] p-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                        >
-                                          <option value="رياض الأطفال">👧/🧒 مرحلة رياض الأطفال</option>
-                                          <option value="الطفولة المبكرة">🧒 مرحلة الطفولة المبكرة</option>
-                                          <option value="المرحلة الابتدائية - بنين">👦 المرحلة الابتدائية (بنين)</option>
-                                          <option value="المرحلة الابتدائية - بنات">👧 المرحلة الابتدائية (بنات)</option>
-                                          <option value="المرحلة المتوسطة - بنين">👨‍🎓 المرحلة المتوسطة (بنين)</option>
-                                          <option value="المرحلة المتوسطة - بنات">👩‍🎓 المرحلة المتوسطة (بنات)</option>
-                                          <option value="المرحلة الثانوية - بنين">👨‍🎓 المرحلة الثانوية (بنين)</option>
-                                          <option value="المرحلة الثانوية - بنات">👩‍🎓 المرحلة الثانوية (بنات)</option>
-                                        </select>
-
+                                      {/* 1. أيقونة استلام الطلب */}
+                                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 space-y-1">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                                            <Inbox className="w-3.5 h-3.5 text-purple-600" />
+                                            <span>{isRtl ? "1. أيقونة استلام الطلب" : "1. Receive Request Icon"}</span>
+                                          </span>
+                                          {(survey as any).isReceivedByEqOfficer && (
+                                            <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-300">
+                                              ✓ {isRtl ? "تم الاستلام" : "Claimed"}
+                                            </span>
+                                          )}
+                                        </div>
                                         <button
+                                          type="button"
                                           onClick={() => {
-                                            const cat = selectedCategoryMap[survey.id] || getDefaultCategory(survey);
-                                            const leadOff = officers.find(o => o.role === 'school_leadership' && o.isActive);
                                             if (onUpdateSurvey) {
+                                              const nowIso = new Date().toISOString();
                                               onUpdateSurvey({
                                                 ...survey,
-                                                sentToLeadership: true,
-                                                sentToLeadershipAt: new Date().toISOString(),
-                                                vacancyRequestStatus: survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal'
-                                                  ? 'sent_to_school_principal'
-                                                  : 'sent_to_leadership',
-                                                leadershipCategory: cat,
-                                                assignedLeadershipOfficerId: leadOff?.id || activeOfficer.id,
-                                                leadershipOfficerName: leadOff?.nameAr || 'مشرف القيادة المدرسية',
-                                                isVacancyRequest: true,
-                                                referringOfficerId: (survey as any).referringOfficerId || activeOfficer.id,
-                                                referringOfficerName: (survey as any).referringOfficerName || activeOfficer.nameAr
-                                              });
-                                              alert(isRtl ? `✓ تم الإرسال لمشرف القيادة للمتابعة (${cat})!` : `Routed to leadership supervisor (${cat})!`);
+                                                isReceivedByEqOfficer: true,
+                                                receivedByEqOfficerName: activeOfficer.nameAr,
+                                                eqReceivedAt: nowIso,
+                                                isReceived: true,
+                                                receivedAt: nowIso,
+                                                assignedOfficerId: activeOfficer.id,
+                                                serviceEmployee: activeOfficer.nameAr,
+                                                notes: isRtl
+                                                  ? "📥 تم استلام المعاملة رسمياً بواسطة مسئول معادلة الشهادات (" + activeOfficer.nameAr + ") للبدء بفحص الملف وإجراءات المعايرة."
+                                                  : "Request received by equivalency supervisor (" + activeOfficer.nameAr + ")."
+                                              } as any);
+                                              alert(isRtl ? "✓ تم تسجيل استلام الطلب بنجاح باسم (" + activeOfficer.nameAr + ")!" : "Request received successfully!");
                                             }
                                           }}
-                                          className={`w-full py-1.5 px-2 text-xs font-black rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 shadow-xs ${
-                                            survey.sentToLeadership || survey.vacancyRequestStatus === 'sent_to_leadership'
-                                              ? 'bg-indigo-700 text-white hover:bg-indigo-800'
-                                              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                          }`}
+                                          disabled={(survey as any).isReceivedByEqOfficer}
+                                          className={'w-full py-1.5 px-2.5 rounded-xl font-black text-[10px] shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ' + (
+                                            (survey as any).isReceivedByEqOfficer
+                                              ? "bg-emerald-600 text-white cursor-default"
+                                              : "bg-purple-600 hover:bg-purple-700 text-white active:scale-95"
+                                          )}
                                         >
-                                          <Send className="w-3.5 h-3.5" />
+                                          <Inbox className="w-3.5 h-3.5" />
                                           <span>
-                                            {survey.sentToLeadership || survey.vacancyRequestStatus === 'sent_to_leadership'
-                                              ? (isRtl ? `✓ تم الإرسال لمشرف القيادة للمتابعة` : 'Sent to Leadership')
-                                              : (isRtl ? 'إرسال لمشرف القيادة للمتابعة 🏫➡️' : 'Send to Leadership Supervisor 🏫➡️')}
+                                            {(survey as any).isReceivedByEqOfficer
+                                              ? (isRtl ? "✓ 1. تم استلام الطلب رسمياً" : "1. Request Received")
+                                              : (isRtl ? "📥 1. أيقونة استلام الطلب" : "1. Receive Request Icon")}
                                           </span>
                                         </button>
                                       </div>
+
+                                      {/* 2. أيقونة تحديد موعد للمستفيد */}
+                                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 space-y-1.5">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                                            <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                                            <span>{isRtl ? "2. أيقونة تحديد موعد للمستفيد" : "2. Appointment Icon"}</span>
+                                          </span>
+                                          {survey.hasReviewAppointment && (
+                                            <span className="text-[9px] font-black text-amber-800 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-lg border border-amber-300">
+                                              📅 {survey.appointmentDate}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowApptPickerMap({ ...showApptPickerMap, [survey.id]: !showApptPickerMap[survey.id] })}
+                                          className="w-full py-1.5 px-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                        >
+                                          <Calendar className="w-3.5 h-3.5" />
+                                          <span>
+                                            {showApptPickerMap[survey.id]
+                                              ? (isRtl ? "✖ إغلاق الروزنامة" : "Close Calendar")
+                                              : survey.hasReviewAppointment
+                                                ? (isRtl ? "📅 2. تعديل موعد المستفيد" : "2. Reschedule Appointment")
+                                                : (isRtl ? "📅 2. أيقونة تحديد موعد للمستفيد" : "2. Appointment Icon")}
+                                          </span>
+                                        </button>
+
+                                        {/* Calendar Picker Box */}
+                                        {showApptPickerMap[survey.id] && (
+                                          <div className="p-2.5 bg-amber-50/90 dark:bg-amber-950/50 rounded-xl border-2 border-amber-400 dark:border-amber-700 space-y-2.5 text-[10px] shadow-sm">
+                                            {/* Date Selection & Hijri Display */}
+                                            <div className="space-y-1">
+                                               <div className="flex items-center justify-between gap-1 mb-1">
+                                                 <label className="block font-black text-slate-800 dark:text-slate-200">
+                                                   📅 {isRtl ? "تحديد الروزنامة والتقويم:" : "Date Selection:"}
+                                                 </label>
+                                                 <div className="inline-flex p-0.5 bg-amber-200/80 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700">
+                                                   <button
+                                                     type="button"
+                                                     onClick={() => setEqApptDateModeMap({ ...eqApptDateModeMap, [survey.id]: 'gregorian' })}
+                                                     className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all cursor-pointer ${
+                                                       (eqApptDateModeMap[survey.id] || 'gregorian') === 'gregorian'
+                                                         ? 'bg-amber-600 text-white shadow-xs'
+                                                         : 'text-slate-700 dark:text-amber-200 hover:bg-amber-300/50'
+                                                     }`}
+                                                   >
+                                                     📅 {isRtl ? "تاريخ ميلادي" : "Gregorian"}
+                                                   </button>
+                                                   <button
+                                                     type="button"
+                                                     onClick={() => setEqApptDateModeMap({ ...eqApptDateModeMap, [survey.id]: 'hijri' })}
+                                                     className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all cursor-pointer ${
+                                                       eqApptDateModeMap[survey.id] === 'hijri'
+                                                         ? 'bg-amber-600 text-white shadow-xs'
+                                                         : 'text-slate-700 dark:text-amber-200 hover:bg-amber-300/50'
+                                                     }`}
+                                                   >
+                                                     🌙 {isRtl ? "تاريخ هجري" : "Hijri"}
+                                                   </button>
+                                                 </div>
+                                               </div>
+                                               {(eqApptDateModeMap[survey.id] || 'gregorian') === 'gregorian' ? (
+                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 items-center">
+                                                   <input
+                                                     type="date"
+                                                     value={eqApptDateMap[survey.id] || survey.appointmentDate || ""}
+                                                     onChange={(e) => setEqApptDateMap({ ...eqApptDateMap, [survey.id]: e.target.value })}
+                                                     className="w-full p-1.5 font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white cursor-pointer outline-none focus:ring-1 focus:ring-amber-500"
+                                                   />
+                                                   <div className="p-1.5 bg-amber-100/90 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700 text-[9px] font-black text-amber-950 dark:text-amber-200 flex items-center justify-between gap-1">
+                                                     <span>🌙 {isRtl ? "المكافئ الهجري:" : "Hijri Equivalent:"}</span>
+                                                     <span className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded text-amber-900 dark:text-amber-300 font-extrabold border border-amber-200 dark:border-amber-800">
+                                                       {getHijriDateFromGregorian(eqApptDateMap[survey.id] || survey.appointmentDate) || (isRtl ? "اختر تاريخاً بالروزنامة" : "Select date")}
+                                                     </span>
+                                                   </div>
+                                                 </div>
+                                               ) : (
+                                                 <div className="space-y-1.5 p-2 bg-amber-100/80 dark:bg-amber-900/40 rounded-xl border border-amber-300 dark:border-amber-700">
+                                                   <div className="grid grid-cols-3 gap-1">
+                                                     <div>
+                                                       <label className="block text-[8px] font-black text-amber-900 dark:text-amber-200 mb-0.5">
+                                                         {isRtl ? "اليوم:" : "Day:"}
+                                                       </label>
+                                                       <select
+                                                         value={eqHijriDayMap[survey.id] || "15"}
+                                                         onChange={(e) => setEqHijriDayMap({ ...eqHijriDayMap, [survey.id]: e.target.value })}
+                                                         className="w-full p-1 text-[10px] font-extrabold rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                                                       >
+                                                         {Array.from({ length: 30 }, (_, i) => (
+                                                           <option key={i + 1} value={String(i + 1).padStart(2, '0')}>{i + 1}</option>
+                                                         ))}
+                                                       </select>
+                                                     </div>
+
+                                                     <div>
+                                                       <label className="block text-[8px] font-black text-amber-900 dark:text-amber-200 mb-0.5">
+                                                         {isRtl ? "الشهر الهجري:" : "Month:"}
+                                                       </label>
+                                                       <select
+                                                         value={eqHijriMonthMap[survey.id] || "صفر"}
+                                                         onChange={(e) => setEqHijriMonthMap({ ...eqHijriMonthMap, [survey.id]: e.target.value })}
+                                                         className="w-full p-1 text-[10px] font-extrabold rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                                                       >
+                                                         {HIJRI_MONTHS_NAMES.map((m) => (
+                                                           <option key={m} value={m}>{m}</option>
+                                                         ))}
+                                                       </select>
+                                                     </div>
+
+                                                     <div>
+                                                       <label className="block text-[8px] font-black text-amber-900 dark:text-amber-200 mb-0.5">
+                                                         {isRtl ? "السنة الهجرية:" : "Year:"}
+                                                       </label>
+                                                       <select
+                                                         value={eqHijriYearMap[survey.id] || "1448"}
+                                                         onChange={(e) => setEqHijriYearMap({ ...eqHijriYearMap, [survey.id]: e.target.value })}
+                                                         className="w-full p-1 text-[10px] font-extrabold rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                                                       >
+                                                         {["1446", "1447", "1448", "1449", "1450"].map((y) => (
+                                                           <option key={y} value={y}>{y} هـ</option>
+                                                         ))}
+                                                       </select>
+                                                     </div>
+                                                   </div>
+
+                                                   <div className="p-1 bg-white dark:bg-slate-900 rounded-lg border border-amber-200 dark:border-amber-800 text-[9px] font-black text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                                                     <span>🌙 {isRtl ? "التاريخ الهجري المختار:" : "Selected Hijri Date:"}</span>
+                                                     <span className="text-amber-700 dark:text-amber-300 font-extrabold">
+                                                       {`${eqHijriDayMap[survey.id] || '15'} ${eqHijriMonthMap[survey.id] || 'صفر'} ${eqHijriYearMap[survey.id] || '1448'} هـ`}
+                                                     </span>
+                                                   </div>
+                                                 </div>
+                                               )}
+                                            </div>
+
+                                            {/* Time Selection */}
+                                            <div>
+                                              <label className="block font-black text-slate-800 dark:text-slate-200 mb-0.5">
+                                                ⏰ {isRtl ? "تحديد الساعة والوقت:" : "Time:"}
+                                              </label>
+                                              <select
+                                                value={eqApptTimeMap[survey.id] || survey.appointmentTime || "09:00 صباحاً"}
+                                                onChange={(e) => setEqApptTimeMap({ ...eqApptTimeMap, [survey.id]: e.target.value })}
+                                                className="w-full p-1.5 font-bold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-500"
+                                              >
+                                                <option value="08:00 صباحاً">08:00 صباحاً</option>
+                                                <option value="08:30 صباحاً">08:30 صباحاً</option>
+                                                <option value="09:00 صباحاً">09:00 صباحاً</option>
+                                                <option value="09:30 صباحاً">09:30 صباحاً</option>
+                                                <option value="10:00 صباحاً">10:00 صباحاً</option>
+                                                <option value="10:30 صباحاً">10:30 صباحاً</option>
+                                                <option value="11:00 صباحاً">11:00 صباحاً</option>
+                                                <option value="11:30 صباحاً">11:30 صباحاً</option>
+                                                <option value="12:00 ظهراً">12:00 ظهراً</option>
+                                                <option value="12:30 ظهراً">12:30 ظهراً</option>
+                                                <option value="01:00 ظهراً">01:00 ظهراً</option>
+                                              </select>
+                                            </div>
+
+                                            {/* GPS Location & Google Maps Link Options */}
+                                            <div className="space-y-1">
+                                              <div className="flex flex-wrap items-center justify-between gap-1 mb-0.5">
+                                                <label className="font-black text-slate-800 dark:text-slate-200">
+                                                  📍 {isRtl ? "إرفاق رابط/بيانات الموقع الحالي لمقر المراجعة:" : "Location Link:"}
+                                                </label>
+                                                <div className="flex items-center gap-1.5">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      window.open("https://www.google.com/maps", "_blank");
+                                                    }}
+                                                    className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 hover:bg-blue-200 rounded border border-blue-300 font-extrabold text-[9px] flex items-center gap-0.5 cursor-pointer"
+                                                  >
+                                                    🗺️ {isRtl ? "فتح خرائط Google" : "Open Google Maps"}
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      if (navigator.geolocation) {
+                                                        navigator.geolocation.getCurrentPosition(
+                                                          (pos) => {
+                                                            const gpsLink = "https://maps.google.com/?q=" + pos.coords.latitude + "," + pos.coords.longitude;
+                                                            setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: gpsLink });
+                                                            if (navigator.clipboard) {
+                                                              navigator.clipboard.writeText(gpsLink);
+                                                            }
+                                                            alert(isRtl ? "✓ تم إرفاق موقعك الجغرافي الحالي عبر (GPS) ونسخ الرابط بنجاح!\n📍 الرابط: " + gpsLink : "Current GPS location attached and copied!");
+                                                          },
+                                                          () => {
+                                                            const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
+                                                            setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: defaultLink });
+                                                            window.open("https://www.google.com/maps", "_blank");
+                                                            alert(isRtl ? "⚠️ تعذر جلب GPS تلقائياً. تم إرفاق رابط الموقع المعتمد وفتح خرائط Google لتحديد الموقع يدوياً." : "Opening Google Maps...");
+                                                          },
+                                                          { enableHighAccuracy: true, timeout: 8000 }
+                                                        );
+                                                      } else {
+                                                        const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
+                                                        setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: defaultLink });
+                                                        window.open("https://www.google.com/maps", "_blank");
+                                                      }
+                                                    }}
+                                                    className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 rounded border border-emerald-300 font-extrabold text-[9px] flex items-center gap-0.5 cursor-pointer"
+                                                  >
+                                                    📍 {isRtl ? "إرفاق موقعي الحالي (GPS) ونسخ الرابط" : "Attach GPS & Copy"}
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              <input
+                                                type="text"
+                                                value={eqApptLocationMap[survey.id] !== undefined ? eqApptLocationMap[survey.id] : (survey.appointmentLocationLink || "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات")}
+                                                onChange={(e) => setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: e.target.value })}
+                                                placeholder="https://maps.google.com/..."
+                                                className="w-full p-1.5 font-bold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-500"
+                                              />
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const isHijriMode = eqApptDateModeMap[survey.id] === 'hijri';
+                                                let fullApptDate = "";
+                                                if (isHijriMode) {
+                                                  const day = eqHijriDayMap[survey.id] || "15";
+                                                  const month = eqHijriMonthMap[survey.id] || "صفر";
+                                                  const year = eqHijriYearMap[survey.id] || "1448";
+                                                  fullApptDate = `${day} ${month} ${year} هـ`;
+                                                } else {
+                                                  const rawDate = eqApptDateMap[survey.id] || survey.appointmentDate;
+                                                  if (!rawDate) {
+                                                    alert(isRtl ? "⚠️ يرجى تحديد تاريخ يوم المراجعة من الروزنامة." : "Please select appointment date.");
+                                                    return;
+                                                  }
+                                                  const hijriStr = getHijriDateFromGregorian(rawDate);
+                                                  fullApptDate = hijriStr && !rawDate.includes("هـ") ? `${rawDate} م (${hijriStr})` : rawDate;
+                                                }
+                                                const apptTime = eqApptTimeMap[survey.id] || survey.appointmentTime || "09:00 صباحاً";
+                                                const apptLoc = (eqApptLocationMap[survey.id] !== undefined ? eqApptLocationMap[survey.id] : (survey.appointmentLocationLink || "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات")).trim();
+                                                const apptNote = (eqApptNotesMap[survey.id] !== undefined ? eqApptNotesMap[survey.id] : (survey.appointmentNote || "تنبيه هام: يرجى إحضار جميع المستندات والمؤهلات الرسمية والأصلية لعمل المعادلة.")).trim();
+
+                                                if (onUpdateSurvey) {
+                                                  onUpdateSurvey({
+                                                    ...survey,
+                                                    hasReviewAppointment: true,
+                                                    appointmentDate: fullApptDate,
+                                                    appointmentTime: apptTime,
+                                                    appointmentLocationLink: apptLoc,
+                                                    appointmentNote: apptNote,
+                                                    appointmentSetAt: new Date().toISOString(),
+                                                    appointmentSetBy: activeOfficer.nameAr,
+                                                    notes: isRtl
+                                                      ? "📅 تم تحديد موعد للمراجعة من مسئول المعادلات (" + activeOfficer.nameAr + ") بتاريخ (" + fullApptDate + ") الساعة (" + apptTime + "). أُرفق رابط الموقع وأُرسل التنبيه للمستفيد."
+                                                      : "Appointment set for (" + fullApptDate + ") at (" + apptTime + ")."
+                                                  } as any);
+
+                                                  setShowApptPickerMap({ ...showApptPickerMap, [survey.id]: false });
+                                                  alert(isRtl ? "🎉 تم حفظ وإرسال الموعد ورابط الموقع لشاشة المستفيد بنجاح!\n\n• التاريخ: " + fullApptDate + "\n• الوقت: " + apptTime : "Appointment saved!");
+                                                }
+                                              }}
+                                              className="w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1 active:scale-95"
+                                            >
+                                              <CheckCircle2 className="w-3.5 h-3.5" />
+                                              <span>{isRtl ? "حفظ وإرسال الموعد والموقع للمستفيد" : "Save & Send"}</span>
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* 3. أيقونة رفع المعادلة من الجهاز بعد إكمالها */}
+                                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800/80 space-y-1">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                                            <Upload className="w-3.5 h-3.5 text-blue-600" />
+                                            <span>{isRtl ? "3. أيقونة رفع المعادلة من الجهاز" : "3. Upload Equivalency Icon"}</span>
+                                          </span>
+                                          {(eqDocAttachedMap[survey.id] || survey.equalizationDocAttached) && (
+                                            <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-300">
+                                              ✓ {isRtl ? "مرفوعة" : "Uploaded"}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {eqDocNameMap[survey.id] || survey.equalizationDocName ? (
+                                          <p className="text-[9px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                                            📄 {eqDocNameMap[survey.id] || survey.equalizationDocName}
+                                          </p>
+                                        ) : null}
+                                        <label className="w-full py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95">
+                                          <Upload className="w-3.5 h-3.5" />
+                                          <span>{isRtl ? "📤 3. رفع المعادلة من الجهاز" : "3. Upload Equivalency File"}</span>
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => {
+                                                  const base64 = event.target?.result as string;
+                                                  setEqDocNameMap({ ...eqDocNameMap, [survey.id]: file.name });
+                                                  setEqDocDataMap({ ...eqDocDataMap, [survey.id]: base64 });
+                                                  setEqDocAttachedMap({ ...eqDocAttachedMap, [survey.id]: true });
+
+                                                  if (onUpdateSurvey) {
+                                                    onUpdateSurvey({
+                                                      ...survey,
+                                                      equalizationDocAttached: true,
+                                                      equalizationDocName: file.name,
+                                                      transferAttachmentData: base64,
+                                                      equalizationCompleted: true,
+                                                      equalizationCompletedAt: new Date().toISOString(),
+                                                      equalizationCompletedBy: activeOfficer.nameAr,
+                                                      notes: isRtl
+                                                        ? "📤 تم رفع وثيقة المعادلة المعتمدة من الجهاز بواسطة (" + activeOfficer.nameAr + ") باسم الملف: (" + file.name + ")."
+                                                        : "Equivalency document uploaded: (" + file.name + ")."
+                                                    } as any);
+                                                    alert(isRtl ? "✓ تم رفع وثيقة المعادلة المعتمدة (" + file.name + ") بنجاح!" : "File uploaded successfully!");
+                                                  }
+                                                };
+                                                reader.readAsDataURL(file);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+
+                                      {/* 4. أيقونة إحالة الطلب للمدرسة بعد التسكين مرفق به المعادلة */}
+                                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 space-y-1.5">
+                                        <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center justify-between gap-1">
+                                          <span className="flex items-center gap-1">
+                                            <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>{isRtl ? "4. إحالة الطلب للمدرسة (البحث والفلترة):" : "4. Refer to School:"}</span>
+                                          </span>
+                                          {survey.sentToSchoolPrincipal && (
+                                            <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                                              ✓ أُحيلت للمدرسة
+                                            </span>
+                                          )}
+                                        </span>
+
+                                        <div className="space-y-1">
+                                          {/* Searchable Combobox for Schools */}
+                                          {(() => {
+                                            const searchTerm = (eqTargetSchoolSearchMap[survey.id] !== undefined 
+                                              ? eqTargetSchoolSearchMap[survey.id] 
+                                              : (eqTargetSchoolMap[survey.id] || survey.schoolName || "")).toLowerCase().trim();
+                                            
+                                            const matchedSchools = localSchools.filter(sch => 
+                                              !searchTerm || 
+                                              sch.nameAr.toLowerCase().includes(searchTerm) || 
+                                              (sch.code && sch.code.toString().includes(searchTerm)) ||
+                                              (sch.stage && sch.stage.toLowerCase().includes(searchTerm))
+                                            );
+
+                                            return (
+                                              <div className="relative">
+                                                <div className="flex items-center gap-1">
+                                                  <input
+                                                    type="text"
+                                                    placeholder={isRtl ? "🔍 اكتب اسم المدرسة أو الرقم الوزاري للبحث والفلترة..." : "Search school name or minister code..."}
+                                                    value={eqTargetSchoolSearchMap[survey.id] !== undefined ? eqTargetSchoolSearchMap[survey.id] : (eqTargetSchoolMap[survey.id] || survey.schoolName || "")}
+                                                    onFocus={() => setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: true })}
+                                                    onChange={(e) => {
+                                                      const val = e.target.value;
+                                                      setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: val });
+                                                      setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: val });
+                                                      setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: true });
+                                                    }}
+                                                    className="w-full p-1.5 text-[10px] font-extrabold rounded-lg border border-emerald-400 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                                                  />
+                                                  {(eqTargetSchoolMap[survey.id] || eqTargetSchoolSearchMap[survey.id]) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: "" });
+                                                        setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: "" });
+                                                        setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: false });
+                                                      }}
+                                                      className="px-1.5 py-1 text-[10px] font-extrabold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg shrink-0 cursor-pointer"
+                                                      title="مسح اختيار المدرسة"
+                                                    >
+                                                      ✖
+                                                    </button>
+                                                  )}
+                                                </div>
+
+                                                {eqSchoolDropdownOpenMap[survey.id] && (
+                                                  <div className="absolute z-50 right-0 left-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-xl shadow-xl divide-y divide-slate-100 dark:divide-slate-800 text-[10px]">
+                                                    {matchedSchools.length === 0 ? (
+                                                      <div className="p-2 text-center text-slate-500 font-bold">
+                                                        لا توجد مدرسة تطابق كلمة البحث
+                                                      </div>
+                                                    ) : (
+                                                      matchedSchools.slice(0, 30).map(sch => (
+                                                        <div
+                                                          key={sch.id}
+                                                          onClick={() => {
+                                                            setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: sch.nameAr });
+                                                            setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: sch.nameAr });
+                                                            setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: false });
+                                                          }}
+                                                          className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 cursor-pointer flex items-center justify-between gap-1 transition-colors"
+                                                        >
+                                                          <span className="font-extrabold text-slate-900 dark:text-white truncate">
+                                                            🏫 {sch.nameAr}
+                                                          </span>
+                                                          <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 shrink-0">
+                                                            {sch.stage || 'عام'}
+                                                          </span>
+                                                        </div>
+                                                      ))
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
+
+                                          <select
+                                            value={eqGradeMap[survey.id] || survey.grade || ""}
+                                            onChange={(e) => setEqGradeMap({ ...eqGradeMap, [survey.id]: e.target.value })}
+                                            className="w-full p-1.5 text-[10px] font-bold rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                                          >
+                                            <option value="">{isRtl ? "-- اختر الصف المعادل --" : "-- Select Grade --"}</option>
+                                            <option value="الأول الابتدائي">الأول الابتدائي</option>
+                                            <option value="الثاني الابتدائي">الثاني الابتدائي</option>
+                                            <option value="الثالث الابتدائي">الثالث الابتدائي</option>
+                                            <option value="الرابع الابتدائي">الرابع الابتدائي</option>
+                                            <option value="الخامس الابتدائي">الخامس الابتدائي</option>
+                                            <option value="السادس الابتدائي">السادس الابتدائي</option>
+                                            <option value="الأول المتوسط">الأول المتوسط</option>
+                                            <option value="الثاني المتوسط">الثاني المتوسط</option>
+                                            <option value="الثالث المتوسط">الثالث المتوسط</option>
+                                            <option value="الأول الثانوي">الأول الثانوي</option>
+                                            <option value="الثاني الثانوي">الثاني الثانوي</option>
+                                            <option value="الثالث الثانوي">الثالث الثانوي</option>
+                                          </select>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              if (!targetSch) {
+                                                alert(isRtl ? "⚠️ يرجى تحديد المدرسة الموجه لها الطالب للتسكين." : "Please select target school.");
+                                                return;
+                                              }
+                                              const calibratedGrade = eqGradeMap[survey.id] || survey.grade;
+                                              const docName = eqDocNameMap[survey.id] || survey.equalizationDocName || "وثيقة-معادلة-مؤهلات-معتمدة.pdf";
+                                              const docData = eqDocDataMap[survey.id] || survey.transferAttachmentData || "data:application/pdf;base64,EQUIVALENCY_DOC_DUMMY";
+
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  schoolName: targetSch,
+                                                  grade: calibratedGrade,
+                                                  sentToSchoolPrincipal: true,
+                                                  sentToPrincipalAt: new Date().toISOString(),
+                                                  vacancyRequestStatus: "sent_to_school_principal",
+                                                  equalizationDocAttached: true,
+                                                  equalizationDocName: docName,
+                                                  transferAttachmentData: docData,
+                                                  referringOfficerId: activeOfficer.id,
+                                                  referringOfficerName: activeOfficer.nameAr,
+                                                  notes: isRtl
+                                                    ? "🏫 تم إحالة الطلب لمدير مدرسة (" + targetSch + ") للتسكين المباشر مرفق به وثيقة المعادلة المعتمدة (" + docName + ")."
+                                                    : "Referred to school (" + targetSch + ") with attached equivalency doc."
+                                                } as any);
+
+                                                alert(isRtl ? "✓ تم إحالة الطلب بنجاح لمديرة/مدير مدرسة (" + targetSch + ") مرفق به وثيقة المعادلة!" : "Referred to school with equivalency document!");
+                                              }
+                                            }}
+                                            className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                          >
+                                            <Send className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? "🏫 4. إحالة الطلب للمدرسة بعد التسكين" : "4. Route to School with Doc"}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* 5. أيقونة إرسال الطلب لمشرف القيادة لمتابعة التسكين وفق المرحلة والجنس تلقائياً */}
+                                      {(() => {
+                                        const autoMatchedLead = getMatchedLeadershipSupervisor(survey, officers);
+                                        const currentLeadId = eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId || autoMatchedLead?.id || "";
+
+                                        return (
+                                          <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/80 space-y-1.5">
+                                            <div className="flex items-center justify-between gap-1">
+                                              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                                                <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>{isRtl ? "5. إرسال لمشرف القيادة المدرسية:" : "5. Send to Leadership:"}</span>
+                                              </span>
+                                              {autoMatchedLead && (
+                                                <span className="text-[8px] font-extrabold bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-200">
+                                                  ⭐ {isRtl ? `توجيه آلي: ${autoMatchedLead.nameAr}` : autoMatchedLead.nameAr}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <div className="space-y-1">
+                                              <select
+                                                value={currentLeadId}
+                                                onChange={(e) => setEqSelectedLeadershipOfficerMap({ ...eqSelectedLeadershipOfficerMap, [survey.id]: e.target.value })}
+                                                className="w-full p-1.5 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                                              >
+                                                <option value="">{isRtl ? "-- اختر مشرف القيادة المدرسية --" : "-- Select Leadership Officer --"}</option>
+                                                {officers.filter(o => o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director' || o.role === 'leadership_director')).map(o => {
+                                                  const isMatched = autoMatchedLead && o.id === autoMatchedLead.id;
+                                                  return (
+                                                    <option key={o.id} value={o.id}>
+                                                      {isMatched ? `⭐ [المناسب آلياً للمرحلة والجنس] ${o.nameAr}` : o.nameAr} {o.workField ? `(${o.workField})` : ""}
+                                                    </option>
+                                                  );
+                                                })}
+                                              </select>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const selectedLeadId = currentLeadId;
+                                                  const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                                  const leadOfficer = officers.find(o => o.id === selectedLeadId) || autoMatchedLead || officers.find(o => o.isActive && o.role === 'school_leadership');
+                                                  const leadName = leadOfficer?.nameAr || 'مشرف القيادة المدرسية';
+
+                                                  if (onUpdateSurvey) {
+                                                    onUpdateSurvey({
+                                                      ...survey,
+                                                      sentToLeadership: true,
+                                                      sentToLeadershipAt: new Date().toISOString(),
+                                                      vacancyRequestStatus: survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal'
+                                                        ? 'sent_to_school_principal'
+                                                        : 'sent_to_leadership',
+                                                      assignedLeadershipOfficerId: leadOfficer?.id || activeOfficer.id,
+                                                      leadershipOfficerName: leadName,
+                                                      referringOfficerId: (survey as any).referringOfficerId || activeOfficer.id,
+                                                      referringOfficerName: (survey as any).referringOfficerName || activeOfficer.nameAr,
+                                                      notes: isRtl
+                                                        ? "👔 تم إحالة الطلب لمشرف القيادة المدرسية المختص بالمرحلة والجنس (" + leadName + ") لمتابعة التسكين المباشر مع مدرسة (" + targetSch + ")."
+                                                        : "Sent request to matched leadership supervisor (" + leadName + ") for placement follow-up."
+                                                    } as any);
+
+                                                    alert(isRtl ? "✓ تم إحالة الطلب تلقائياً لمشرف القيادة المدرسية المختص (" + leadName + ") بنجاح!" : "Sent to leadership supervisor successfully!");
+                                                  }
+                                                }}
+                                                className="w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                              >
+                                                <UserCheck className="w-3.5 h-3.5" />
+                                                <span>{isRtl ? "👔 5. إرسال لمسؤول قسم القيادة المختص" : "5. Send to Matched Officer"}</span>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
+                                  ) : (
+                                    <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                      {/* Non-equivalency actions: Vacancy opening request */}
+                                      {activeOfficer.role !== 'equivalency_supervisor' && !activeOfficer.canHandleEqualizations && !((survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (onUpdateSurvey) {
+                                              onUpdateSurvey({
+                                                ...survey,
+                                                isVacancyRequest: true,
+                                                vacancyRequestStatus: 'pending_vacancy',
+                                                referringOfficerId: activeOfficer.id,
+                                                referringOfficerName: activeOfficer.nameAr,
+                                                referralNotes: "طلب فتح شاغر بمدرسة (" + survey.schoolName + ") مرفوع بواسطة مشرف القبول (" + activeOfficer.nameAr + ")"
+                                              });
+                                              alert(isRtl ? "✓ تم إرسال طلب فتح الشاغر في مدرسة (" + survey.schoolName + ") لمسؤول فتح الشواغر بنجاح!" : "Vacancy opening request sent!");
+                                            }
+                                          }}
+                                          disabled={survey.vacancyRequestStatus === 'pending_vacancy'}
+                                          className={'w-full py-1.5 px-3 font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 border ' + (
+                                            survey.vacancyRequestStatus === 'pending_vacancy'
+                                              ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 opacity-80 cursor-not-allowed"
+                                              : "bg-amber-600 hover:bg-amber-700 text-white border-amber-700 shadow-xs"
+                                          )}
+                                        >
+                                          <Sparkles className="w-3.5 h-3.5" />
+                                          <span>
+                                            {survey.vacancyRequestStatus === 'pending_vacancy'
+                                              ? (isRtl ? "⏳ طلب فتح الشاغر قيد المراجعة" : "Vacancy Request Pending")
+                                              : (isRtl ? "طلب فتح الشاغر 🔓" : "Request Vacancy Opening 🔓")}
+                                          </span>
+                                        </button>
+                                      )}
 
-                                    {/* ACTION 4: Route to School Principal for Staffing Approval (إرسال للمدرسة لاعتماد التسكين - مستقل) */}
-                                    <button
-                                      onClick={() => {
-                                        if (onUpdateSurvey) {
-                                          onUpdateSurvey({
-                                            ...survey,
-                                            sentToSchoolPrincipal: true,
-                                            sentToPrincipalAt: new Date().toISOString(),
-                                            vacancyRequestStatus: survey.sentToLeadership || survey.vacancyRequestStatus === 'sent_to_leadership'
-                                              ? 'sent_to_leadership'
-                                              : 'sent_to_school_principal',
-                                            isVacancyRequest: true,
-                                            referringOfficerId: (survey as any).referringOfficerId || activeOfficer.id,
-                                            referringOfficerName: (survey as any).referringOfficerName || activeOfficer.nameAr,
-                                            notes: `تم إرسال الطلب للمدرسة (${survey.schoolName}) لاعتماد التسكين.`
-                                          });
-                                          alert(isRtl ? `✓ تم إرسال الطلب للمدرسة (${survey.schoolName}) لاعتماد التسكين!` : `Routed to school principal (${survey.schoolName})!`);
-                                        }
-                                      }}
-                                      className={`w-full py-1.5 px-3 font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs ${
-                                        survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal'
-                                          ? 'bg-sky-700 text-white hover:bg-sky-800'
-                                          : 'bg-sky-600 hover:bg-sky-700 text-white'
-                                      }`}
-                                    >
-                                      <Building2 className="w-3.5 h-3.5" />
-                                      <span>
-                                        {survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal'
-                                          ? (isRtl ? `✓ تم إرسال الطلب للمدرسة` : `Sent to School`)
-                                          : (isRtl ? `إرسال الطلب للمدرسة (${survey.schoolName}) لاعتماد التسكين 🏫📍` : `Send Request to School (${survey.schoolName}) 🏫📍`)}
-                                      </span>
-                                    </button>
-
-                                    {/* ACTION 5: Approve Staffing & Finalize/Archive Request */}
-                                    {(survey.sentToSchoolPrincipal || survey.sentToLeadership || survey.vacancyRequestStatus === 'staffing_confirmed' || survey.principalConfirmedStaffing || survey.vacancyRequestStatus === 'sent_to_school_principal' || survey.vacancyRequestStatus === 'sent_to_leadership' || survey.vacancyRequestStatus === 'approved') && (
-                                      <button
-                                        onClick={() => {
-                                          if (onUpdateSurvey) {
-                                            onUpdateSurvey({
-                                              ...survey,
-                                              isResolved: true,
-                                              principalConfirmedStaffing: true,
-                                              vacancyRequestStatus: 'executed',
-                                              archivedAt: new Date().toISOString(),
-                                              archivedBy: activeOfficer.nameAr
-                                            });
-                                            alert(isRtl ? '🎉✓ تم اعتماد التسكين وإنهاء المعاملة بنجاح وأرشفتها للتقارير والإحصائيات!' : 'Transaction confirmed and archived!');
-                                          }
-                                        }}
-                                        className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md"
-                                      >
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                        <span>{isRtl ? 'تأكيد التسكين وإنهاء المعاملة 🎉✓' : 'Confirm Staffing & End Transaction 🎉✓'}</span>
-                                      </button>
-                                    )}
-
-                                  </div>
+                                      {/* Route to Leadership Officer for normal non-equivalency surveys */}
+                                      <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
+                                        <label className="block text-[10px] font-black text-indigo-900 dark:text-indigo-300">
+                                          {isRtl ? "إحالة لمشرف القيادة للمتابعة:" : "Route to Leadership Officer:"}
+                                        </label>
+                                        <div className="space-y-1">
+                                          <select
+                                            value={eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId || ""}
+                                            onChange={(e) => setEqSelectedLeadershipOfficerMap({ ...eqSelectedLeadershipOfficerMap, [survey.id]: e.target.value })}
+                                            className="text-[10px] p-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                          >
+                                            <option value="">{isRtl ? "-- اختر مشرف القيادة المدرسية --" : "-- Select Leadership Supervisor --"}</option>
+                                            {officers.filter(o => o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director')).map(o => (
+                                              <option key={o.id} value={o.id}>
+                                                {o.nameAr} {o.workField ? "(" + o.workField + ")" : ""}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const selectedLeadId = eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId;
+                                              const leadOfficer = officers.find(o => o.id === selectedLeadId) || officers.find(o => o.isActive && (o.role === "school_leadership" || o.role === "supervisor"));
+                                              const leadName = leadOfficer?.nameAr || 'مشرف القيادة المدرسية';
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  sentToLeadership: true,
+                                                  sentToLeadershipAt: new Date().toISOString(),
+                                                  assignedLeadershipOfficerId: leadOfficer?.id || activeOfficer.id,
+                                                  leadershipOfficerName: leadName,
+                                                  referringOfficerId: activeOfficer.id,
+                                                  referringOfficerName: activeOfficer.nameAr
+                                                } as any);
+                                                alert(isRtl ? "✓ تم إرسال المعاملة لمشرف القيادة المدرسية (" + leadName + ") بنجاح!" : "Sent to leadership supervisor successfully!");
+                                              }
+                                            }}
+                                            className="w-full py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg cursor-pointer"
+                                          >
+                                            {isRtl ? "إرسال لمشرف القيادة" : "Send"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
                                 )}
-
-                                {(activeOfficer.role === 'admin' || activeOfficer.role === 'director') && !assigningSurveyId && (
+{(activeOfficer.role === 'admin' || activeOfficer.role === 'director') && !assigningSurveyId && (
                                   <button
                                     onClick={() => {
                                       setAssigningSurveyId(survey.id);
@@ -8102,6 +8813,22 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 />
                                 <span>{currentLang === 'ar' ? 'حذف موظفين' : 'Delete Employees'}</span>
                               </label>
+
+                              {/* Can Handle Equalizations */}
+                              <label className={`inline-flex items-center gap-1.5 cursor-pointer font-semibold select-none ${isDark ? 'text-teal-100' : 'text-slate-700'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!off.canHandleEqualizations}
+                                  onChange={(e) => {
+                                    const updated = officers.map(o => o.id === off.id ? { ...o, canHandleEqualizations: e.target.checked } : o);
+                                    saveOfficers(updated);
+                                  }}
+                                  className={`rounded w-3.5 h-3.5 cursor-pointer ${
+                                    isDark ? 'accent-teal-500 text-teal-600 focus:ring-teal-500 border-teal-850' : 'border-slate-300 text-indigo-600 focus:ring-indigo-500'
+                                  }`}
+                                />
+                                <span>{currentLang === 'ar' ? 'معادلة الشهادات 📜' : 'Handle Equalizations 📜'}</span>
+                              </label>
                             </div>
                           </td>
 
@@ -8382,6 +9109,18 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         onChange={(e) => setEditingOfficer({ ...editingOfficer, schoolNames: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
                         className="w-full px-3 py-2 text-xs font-bold border rounded-xl dark:bg-slate-800 dark:border-slate-700"
                       />
+                    </div>
+
+                    <div className="sm:col-span-2 md:col-span-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <label className="inline-flex items-center gap-2 cursor-pointer font-extrabold text-xs text-teal-700 dark:text-teal-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!editingOfficer.canHandleEqualizations}
+                          onChange={(e) => setEditingOfficer({ ...editingOfficer, canHandleEqualizations: e.target.checked })}
+                          className="w-4 h-4 rounded accent-teal-600 cursor-pointer"
+                        />
+                        <span>{isRtl ? 'منح صلاحية دراسة ومعادلة الشهادات وتحديد المواعيد للمستفيدين 📜' : 'Grant Certificate Equivalency & Appointment Scheduling Permission 📜'}</span>
+                      </label>
                     </div>
                   </div>
 
@@ -9920,9 +10659,12 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                       const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-                      // RULE 1: Unprocessed Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director)!
-                      if (isEqItem && !isEqDoneItem && !canEqAuthUser) {
-                        return false;
+                      // RULE 1: Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director), UNLESS referred to Leadership or Principal!
+                      if (isEqItem && !canEqAuthUser) {
+                        const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+                        if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
+                          return false;
+                        }
                       }
 
                       const isPlacement = (s as any).isVacancyRequest ||
@@ -9958,6 +10700,21 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       if (activeOfficer.role === 'school_leadership') {
                         if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) {
                           return true;
+                        }
+                        if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal') {
+                          if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+                            if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
+                          }
+                          const studentStageCat = getSurveyStageCategory(s);
+                          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+                          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+                          const studentGender = isGirls ? 'girls' : 'boys';
+
+                          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+                          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+                          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+                          if (genderOk && stageOk && sectorOk) return true;
                         }
                         return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
                       }
@@ -10058,9 +10815,12 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                         const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-                        // RULE 1: Unprocessed Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director)!
-                        if (isEqItem && !isEqDoneItem && !canEqAuthUser) {
-                          return false;
+                        // RULE 1: Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director), UNLESS referred to Leadership or Principal!
+                        if (isEqItem && !canEqAuthUser) {
+                          const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+                          if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
+                            return false;
+                          }
                         }
 
                         const isPlacement = (s as any).isVacancyRequest ||
@@ -10120,6 +10880,21 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           }
                           if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) {
                             return true;
+                          }
+                          if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal') {
+                            if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+                              if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
+                            }
+                            const studentStageCat = getSurveyStageCategory(s);
+                            const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+                            const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+                            const studentGender = isGirls ? 'girls' : 'boys';
+
+                            const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+                            const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+                            const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+                            if (genderOk && stageOk && sectorOk) return true;
                           }
                           return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
                         }
@@ -10363,236 +11138,615 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                               {/* Action controls for 4-stage pipeline */}
                               <td className="px-4 py-3.5 align-top text-center no-print">
-                                <div className="flex flex-col gap-2 bg-slate-50/70 dark:bg-slate-900/50 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80">
-
-                                  {/* RETURNED REQUEST CARD FOR ADMISSION SUPERVISOR & AUTOMATED RE-REFERRAL */}
-                                  {!isArchived && ((survey as any).returnedByPrincipal || status === 'returned_no_vacancy') && (
-                                    <div className="p-3 rounded-2xl bg-red-50/90 dark:bg-red-950/60 border-2 border-red-400 dark:border-red-800 text-start space-y-2.5 shadow-xs">
-                                      <div className="flex items-center justify-between text-red-900 dark:text-red-200">
-                                        <span className="text-[11px] font-black flex items-center gap-1">
-                                          🚨 {isRtl ? 'طلب معاد من مدير المدرسة:' : 'Returned by Principal:'}
-                                        </span>
-                                        <span className="text-[9px] bg-red-600 text-white font-black px-2 py-0.5 rounded-md shadow-xs">
-                                          {isRtl ? 'معاد للتخطيط والمتابعة' : 'Returned to Planning'}
-                                        </span>
+                                <div className="flex flex-col gap-2 bg-slate-50/70 dark:bg-slate-900/50 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80">{/* EQUIVALENCY OFFICER ACTION BLOCK */}
+                                  {!isArchived && isEq && !isEqDone && canEqAuth && (
+                                    <div className="p-4 bg-purple-500/10 dark:bg-purple-950/40 border-2 border-purple-400 dark:border-purple-800/80 rounded-2xl space-y-4 text-start shadow-sm" id={`eq-actions-block-${survey.id}`}>
+                                      <div className="flex items-center justify-between gap-2 border-b border-purple-200 dark:border-purple-800 pb-2.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className="p-1.5 rounded-lg bg-purple-600 text-white font-black text-xs">📜</span>
+                                          <span className="font-black text-xs text-purple-950 dark:text-purple-200">
+                                            {isRtl ? 'منظومة إجراءات مسؤول معادلة الشهادات:' : 'Certificate Equivalency Officer System:'}
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          {(survey as any).isReceivedByEqOfficer && (
+                                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-400/50">
+                                              ✓ {isRtl ? 'مستلم' : 'Received'}
+                                            </span>
+                                          )}
+                                          {survey.hasReviewAppointment && (
+                                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-400/50">
+                                              📅 {isRtl ? 'تم تحديد موعد' : 'Appt Set'}
+                                            </span>
+                                          )}
+                                          {(survey.equalizationDocAttached || (survey as any).equalizationCompleted) && (
+                                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-900 dark:text-blue-200 border border-blue-400/50">
+                                              📄 {isRtl ? 'المعادلة مرفوعة' : 'Eq Doc Uploaded'}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
 
-                                      {/* Reason details and conditions */}
-                                      {(() => {
-                                        const returnReasonText = ((survey as any).principalReturnReason || (survey as any).returnReasonText || (survey as any).notes || (isRtl ? 'سعة الطاقة الاستيعابية مغلقة من التخطيط المدرسي' : 'Capacity closed')).toString();
-                                        const isTrackNotAvail = returnReasonText.includes('مسار') || returnReasonText.toLowerCase().includes('track');
-                                        const isCapacityOrVacancyClosed = !isTrackNotAvail || returnReasonText.includes('طاقة') || returnReasonText.includes('سعة') || returnReasonText.includes('شواغر') || returnReasonText.includes('مغلقة') || returnReasonText.includes('مقفلة');
+                                      {/* 1. أيقونة استلام الطلب */}
+                                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 space-y-1.5 shadow-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-black text-xs flex items-center justify-center">1</span>
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              📥 {isRtl ? '1. ايقونة استلام الطلب' : '1. Receive Request Icon'}
+                                            </span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (onUpdateSurvey) {
+                                                const nowIso = new Date().toISOString();
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  isReceivedByEqOfficer: true,
+                                                  receivedByEqOfficerName: activeOfficer.nameAr,
+                                                  eqReceivedAt: nowIso,
+                                                  isReceived: true,
+                                                  receivedAt: nowIso,
+                                                  assignedOfficerId: activeOfficer.id,
+                                                  serviceEmployee: activeOfficer.nameAr,
+                                                  notes: isRtl
+                                                    ? `📥 تم استلام المعاملة رسمياً بواسطة مسئول معادلة الشهادات (${activeOfficer.nameAr}) للبدء بفحص الملف وإجراءات المعايرة.`
+                                                    : `Request received by equivalency supervisor (${activeOfficer.nameAr}).`
+                                                } as any);
+                                                alert(isRtl ? `✓ تم تسجيل استلام الطلب بنجاح باسم (${activeOfficer.nameAr})!` : 'Request received successfully!');
+                                              }
+                                            }}
+                                            disabled={(survey as any).isReceivedByEqOfficer}
+                                            className={`px-3 py-1.5 rounded-xl font-black text-[11px] shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                                              (survey as any).isReceivedByEqOfficer
+                                                ? 'bg-emerald-600 text-white cursor-default'
+                                                : 'bg-purple-600 hover:bg-purple-700 text-white active:scale-95'
+                                            }`}
+                                          >
+                                            <Inbox className="w-3.5 h-3.5" />
+                                            <span>
+                                              {(survey as any).isReceivedByEqOfficer
+                                                ? (isRtl ? '✓ تم استلام الطلب' : 'Received')
+                                                : (isRtl ? 'استلام الطلب الآن' : 'Receive Request')
+                                              }
+                                            </span>
+                                          </button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                                          {(survey as any).isReceivedByEqOfficer 
+                                            ? (isRtl ? `تم توثيق استلام الطلب رسمياً في النطاق باسم (${(survey as any).receivedByEqOfficerName || activeOfficer.nameAr}).` : 'Officially claimed by officer.')
+                                            : (isRtl ? 'تأكيد استلام الطلب تحت مسؤولية مشرف القبول والمعادلات للبدء بفرز الشهادات.' : 'Confirm receipt to start reviewing certificates.')
+                                          }
+                                        </p>
+                                      </div>
 
-                                        return (
-                                          <div className="space-y-2.5">
-                                            <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-red-200 dark:border-red-900/60 text-[10px] font-bold text-red-900 dark:text-red-200 space-y-1">
-                                              <span className="text-slate-500 block text-[9px] font-extrabold">{isRtl ? 'سبب الإعادة المحدد من المدرسة:' : 'Return Reason:'}</span>
-                                              <span className="text-red-700 dark:text-red-300 font-black text-xs leading-snug">{returnReasonText}</span>
+                                      {/* 2. أيقونة تحديد موعد للمستفيد */}
+                                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 space-y-2 shadow-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-black text-xs flex items-center justify-center">2</span>
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              📅 {isRtl ? '2. ايقونة تحديد موعد للمستفيد (الروزنامة والوقت والموقع)' : '2. Beneficiary Appointment Calendar Icon'}
+                                            </span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowApptPickerMap({ ...showApptPickerMap, [survey.id]: !showApptPickerMap[survey.id] })}
+                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                                          >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            <span>
+                                              {showApptPickerMap[survey.id] 
+                                                ? (isRtl ? 'إغلاق التقويم ✖' : 'Close Calendar') 
+                                                : survey.hasReviewAppointment 
+                                                  ? (isRtl ? 'تعديل الموعد المحدد 📅' : 'Reschedule Date') 
+                                                  : (isRtl ? 'تحديد موعد للمستفيد 🗓️' : 'Set Appointment')
+                                              }
+                                            </span>
+                                          </button>
+                                        </div>
+
+                                        {survey.hasReviewAppointment && !showApptPickerMap[survey.id] && (
+                                          <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-[10px] space-y-1">
+                                            <div className="font-black text-amber-950 dark:text-amber-200 flex items-center gap-2">
+                                              <span>📌 {isRtl ? `الموعد الحالي: ${survey.appointmentDate} - الساعة ${survey.appointmentTime}` : `Appointment: ${survey.appointmentDate} at ${survey.appointmentTime}`}</span>
+                                              {survey.appointmentLocationLink && (
+                                                <a 
+                                                  href={survey.appointmentLocationLink} 
+                                                  target="_blank" 
+                                                  rel="noreferrer"
+                                                  className="text-blue-600 dark:text-blue-400 font-bold underline flex items-center gap-0.5"
+                                                >
+                                                  📍 {isRtl ? 'رابط الموقع' : 'Location Link'}
+                                                </a>
+                                              )}
                                             </div>
-
-                                            {/* If request was previously rerouted/changed school, show the reason */}
-                                            {((survey as any).previousSchoolName || (survey as any).vacancyRerouteReason) && (
-                                              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/60 text-[10px] font-bold text-indigo-900 dark:text-indigo-200 space-y-1">
-                                                <span className="text-indigo-600 dark:text-indigo-400 block text-[9px] font-black">🔀 {isRtl ? 'بيانات التغيير للمدرسة البديلة:' : 'School Change Info:'}</span>
-                                                <div className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200">
-                                                  {isRtl ? `من: ${(survey as any).previousSchoolName || 'المدرسة الأولى'} ⬅️ إلى: ${survey.schoolName}` : `From: ${(survey as any).previousSchoolName} ⬅️ To: ${survey.schoolName}`}
-                                                </div>
-                                                {(survey as any).vacancyRerouteReason && (
-                                                  <div className="text-[10px] font-semibold text-indigo-800 dark:text-indigo-300 bg-white/70 dark:bg-black/30 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900">
-                                                    📌 {isRtl ? `سبب التغيير: ${(survey as any).vacancyRerouteReason}` : `Reason: ${(survey as any).vacancyRerouteReason}`}
-                                                  </div>
-                                                )}
-                                              </div>
+                                            {survey.appointmentNote && (
+                                              <p className="text-red-700 dark:text-red-300 font-extrabold text-[10px]">
+                                                ⚠️ {survey.appointmentNote}
+                                              </p>
                                             )}
+                                          </div>
+                                        )}
 
-                                            {/* OPTION 1: Re-open vacancy at current school */}
-                                            <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-800/80 rounded-xl space-y-2.5">
-                                              <div className="flex items-center gap-1.5 font-black text-[10px] text-amber-900 dark:text-amber-200">
-                                                <span>🔒 {isRtl ? 'إجراء (1): إعادة فتح الشاغر بنفس المدرسة وإرساله لمدير المدرسة' : 'Action (1): Re-open Vacancy at Current School:'}</span>
-                                              </div>
-
-                                              <div className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-amber-300 dark:border-amber-700/80">
-                                                <label className="flex items-center gap-2 font-black text-[11px] text-slate-800 dark:text-slate-100 cursor-pointer">
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!vacancyReopenedMap[survey.id]}
-                                                    onChange={(e) => setVacancyReopenedMap({ ...vacancyReopenedMap, [survey.id]: e.target.checked })}
-                                                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-                                                  />
-                                                  <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                                                    ✅ {isRtl ? 'تم إعادة فتح الشاغر' : 'Vacancy Re-opened'}
-                                                  </span>
-                                                </label>
-                                              </div>
-
-                                              <div className="space-y-1">
-                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                  📝 {isRtl ? 'توضيح وتفسير سبب المشكلة وتفاصيل التخطيط:' : 'Explanation of problem & resolution:'}
-                                                </label>
-                                                <textarea
-                                                  rows={2}
-                                                  value={vacancyOpenedReasonMap[survey.id] || ''}
-                                                  onChange={(e) => setVacancyOpenedReasonMap({ ...vacancyOpenedReasonMap, [survey.id]: e.target.value })}
-                                                  placeholder={isRtl ? 'اكتب بالتفصيل توضيح سبب المشكلة وكيف تم حلها وإعادة فتح الشاغر...' : 'Enter explanation for reopening vacancy...'}
-                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-amber-300 dark:border-amber-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-teal-500"
-                                                />
-                                              </div>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (!vacancyReopenedMap[survey.id]) {
-                                                    alert(isRtl ? 'الرجاء التأشير أولاً على خيار (تم إعادة فتح الشاغر) للتأكيد.' : 'Please check (Vacancy Re-opened) first.');
-                                                    return;
-                                                  }
-                                                  const explanation = (vacancyOpenedReasonMap[survey.id] || '').trim();
-                                                  if (!explanation) {
-                                                    alert(isRtl ? 'الرجاء كتابة توضيح وتفسير سبب المشكلة في المربع المخصص.' : 'Please enter issue explanation.');
-                                                    return;
-                                                  }
-
-                                                  if (onUpdateSurvey) {
-                                                    onUpdateSurvey({
-                                                      ...survey,
-                                                      vacancyRequestStatus: 'sent_to_school_principal',
-                                                      sentToSchoolPrincipal: true,
-                                                      sentToLeadership: true,
-                                                      returnedByPrincipal: false,
-                                                      isResolved: false,
-                                                      isVacancyOpened: true,
-                                                      vacancyOpenedReason: explanation,
-                                                      notes: isRtl
-                                                        ? `🔓 تم إعادة فتح الشاغر وتوضيح المشكلة من مشرف التخطيط (${activeOfficer.nameAr}). السبب والتوضيح: ${explanation}. أُرسل الطلب مباشرة لمدير المدرسة (${survey.schoolName}) للتسكين.`
-                                                        : `Vacancy re-opened by planning officer (${activeOfficer.nameAr}). Explanation: ${explanation}. Sent to principal.`
-                                                    } as any);
-
-                                                    alert(isRtl
-                                                      ? `✓ تم التأشير على فتح الشاغر وتدوين التوضيح وإرسال الطلب مباشرتاً إلى مدير/ة مدرسة (${survey.schoolName}) للتسكين!`
-                                                      : 'Vacancy opened and sent directly to school principal!');
-                                                  }
-                                                }}
-                                                className="w-full py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                              >
-                                                <span>🚀 {isRtl ? 'إرسال لمدير المدرسة الحالي مباشرتاً' : 'Send Directly to Current School Principal'}</span>
-                                              </button>
+                                        {/* Calendar & Appointment Interactive Picker */}
+                                        {showApptPickerMap[survey.id] && (
+                                          <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border-2 border-amber-400/80 dark:border-amber-700/80 space-y-3 text-xs shadow-sm">
+                                            <div className="font-extrabold text-amber-950 dark:text-amber-200 text-[11px] flex items-center gap-1.5">
+                                              <span>🗓️ {isRtl ? 'الروزنامة وحجز موعد المراجعة لمقر الإدارة:' : 'Review Appointment Calendar & Time Setup:'}</span>
                                             </div>
 
-                                            {/* OPTION 2: Change to Alternative School with Search & Reason */}
-                                            <div className="p-2.5 bg-indigo-500/10 dark:bg-indigo-950/40 border-2 border-indigo-400 dark:border-indigo-800/80 rounded-xl space-y-2.5">
-                                              <div className="flex items-center gap-1.5 font-black text-[10px] text-indigo-900 dark:text-indigo-200">
-                                                <span>🔀 {isRtl ? 'إجراء (2): تغيير المدرسة والتسكين في مدرسة بديلة' : 'Action (2): Change to Alternative School:'}</span>
-                                              </div>
-
-                                              {/* Search Input for Alternative School */}
-                                              <div className="space-y-1">
-                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                  🔍 {isRtl ? 'البحث عن المدرسة البديلة المناسبة (اكتب الاسم، المرحلة، الكود):' : 'Search Alternative School:'}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              <div>
+                                                <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                  📅 {isRtl ? 'تحديد اليوم والتاريخ (الروزنامة):' : 'Select Calendar Date:'}
                                                 </label>
                                                 <input
-                                                  type="text"
-                                                  value={altSchoolSearchMap[survey.id] || ''}
-                                                  onChange={(e) => setAltSchoolSearchMap({ ...altSchoolSearchMap, [survey.id]: e.target.value })}
-                                                  placeholder={isRtl ? 'اكتب اسم المدرسة، المرحلة، الكود للفلترة السريعة...' : 'Filter schools by name, code...'}
-                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                  type="date"
+                                                  value={eqApptDateMap[survey.id] || survey.appointmentDate || ''}
+                                                  onChange={(e) => setEqApptDateMap({ ...eqApptDateMap, [survey.id]: e.target.value })}
+                                                  className="w-full p-2 text-[11px] font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
                                                 />
+                                                <div className="mt-1 p-1.5 bg-amber-100/90 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700 text-[9px] font-black text-amber-950 dark:text-amber-200 flex items-center justify-between gap-1">
+                                                  <span>🌙 {isRtl ? "التاريخ الهجري (أم القرى):" : "Hijri Date:"}</span>
+                                                  <span className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded text-amber-900 dark:text-amber-300 font-extrabold border border-amber-200 dark:border-amber-800">
+                                                    {getHijriDateFromGregorian(eqApptDateMap[survey.id] || survey.appointmentDate) || (isRtl ? "اختر تاريخاً بالروزنامة" : "Select date")}
+                                                  </span>
+                                                </div>
                                               </div>
 
-                                              {/* Alternative School Dropdown */}
-                                              <div className="space-y-1">
-                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                  🏫 {isRtl ? 'اختر المدرسة البديلة من القائمة:' : 'Select Alternative School:'}
+                                              <div>
+                                                <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                  ⏰ {isRtl ? 'تحديد الساعة والوقت:' : 'Select Time:'}
                                                 </label>
                                                 <select
-                                                  value={selectedAltSchoolMap[survey.id] || ''}
-                                                  onChange={(e) => setSelectedAltSchoolMap({ ...selectedAltSchoolMap, [survey.id]: e.target.value })}
-                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                                  value={eqApptTimeMap[survey.id] || survey.appointmentTime || '09:00 صباحاً'}
+                                                  onChange={(e) => setEqApptTimeMap({ ...eqApptTimeMap, [survey.id]: e.target.value })}
+                                                  className="w-full p-2 text-[11px] font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
                                                 >
-                                                  <option value="">{isRtl ? '-- اختر المدرسة البديلة من القائمة --' : '-- Select Alternative School --'}</option>
-                                                  {localSchools
-                                                    .filter(sch => {
-                                                      if (sch.nameAr === survey.schoolName) return false;
-                                                      const query = (altSchoolSearchMap[survey.id] || '').trim().toLowerCase();
-                                                      if (!query) return true;
-                                                      return (
-                                                        sch.nameAr.toLowerCase().includes(query) ||
-                                                        (sch.code && sch.code.toLowerCase().includes(query)) ||
-                                                        (sch.stage && sch.stage.toLowerCase().includes(query)) ||
-                                                        (sch.gender && sch.gender.toLowerCase().includes(query))
-                                                      );
-                                                    })
-                                                    .map((sch) => (
-                                                      <option key={sch.code || sch.nameAr} value={sch.nameAr}>
-                                                        {sch.nameAr} ({sch.stage || 'عام'} - {sch.gender || 'مشترك'})
-                                                      </option>
-                                                    ))}
+                                                  <option value="08:00 صباحاً">08:00 صباحاً</option>
+                                                  <option value="08:30 صباحاً">08:30 صباحاً</option>
+                                                  <option value="09:00 صباحاً">09:00 صباحاً</option>
+                                                  <option value="09:30 صباحاً">09:30 صباحاً</option>
+                                                  <option value="10:00 صباحاً">10:00 صباحاً</option>
+                                                  <option value="10:30 صباحاً">10:30 صباحاً</option>
+                                                  <option value="11:00 صباحاً">11:00 صباحاً</option>
+                                                  <option value="11:30 صباحاً">11:30 صباحاً</option>
+                                                  <option value="12:00 ظهراً">12:00 ظهراً</option>
+                                                  <option value="12:30 ظهراً">12:30 ظهراً</option>
+                                                  <option value="01:00 ظهراً">01:00 ظهراً</option>
                                                 </select>
                                               </div>
+                                            </div>
 
-                                              {/* Textarea for Reason for School Change */}
-                                              <div className="space-y-1">
-                                                <label className="block text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                                  📝 {isRtl ? 'توضيح سبب تغيير المدرسة والتسكين في المدرسة البديلة:' : 'Reason for Changing School:'}
+                                            <div>
+                                              <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                                                <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200">
+                                                  📍 {isRtl ? 'ارفاق رابط/بيانات الموقع الحالي لمقر المراجعة:' : 'Location Link / Address:'}
                                                 </label>
-                                                <textarea
-                                                  rows={2}
-                                                  value={rerouteReasonMap[survey.id] || ''}
-                                                  onChange={(e) => setRerouteReasonMap({ ...rerouteReasonMap, [survey.id]: e.target.value })}
-                                                  placeholder={isRtl ? 'اكتب سبب تغيير المدرسة (مثال: توفر شاغر وطاقة استيعابية بالمدرسة البديلة، قرب السكن...)' : 'Write reason for changing school...'}
-                                                  className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                                                />
+                                                <div className="flex items-center gap-1.5">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      window.open("https://www.google.com/maps", "_blank");
+                                                    }}
+                                                    className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 hover:bg-blue-200 rounded border border-blue-300 font-extrabold text-[9px] flex items-center gap-0.5 cursor-pointer"
+                                                  >
+                                                    🗺️ {isRtl ? "فتح خرائط Google" : "Open Google Maps"}
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      if (navigator.geolocation) {
+                                                        navigator.geolocation.getCurrentPosition(
+                                                          (pos) => {
+                                                            const gpsLink = "https://maps.google.com/?q=" + pos.coords.latitude + "," + pos.coords.longitude;
+                                                            setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: gpsLink });
+                                                            if (navigator.clipboard) {
+                                                              navigator.clipboard.writeText(gpsLink);
+                                                            }
+                                                            alert(isRtl ? "✓ تم إرفاق موقعك الجغرافي الحالي عبر (GPS) ونسخ الرابط بنجاح!\n📍 الرابط: " + gpsLink : "Current GPS location attached and copied!");
+                                                          },
+                                                          () => {
+                                                            const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
+                                                            setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: defaultLink });
+                                                            window.open("https://www.google.com/maps", "_blank");
+                                                            alert(isRtl ? "⚠️ تعذر جلب GPS تلقائياً. تم إرفاق رابط الموقع المعتمد وفتح خرائط Google لتحديد الموقع يدوياً." : "Opening Google Maps...");
+                                                          },
+                                                          { enableHighAccuracy: true, timeout: 8000 }
+                                                        );
+                                                      } else {
+                                                        const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
+                                                        setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: defaultLink });
+                                                        window.open("https://www.google.com/maps", "_blank");
+                                                      }
+                                                    }}
+                                                    className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 rounded border border-emerald-300 font-extrabold text-[9px] flex items-center gap-0.5 cursor-pointer"
+                                                  >
+                                                    📍 {isRtl ? "إرفاق موقعي الحالي (GPS) ونسخ الرابط" : "Attach GPS & Copy"}
+                                                  </button>
+                                                </div>
                                               </div>
+                                              <input
+                                                type="text"
+                                                value={eqApptLocationMap[survey.id] !== undefined ? eqApptLocationMap[survey.id] : (survey.appointmentLocationLink || 'https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات')}
+                                                onChange={(e) => setEqApptLocationMap({ ...eqApptLocationMap, [survey.id]: e.target.value })}
+                                                placeholder="https://maps.google.com/..."
+                                                className="w-full p-2 text-[10px] font-bold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-500"
+                                              />
+                                            </div>
 
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const altSchoolName = selectedAltSchoolMap[survey.id];
-                                                  if (!altSchoolName) {
-                                                    alert(isRtl ? 'الرجاء اختيار المدرسة البديلة من القائمة أولاً.' : 'Please select an alternative school from dropdown.');
-                                                    return;
-                                                  }
-                                                  const reason = (rerouteReasonMap[survey.id] || '').trim() || (isRtl ? 'تغيير المدرسة لتوفر شاغر وطاقة استيعابية مناسبة بالمدرسة البديلة' : 'Changed school due to available capacity in alternative school');
+                                            <div>
+                                              <label className="block text-[10px] font-black text-red-700 dark:text-red-400 mb-1">
+                                                ⚠️ {isRtl ? 'ملاحظات والتزامات المستفيد بالشهادات والأوراق الرسمية:' : 'Beneficiary Requirements Note:'}
+                                              </label>
+                                              <textarea
+                                                rows={2}
+                                                value={eqApptNotesMap[survey.id] !== undefined ? eqApptNotesMap[survey.id] : (survey.appointmentNote || 'تنبيه هام جدًا: يرجى إحضار جميع المستندات والمؤهلات الرسمية والأصلية والشهادات الدراسية والهوية/الإقامة عند مراجعة الإدارة لعمل المعادلة.')}
+                                                onChange={(e) => setEqApptNotesMap({ ...eqApptNotesMap, [survey.id]: e.target.value })}
+                                                className="w-full p-2 text-[10px] font-bold rounded-lg border border-red-300 dark:border-red-800 bg-white dark:bg-slate-900 text-red-900 dark:text-red-200 outline-none focus:ring-1 focus:ring-red-500"
+                                              />
+                                            </div>
 
-                                                  const originalSchool = survey.schoolName;
-                                                  if (onUpdateSurvey) {
-                                                    onUpdateSurvey({
-                                                      ...survey,
-                                                      schoolName: altSchoolName,
-                                                      previousSchoolName: originalSchool,
-                                                      vacancyRerouteReason: reason,
-                                                      vacancyRequestStatus: 'sent_to_school_principal',
-                                                      sentToSchoolPrincipal: true,
-                                                      sentToLeadership: true,
-                                                      returnedByPrincipal: false,
-                                                      isResolved: false,
-                                                      notes: isRtl
-                                                        ? `🏫 تم تغيير المدرسة من (${originalSchool}) إلى المدرسة البديلة (${altSchoolName}) من مشرف التخطيط (${activeOfficer.nameAr}). السبب: ${reason}.`
-                                                        : `Re-routed from (${originalSchool}) to alternative school (${altSchoolName}) by planning officer (${activeOfficer.nameAr}). Reason: ${reason}.`
-                                                    } as any);
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const rawDate = eqApptDateMap[survey.id] || survey.appointmentDate;
+                                                if (!rawDate) {
+                                                  alert(isRtl ? '⚠️ يرجى تحديد تاريخ يوم المراجعة من الروزنامة والتقويم.' : 'Please select appointment date.');
+                                                  return;
+                                                }
+                                                const hijriStr = getHijriDateFromGregorian(rawDate);
+                                                const fullApptDate = hijriStr && !rawDate.includes("هـ") ? `${rawDate} م (${hijriStr})` : rawDate;
+                                                const apptTime = eqApptTimeMap[survey.id] || survey.appointmentTime || '09:00 صباحاً';
+                                                const apptLoc = (eqApptLocationMap[survey.id] !== undefined ? eqApptLocationMap[survey.id] : (survey.appointmentLocationLink || 'https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات')).trim();
+                                                const apptNote = (eqApptNotesMap[survey.id] !== undefined ? eqApptNotesMap[survey.id] : (survey.appointmentNote || 'تنبيه هام جدًا: يرجى إحضار جميع المستندات والمؤهلات الرسمية والأصلية والشهادات الدراسية عند مراجعة الإدارة في الموعد المحدد لعمل المعادلة.')).trim();
 
-                                                    alert(isRtl
-                                                      ? `✓ تم تغيير المدرسة إلى (${altSchoolName}) وتدوين السبب وإعادة التسكين بنجاح!\nتظهر المعاملة الآن في حساب مدير المدرسة البديلة.`
-                                                      : `Request sent to alternative school (${altSchoolName})!`);
+                                                if (onUpdateSurvey) {
+                                                  onUpdateSurvey({
+                                                    ...survey,
+                                                    hasReviewAppointment: true,
+                                                    appointmentDate: fullApptDate,
+                                                    appointmentTime: apptTime,
+                                                    appointmentLocationLink: apptLoc,
+                                                    appointmentNote: apptNote,
+                                                    appointmentSetAt: new Date().toISOString(),
+                                                    appointmentSetBy: activeOfficer.nameAr,
+                                                    notes: isRtl
+                                                      ? `📅 تم تحديد موعد للمراجعة من مسئول المعادلات (${activeOfficer.nameAr}) بتاريخ (${fullApptDate}) الساعة (${apptTime}). أُرفق رابط الموقع وأُرسل التنبيه للمستفيد.`
+                                                      : `Review appointment set for (${fullApptDate}) at (${apptTime}).`
+                                                  } as any);
+
+                                                  setShowApptPickerMap({ ...showApptPickerMap, [survey.id]: false });
+                                                  alert(isRtl
+                                                    ? `🎉 تم حفظ وإرسال الموعد ورابط الموقع لشاشة المستفيد بنجاح!\n\n• التاريخ: (${fullApptDate})\n• الوقت: (${apptTime})\n• رابط الموقع: مرفق بالنظام\n• التنبيه: أُظهر للمستفيد لإحضار المستندات الأصلية.`
+                                                    : 'Appointment saved and sent to beneficiary screen!');
+                                                }
+                                              }}
+                                              className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                            >
+                                              <CheckCircle2 className="w-3.5 h-3.5" />
+                                              <span>📅 {isRtl ? 'حفظ وإرسال الموعد ورابط الموقع لشاشة المستفيد' : 'Save & Send Appointment'}</span>
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* 3. أيقونة رفع المعادلة من الجهاز بعد إكمالها */}
+                                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800/80 space-y-2 shadow-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-black text-xs flex items-center justify-center">3</span>
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              📤 {isRtl ? '3. ايقونة رفع المعادلة من الجهاز بعد إكمالها' : '3. Upload Completed Equivalency File Icon'}
+                                            </span>
+                                          </div>
+                                          {eqDocAttachedMap[survey.id] || survey.equalizationDocAttached ? (
+                                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                                              ✓ {isRtl ? 'المعادلة جاهزة ومرفوعة' : 'Doc Uploaded'}
+                                            </span>
+                                          ) : null}
+                                        </div>
+
+                                        <div className="p-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/80 space-y-2">
+                                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                            <div className="space-y-0.5">
+                                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">
+                                                {eqDocNameMap[survey.id] || survey.equalizationDocName 
+                                                  ? (isRtl ? `📄 ملف المعادلة المعتمد الحالي: (${eqDocNameMap[survey.id] || survey.equalizationDocName})` : `Uploaded: ${eqDocNameMap[survey.id] || survey.equalizationDocName}`)
+                                                  : (isRtl ? 'يرجى اختيار وتحديد ملف وثيقة المعادلة المكتملة من جهاز الكمبيوتر/المحمول.' : 'Select completed equivalency certificate file from device.')
+                                                }
+                                              </span>
+                                            </div>
+
+                                            <div className="shrink-0">
+                                              <input
+                                                type="file"
+                                                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                                                onChange={(e) => {
+                                                  const file = e.target.files?.[0];
+                                                  if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (evt) => {
+                                                      const base64Data = evt.target?.result as string;
+                                                      setEqDocNameMap({ ...eqDocNameMap, [survey.id]: file.name });
+                                                      setEqDocDataMap({ ...eqDocDataMap, [survey.id]: base64Data });
+                                                      setEqDocAttachedMap({ ...eqDocAttachedMap, [survey.id]: true });
+
+                                                      if (onUpdateSurvey) {
+                                                        onUpdateSurvey({
+                                                          ...survey,
+                                                          equalizationCompleted: true,
+                                                          equalizationDocAttached: true,
+                                                          equalizationDocName: file.name,
+                                                          transferAttachmentName: file.name,
+                                                          transferAttachmentData: base64Data || survey.transferAttachmentData,
+                                                          notes: isRtl
+                                                            ? `📤 تم رفع وثيقة المعادلة المعتمدة من جهاز الكمبيوتر (${file.name}) بواسطة مسئول معادلة الشهادات (${activeOfficer.nameAr}).`
+                                                            : `Equivalency file (${file.name}) uploaded by (${activeOfficer.nameAr}).`
+                                                        } as any);
+                                                      }
+
+                                                      alert(isRtl ? `✓ تم رفع وثيقة المعادلة (${file.name}) وتوثيقها بالنظام بنجاح!` : 'Equivalency document uploaded successfully!');
+                                                    };
+                                                    reader.readAsDataURL(file);
                                                   }
                                                 }}
-                                                className="w-full py-2 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                                className="hidden"
+                                                id={`eq-file-upload-btn-${survey.id}`}
+                                              />
+                                              <label
+                                                htmlFor={`eq-file-upload-btn-${survey.id}`}
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
                                               >
-                                                <span>🏫➡️ {isRtl ? 'إرسال للمدرسة البديلة مباشرتاً والتسكين بها' : 'Send Directly to Alternative School'}</span>
-                                              </button>
+                                                <FileUp className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {eqDocNameMap[survey.id] || survey.equalizationDocName 
+                                                    ? (isRtl ? '🔄 استبدال / رفع وثيقة جديدة' : 'Replace File') 
+                                                    : (isRtl ? '📤 رفع المعادلة من الجهاز' : 'Upload Equivalency File')
+                                                  }
+                                                </span>
+                                              </label>
                                             </div>
                                           </div>
-                                        );
-                                      })()}
+
+                                          {(eqDocNameMap[survey.id] || survey.equalizationDocName) && (
+                                            <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 flex items-center justify-between text-[10px]">
+                                              <span className="font-extrabold text-blue-900 dark:text-blue-300 truncate">
+                                                📎 {eqDocNameMap[survey.id] || survey.equalizationDocName}
+                                              </span>
+                                              <span className="text-emerald-600 dark:text-emerald-400 font-black shrink-0">
+                                                ✓ {isRtl ? 'مرفقة وجاهزة للإحالة' : 'Ready'}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* 4. أيقونة إحالة الطلب للمدرسة بعد التسكين مرفق به المعادلة */}
+                                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 space-y-2.5 shadow-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-black text-xs flex items-center justify-center">4</span>
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              {isRtl ? '4. ايقونة احالة الطلب للمدرسة بعد التسكين مرفق به المعادلة' : '4. Refer to School with Equivalency Icon'}
+                                            </span>
+                                          </div>
+                                          {survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal' ? (
+                                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                                              ✓ {isRtl ? 'أُحيلت للمدرسة' : 'Referred to School'}
+                                            </span>
+                                          ) : null}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div>
+                                              <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                🏫 {isRtl ? 'تحديد المدرسة الموجه لها الطالب:' : 'Target Placement School:'}
+                                              </label>
+                                              <select
+                                                value={eqTargetSchoolMap[survey.id] || survey.schoolName || ''}
+                                                onChange={(e) => setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: e.target.value })}
+                                                className="w-full p-2 text-[10px] font-bold rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                                              >
+                                                <option value="">{isRtl ? '-- اختر المدرسة للتسكين --' : '-- Select Target School --'}</option>
+                                                {localSchools.map(sch => (
+                                                  <option key={sch.id} value={sch.nameAr}>
+                                                    {sch.nameAr} {sch.stage ? `(${sch.stage})` : ''}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+
+                                            <div>
+                                              <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                📚 {isRtl ? 'الصف الدراسي المعاير / المعادل:' : 'Calibrated Grade:'}
+                                              </label>
+                                              <select
+                                                value={eqGradeMap[survey.id] || survey.grade || ''}
+                                                onChange={(e) => setEqGradeMap({ ...eqGradeMap, [survey.id]: e.target.value })}
+                                                className="w-full p-2 text-[10px] font-bold rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                                              >
+                                                <option value="">{isRtl ? '-- اختر الصف بعد المعايرة --' : '-- Select Calibrated Grade --'}</option>
+                                                <option value="الأول الابتدائي">الأول الابتدائي</option>
+                                                <option value="الثاني الابتدائي">الثاني الابتدائي</option>
+                                                <option value="الثالث الابتدائي">الثالث الابتدائي</option>
+                                                <option value="الرابع الابتدائي">الرابع الابتدائي</option>
+                                                <option value="الخامس الابتدائي">الخامس الابتدائي</option>
+                                                <option value="السادس الابتدائي">السادس الابتدائي</option>
+                                                <option value="الأول المتوسط">الأول المتوسط</option>
+                                                <option value="الثاني المتوسط">الثاني المتوسط</option>
+                                                <option value="الثالث المتوسط">الثالث المتوسط</option>
+                                                <option value="الأول الثانوي">الأول الثانوي</option>
+                                                <option value="الثاني الثانوي">الثاني الثانوي</option>
+                                                <option value="الثالث الثانوي">الثالث الثانوي</option>
+                                              </select>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                              📝 {isRtl ? 'ملاحظات الإحالة وتوجيهات مدير المدرسة:' : 'School Referral Notes:'}
+                                            </label>
+                                            <textarea
+                                              rows={2}
+                                              value={eqNotesMap[survey.id] || ''}
+                                              onChange={(e) => setEqNotesMap({ ...eqNotesMap, [survey.id]: e.target.value })}
+                                              placeholder={isRtl ? 'اكتب الملاحظات الموجهة لمدير المدرسة بخصوص التسكين وقبول الطالب بناءً على وثيقة المعادلة المرفقة...' : 'Notes for school principal...'}
+                                              className="w-full p-2 text-[10px] font-bold rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                                            />
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              if (!targetSch) {
+                                                alert(isRtl ? '⚠️ يرجى تحديد المدرسة الموجه لها الطالب للتسكين.' : 'Please select target school.');
+                                                return;
+                                              }
+                                              const calibratedGrade = eqGradeMap[survey.id] || survey.grade;
+                                              const eqNotes = (eqNotesMap[survey.id] || '').trim();
+                                              const docName = eqDocNameMap[survey.id] || survey.equalizationDocName || 'وثيقة-معادلة-مؤهلات-معتمدة.pdf';
+                                              const docData = eqDocDataMap[survey.id] || survey.transferAttachmentData || 'data:application/pdf;base64,EQUIVALENCY_DOC_DUMMY';
+
+                                              const nowIso = new Date().toISOString();
+
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  schoolName: targetSch,
+                                                  grade: calibratedGrade,
+                                                  equalizationCompleted: true,
+                                                  equalizationStage: 'completed',
+                                                  equalizationDocAttached: true,
+                                                  equalizationDocName: docName,
+                                                  transferAttachmentName: docName,
+                                                  transferAttachmentData: docData,
+                                                  vacancyRequestStatus: 'sent_to_school_principal',
+                                                  sentToSchoolPrincipal: true,
+                                                  sentToPrincipalAt: nowIso,
+                                                  equalizationNotes: eqNotes,
+                                                  notes: isRtl
+                                                    ? `🏫 تم إحالة الطلب رسمياً لمدير مدرسة (${targetSch}) لقبول الطالب في الصف (${calibratedGrade}) مرفقاً به وثيقة المعادلة المعتمدة (${docName}).`
+                                                    : `Referred to school (${targetSch}) for grade (${calibratedGrade}) with equivalency doc.`
+                                                } as any);
+
+                                                alert(isRtl
+                                                  ? `✓ تم إحالة الطلب بنجاح إلى مدرسة (${targetSch}) لقبول الطالب للصف (${calibratedGrade}) مرفقاً به وثيقة المعادلة المعتمدة!`
+                                                  : 'Request referred to school principal with equivalency doc attached!');
+                                              }
+                                            }}
+                                            className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                          >
+                                            <Building className="w-3.5 h-3.5" />
+                                            <span>🏫 {isRtl ? 'إحالة الطلب للمدرسة بعد التسكين مرفق به المعادلة' : 'Refer Request to School with Equivalency'}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* 5. أيقونة إرسال الطلب لمشرف القيادة لمتابعة التسكين */}
+                                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/80 space-y-2.5 shadow-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-black text-xs flex items-center justify-center">5</span>
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              👔 {isRtl ? '5. ايقونة ارسال الطلب لمشرف القيادة لمتابعة التسكين' : '5. Send Request to Leadership Supervisor Icon'}
+                                            </span>
+                                          </div>
+                                          {survey.sentToLeadership || survey.vacancyRequestStatus === 'sent_to_leadership' ? (
+                                            <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-800">
+                                              ✓ {isRtl ? 'أُرسل لمشرف القيادة' : 'Sent to Leadership'}
+                                            </span>
+                                          ) : null}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                          <div>
+                                            <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                              👔 {isRtl ? 'تحديد مشرف القيادة المدرسية المتابع:' : 'Select Leadership Supervisor:'}
+                                            </label>
+                                            <select
+                                              value={eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId || ''}
+                                              onChange={(e) => setEqSelectedLeadershipOfficerMap({ ...eqSelectedLeadershipOfficerMap, [survey.id]: e.target.value })}
+                                              className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                            >
+                                              <option value="">{isRtl ? '-- اختر مشرف القيادة المدرسية --' : '-- Select Leadership Supervisor --'}</option>
+                                              {officers.filter(o => o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director')).map(o => (
+                                                <option key={o.id} value={o.id}>
+                                                  {o.nameAr} {o.workField ? `(${o.workField})` : ''}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <div>
+                                            <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                              📝 {isRtl ? 'ملاحظات وتوجيهات لمشرف القيادة لمتابعة التسكين:' : 'Notes for Leadership Supervisor:'}
+                                            </label>
+                                            <textarea
+                                              rows={2}
+                                              value={eqLeadershipNotesMap[survey.id] || ''}
+                                              onChange={(e) => setEqLeadershipNotesMap({ ...eqLeadershipNotesMap, [survey.id]: e.target.value })}
+                                              placeholder={isRtl ? 'اكتب توصيات المتابعة لمشرف القيادة لمتابعة قبول وتسكين الطالب مع المدرسة والتأكد من استكماله...' : 'Enter follow-up instructions for leadership supervisor...'}
+                                              className="w-full p-2 text-[10px] font-bold rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const selectedLeadId = eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId;
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              const leadOfficer = officers.find(o => o.id === selectedLeadId) || officers.find(o => o.isActive && o.role === 'school_leadership') || leadershipOfficers[0];
+                                              const leadName = leadOfficer?.nameAr || 'مشرف القيادة المدرسية';
+                                              const leadNotes = (eqLeadershipNotesMap[survey.id] || '').trim();
+
+                                              const nowIso = new Date().toISOString();
+
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  sentToLeadership: true,
+                                                  sentToLeadershipAt: nowIso,
+                                                  vacancyRequestStatus: survey.sentToSchoolPrincipal || survey.vacancyRequestStatus === 'sent_to_school_principal'
+                                                    ? 'sent_to_school_principal'
+                                                    : 'sent_to_leadership',
+                                                  assignedLeadershipOfficerId: leadOfficer?.id || activeOfficer.id,
+                                                  leadershipOfficerName: leadName,
+                                                  referringOfficerId: (survey as any).referringOfficerId || activeOfficer.id,
+                                                  referringOfficerName: (survey as any).referringOfficerName || activeOfficer.nameAr,
+                                                  notes: isRtl
+                                                    ? `👔 تم إرسال المعاملة لمشرف القيادة المدرسية (${leadName}) لمتابعة التسكين المباشر مع مدرسة (${targetSch}).${leadNotes ? ` ملاحظات: ${leadNotes}` : ''}`
+                                                    : `Sent request to leadership supervisor (${leadName}) for placement follow-up.`
+                                                } as any);
+
+                                                alert(isRtl
+                                                  ? `✓ تم إرسال الطلب بنجاح لمشرف القيادة المدرسية (${leadName}) لمتابعة التسكين ورصد الجاهزية!`
+                                                  : 'Sent request to leadership supervisor successfully!');
+                                              }
+                                            }}
+                                            className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                          >
+                                            <UserCheck className="w-3.5 h-3.5" />
+                                            <span>👔 {isRtl ? 'ارسال الطلب لمشرف القيادة لمتابعة التسكين' : 'Send Request to Leadership Supervisor'}</span>
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                   )}
-                                  
-                                  {/* STEP 1: Select / Re-assign Planning or Admission Supervisor for Opening Vacancy */}
-                                  {!isArchived && isPendingVacancy && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
-                                    <div className="p-2 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 text-start space-y-1.5">
-                                      <label className="block text-[10px] font-black text-amber-900 dark:text-amber-300">
-                                        {isRtl ? '1️⃣ تحديد مشرف فتح الشاغر (تخطيط / قبول):' : '1️⃣ Select Vacancy Officer:'}
-                                      </label>
-                                      <div className="flex gap-1">
-                                        <select
+                                   {/* Planning Officer Assignment for Pending Surveys */}
+                                   {(activeOfficer.role === "school_planning" || activeOfficer.role === "admin" || activeOfficer.role === "director" || activeOfficer.role === "supervisor" || activeOfficer.role === "equivalency_supervisor" || activeOfficer.canHandleEqualizations) && !isVacancyOpened && !isArchived && (
+                                     <div className="p-2 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1.5 text-start">
+                                       <label className="block text-[10px] font-extrabold text-amber-900 dark:text-amber-200">
+                                         👤 {isRtl ? "تكليفات التخطيط / القبول:" : "Assign Planning Officer:"}
+                                       </label>
+                                       <div className="flex items-center gap-1.5">
+                                      <select
+
                                           value={selectedPlanningOfficerMap[survey.id] || survey.assignedOfficerId || ''}
                                           onChange={(e) => setSelectedPlanningOfficerMap({ ...selectedPlanningOfficerMap, [survey.id]: e.target.value })}
                                           className="text-[10px] p-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -10634,120 +11788,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </div>
                                   )}
 
-                                  {/* EQUIVALENCY OFFICER ACTION BLOCK */}
-                                  {!isArchived && isEq && !isEqDone && canEqAuth && (
-                                    <div className="p-3 bg-purple-500/10 dark:bg-purple-950/40 border-2 border-purple-400 dark:border-purple-800/80 rounded-2xl space-y-2.5 text-start">
-                                      <div className="flex items-center gap-1.5 font-black text-[11px] text-purple-900 dark:text-purple-200">
-                                        <span>🎓 {isRtl ? 'إجراء مسؤول معادلة الشهادات:' : 'Equivalency Officer Action:'}</span>
-                                      </div>
-
-                                      {/* Target School Selection */}
-                                      <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-slate-700 dark:text-slate-300">
-                                          🏫 {isRtl ? 'اختيار المدرسة الموجه لها للتسكين:' : 'Target School for Placement:'}
-                                        </label>
-                                        <select
-                                          value={eqTargetSchoolMap[survey.id] || survey.schoolName || ''}
-                                          onChange={(e) => setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: e.target.value })}
-                                          className="w-full p-2 text-[10px] font-bold rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-                                        >
-                                          <option value="">{isRtl ? '-- اختر المدرسة المستهدفة للتسكين --' : '-- Select Target School --'}</option>
-                                          {localSchools.map(sch => (
-                                            <option key={sch.id} value={sch.nameAr}>
-                                              {sch.nameAr} {sch.stage ? `(${sch.stage})` : ''}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-
-                                      {/* Grade Level Selection */}
-                                      <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-slate-700 dark:text-slate-300">
-                                          📚 {isRtl ? 'الصف الدراسي المعاير / المعادل:' : 'Calibrated Grade Level:'}
-                                        </label>
-                                        <select
-                                          value={eqGradeMap[survey.id] || survey.grade || ''}
-                                          onChange={(e) => setEqGradeMap({ ...eqGradeMap, [survey.id]: e.target.value })}
-                                          className="w-full p-2 text-[10px] font-bold rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-                                        >
-                                          <option value="">{isRtl ? '-- اختر الصف بعد المعايرة والمعادلة --' : '-- Select Calibrated Grade --'}</option>
-                                          <option value="الأول الابتدائي">الأول الابتدائي</option>
-                                          <option value="الثاني الابتدائي">الثاني الابتدائي</option>
-                                          <option value="الثالث الابتدائي">الثالث الابتدائي</option>
-                                          <option value="الرابع الابتدائي">الرابع الابتدائي</option>
-                                          <option value="الخامس الابتدائي">الخامس الابتدائي</option>
-                                          <option value="السادس الابتدائي">السادس الابتدائي</option>
-                                          <option value="الأول المتوسط">الأول المتوسط</option>
-                                          <option value="الثاني المتوسط">الثاني المتوسط</option>
-                                          <option value="الثالث المتوسط">الثالث المتوسط</option>
-                                          <option value="الأول الثانوي">الأول الثانوي</option>
-                                          <option value="الثاني الثانوي">الثاني الثانوي</option>
-                                          <option value="الثالث الثانوي">الثالث الثانوي</option>
-                                        </select>
-                                      </div>
-
-                                      {/* Equivalency Notes */}
-                                      <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-slate-700 dark:text-slate-300">
-                                          📝 {isRtl ? 'ملاحظات وتوجيهات لجنة المعادلة:' : 'Equivalency Committee Notes:'}
-                                        </label>
-                                        <textarea
-                                          rows={2}
-                                          value={eqNotesMap[survey.id] || ''}
-                                          onChange={(e) => setEqNotesMap({ ...eqNotesMap, [survey.id]: e.target.value })}
-                                          placeholder={isRtl ? 'اكتب تفاصيل قرار المعادلة والمعايرة وتوجيه الطالب...' : 'Enter equivalency details and guidance...'}
-                                          className="w-full p-2 text-[10px] font-bold rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500"
-                                        />
-                                      </div>
-
-                                      {/* Action Button */}
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
-                                          if (!targetSch) {
-                                            alert(isRtl ? '⚠️ يرجى تحديد المدرسة الموجه لها الطالب للتسكين.' : 'Please select target school.');
-                                            return;
-                                          }
-                                          const calibratedGrade = eqGradeMap[survey.id] || survey.grade;
-                                          const eqNotes = (eqNotesMap[survey.id] || '').trim();
-
-                                          const leadOff = officers.find(o => o.isActive && o.role === 'school_leadership' && o.schoolNames && o.schoolNames.some(s => targetSch.toLowerCase().includes(s.toLowerCase().trim()))) || leadershipOfficers[0];
-
-                                          const nowIso = new Date().toISOString();
-
-                                          if (onUpdateSurvey) {
-                                            onUpdateSurvey({
-                                              ...survey,
-                                              schoolName: targetSch,
-                                              grade: calibratedGrade,
-                                              equalizationCompleted: true,
-                                              equalizationStage: 'completed',
-                                              vacancyRequestStatus: 'sent_to_leadership',
-                                              sentToLeadership: true,
-                                              sentToSchoolPrincipal: true,
-                                              sentToLeadershipAt: nowIso,
-                                              sentToPrincipalAt: nowIso,
-                                              assignedLeadershipOfficerId: leadOff?.id || '',
-                                              leadershipOfficerName: leadOff?.nameAr || 'مشرف القيادة المدرسية',
-                                              equalizationNotes: eqNotes,
-                                              notes: isRtl
-                                                ? `🎓 تم إنهاء إجراءات المعادلة والمعايرة من قبل مشرف المعادلة (${activeOfficer.nameAr}). تم التوجيه إلى مدرسة (${targetSch}) للصف (${calibratedGrade}). أُرسل الطلب للمدرسة للتسكين وتظهر في حساب مشرف القيادة المدرسية (${leadOff?.nameAr || 'المشرف المختص'}) للمتابعة.`
-                                                : `Equivalency completed by (${activeOfficer.nameAr}). Routed to (${targetSch}) for grade (${calibratedGrade}). Sent for staffing.`
-                                            } as any);
-
-                                            alert(isRtl
-                                              ? `✓ تم اعتماد المعادلة بنجاح! تحوّل الطلب مباشرة إلى مدرسة (${targetSch}) للتسكين، وظهر في حساب مشرف القيادة المدرسية (${leadOff?.nameAr || 'المشرف المختص'}) للمتابعة.`
-                                              : 'Equivalency completed! Sent to school and leadership officer.');
-                                          }
-                                        }}
-                                        className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-[11px] rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                      >
-                                        <span>🚀 {isRtl ? 'إنهاء المعايرة وإرسال للمدرسة للتسكين (وتظهر للقيادة)' : 'Complete Equivalency & Route to School/Leadership'}</span>
-                                      </button>
-                                    </div>
-                                  )}
-
                                   {/* STEP 2: Open Vacancy (تم فتح الشاغر 🔓) */}
                                   {!isArchived && isPendingVacancy && !isVacancyOpened && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'school_planning' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
                                     <button
@@ -10773,7 +11813,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   )}
 
                                   {/* STEP 2B: Route to School Leadership Supervisor */}
-                                  {!isArchived && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).referringOfficerId === activeOfficer.id || survey.assignedOfficerId === activeOfficer.id) && (
+                                  {!isArchived && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).referringOfficerId === activeOfficer.id || survey.assignedOfficerId === activeOfficer.id) && (
                                     <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 text-start space-y-1.5">
                                       <div className="flex flex-col gap-0.5">
                                         <label className="block text-[10px] font-black text-indigo-900 dark:text-indigo-300">
@@ -11025,7 +12065,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                     const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-                    if (isEqItem && !isEqDoneItem && !canEqAuthUser) {
+                    if (isEqItem && !canEqAuthUser) {
                       return false;
                     }
 

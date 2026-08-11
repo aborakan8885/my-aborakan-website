@@ -61,6 +61,9 @@ export default function App() {
   const setUserRole = (role: 'portal' | 'parent' | 'admin') => {
     startRoleTransition(() => {
       setUserRoleState(role);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
     });
   };
 

@@ -50,6 +50,17 @@ export interface SurveyResponse {
   isEqualizationRequest?: boolean;
   equalizationStage?: 'primary' | 'intermediate' | 'secondary' | string;
 
+  // Student Transfer fields
+  serviceType?: 'new' | 'transfer' | string;
+  transferReason?: string;
+  transferReasonCustom?: string;
+  transferAttachmentName?: string;
+  transferAttachmentData?: string;
+  transferAttachmentType?: string;
+  transferAttachmentSize?: number;
+  guardianTransferPledge?: boolean;
+  attachmentsPurgedByPrincipal?: boolean;
+
   // Multiple school choices & parent pledge
   secondSchoolName?: string;
   thirdSchoolName?: string;
@@ -71,6 +82,25 @@ export interface SurveyResponse {
   returnedAt?: string;
   principalReturnCount?: number;
   isSecondReturnByPrincipal?: boolean;
+
+  // Appointment Scheduling fields for Equivalency Review
+  hasReviewAppointment?: boolean;
+  appointmentDate?: string;
+  appointmentTime?: string;
+  appointmentNote?: string;
+  appointmentLocationLink?: string;
+  appointmentSetAt?: string;
+  appointmentSetBy?: string;
+  isReceivedByEqOfficer?: boolean;
+  receivedByEqOfficerName?: string;
+  eqReceivedAt?: string;
+
+  // Equivalency doc attachment and notes
+  equalizationDocAttached?: boolean;
+  equalizationDocName?: string;
+  equalizationDocData?: string;
+  equalizationNotes?: string;
+  equalizationCompleted?: boolean;
 
   // Planning officer vacancy details & return handling
   vacancyOpenedChoice?: '1st' | '2nd' | '3rd' | 'alternative' | string;
