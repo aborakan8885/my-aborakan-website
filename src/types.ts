@@ -91,6 +91,11 @@ export interface SurveyResponse {
   appointmentLocationLink?: string;
   appointmentSetAt?: string;
   appointmentSetBy?: string;
+  appointmentConfirmedByBeneficiary?: boolean;
+  appointmentConfirmedAt?: string;
+  appointmentCancelledDueToNoShow?: boolean;
+  appointmentCancelledAt?: string;
+  appointmentCancelledReason?: string;
   isReceivedByEqOfficer?: boolean;
   receivedByEqOfficerName?: string;
   eqReceivedAt?: string;

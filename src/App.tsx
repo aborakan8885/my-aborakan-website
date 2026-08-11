@@ -11,6 +11,7 @@ import Portal from './components/Portal';
 import ErrorBoundary from './components/ErrorBoundary';
 import ContactFeedbackModal from './components/ContactFeedbackModal';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, PrincipalReport, SchoolItem, BeneficiaryFeedback } from './types';
+import { sendOfficialEmail } from './utils/emailService';
 import {
   saveSurveysToStorage,
   loadSurveysFromStorage,
@@ -232,7 +233,7 @@ export default function App() {
     const isNegativeFeedback = (ratedStaff && newResponse.staffSatisfaction < 3) || (ratedReception && newResponse.receptionSatisfaction < 3);
 
     if (isNegativeFeedback) {
-      // Trigger instant email alert logs
+      // Trigger instant email alert logs & send actual email via official account qabulmadinah@gmail.com
       const emailId = `EML-${Math.floor(200 + Math.random() * 800)}`;
       const targetEmails = config.adminEmails.split(',').map((e) => e.trim());
       
@@ -249,11 +250,19 @@ export default function App() {
 
       setEmailLogs((prev) => [...newEmailLogs, ...prev]);
 
+      // Send live email via official Gmail qabulmadinah@gmail.com
+      sendOfficialEmail({
+        to: targetEmails,
+        subject: `⚠️ تنبيه فوري: تقييم سلبي من مستفيد (${newResponse.beneficiaryName})`,
+        bodyText: `تم استلام تقييم سلبي جديد في نظام القبول والمعادلات:\n\nالمستفيد: ${newResponse.beneficiaryName}\nرقم الجوال: ${newResponse.phone}\nالمرحلة: ${newResponse.stage}\nنوع المشكلة: ${newResponse.problemType}\nتقييم الموظف: ${newResponse.staffSatisfaction || '-'}\nتقييم الاستقبال: ${newResponse.receptionSatisfaction || '-'}\nالملاحظات: ${newResponse.reviewerNotes || 'لا يوجد'}\n\nتاريخ الطلب: ${nowStr}`,
+        triggerReason: 'Negative Feedback Alert'
+      });
+
       // Show warning toast
       triggerToast(
         currentLang === 'ar'
-          ? '⚠️ تم رصد تقييم سلبي! جاري إرسال تنبيه عاجل للمسؤولين.'
-          : '⚠️ Negative feedback detected! Instant admin email dispatched.',
+          ? '⚠️ تم رصد تقييم سلبي! جاري إرسال تنبيه عاجل للمسؤولين عبر البريد الرسمي.'
+          : '⚠️ Negative feedback detected! Instant alert dispatched via official email.',
         'warning'
       );
     } else {

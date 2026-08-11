@@ -5,6 +5,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import iconv from "iconv-lite";
 import jschardet from "jschardet";
+import nodemailer from "nodemailer";
 import { createServer as createViteServer } from "vite";
 
 // Prevent process crashes under intense concurrent load spikes
@@ -13,6 +14,21 @@ process.on("uncaughtException", (err) => {
 });
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection caught safely:", reason);
+});
+
+// Official Gmail Configuration for Applet
+const OFFICIAL_EMAIL_USER = process.env.OFFICIAL_EMAIL_USER || "qabulmadinah@gmail.com";
+const OFFICIAL_EMAIL_PASS = process.env.OFFICIAL_EMAIL_PASS || "Salim123321rs&1";
+
+const mailTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: OFFICIAL_EMAIL_USER,
+    pass: OFFICIAL_EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 interface SchoolItem {
@@ -58,8 +74,77 @@ async function startServer() {
       status: "ok", 
       service: "High Concurrency Admissions & Surveys Engine",
       capacity: "20,000+ Concurrent Requests Handled",
+      officialEmail: OFFICIAL_EMAIL_USER,
       memoryUsage: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`
     });
+  });
+
+  // API Endpoint: Get official email status and config
+  app.get("/api/email/status", (_req, res) => {
+    res.json({
+      success: true,
+      officialEmail: OFFICIAL_EMAIL_USER,
+      configured: true,
+      service: "Gmail SMTP Service"
+    });
+  });
+
+  // API Endpoint: Send official emails using qabulmadinah@gmail.com
+  app.post("/api/send-email", async (req, res): Promise<any> => {
+    try {
+      const { to, subject, bodyText, bodyHtml, triggerReason } = req.body || {};
+
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: "الرجاء تحديد البريد الإلكتروني للمستقبل (to)."
+        });
+      }
+
+      const recipientStr = Array.isArray(to) ? to.join(",") : String(to);
+      const emailSubject = subject || "إشعار من نظام القبول والمعادلات - إدارة رعاية المستفيدين";
+      const htmlContent = bodyHtml || `
+        <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px; background-color: #f8fafc; color: #0f172a;">
+          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+            <div style="display: flex; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px;">
+              <h2 style="color: #0284c7; margin: 0; font-size: 20px; font-weight: 800;">نظام القبول والمعادلات - إدارة رعاية المستفيدين</h2>
+            </div>
+            <div style="font-size: 15px; line-height: 1.8; color: #334155; margin-bottom: 20px; white-space: pre-wrap;">${bodyText || 'إشعار رسمي من النظام'}</div>
+            ${triggerReason ? `<div style="background-color: #f1f5f9; padding: 10px 15px; border-radius: 8px; font-size: 12px; color: #64748b; margin-top: 15px;">📌 سبب الإرسال: ${triggerReason}</div>` : ''}
+            <div style="border-top: 1px solid #f1f5f9; padding-top: 15px; margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">
+              هذه الرسالة مُرسلة تلقائياً عبر الحساب الرسمي لنظام القبول والتسجيل مع تحيات وحدة القبول.<br>
+              <strong>البريد الرسمي: ${OFFICIAL_EMAIL_USER}</strong>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const mailOptions = {
+        from: `"نظام القبول والمعادلات" <${OFFICIAL_EMAIL_USER}>`,
+        to: recipientStr,
+        subject: emailSubject,
+        text: bodyText || bodyHtml?.replace(/<[^>]+>/g, '') || "إشعار من نظام القبول والمعادلات",
+        html: htmlContent
+      };
+
+      const info = await mailTransporter.sendMail(mailOptions);
+      console.log(`[EMAIL DISPATCH] Sent email to ${recipientStr} via ${OFFICIAL_EMAIL_USER}. MessageID: ${info.messageId}`);
+
+      return res.json({
+        success: true,
+        sender: OFFICIAL_EMAIL_USER,
+        recipient: recipientStr,
+        messageId: info.messageId,
+        message: `تم إرسال البريد الإلكتروني بنجاح من البريد الرسمي (${OFFICIAL_EMAIL_USER}).`
+      });
+    } catch (err: any) {
+      console.error("[EMAIL DISPATCH ERROR]", err);
+      return res.status(500).json({
+        success: false,
+        sender: OFFICIAL_EMAIL_USER,
+        error: `تعذر إرسال البريد الإلكتروني عبر الحساب الرسمي (${OFFICIAL_EMAIL_USER}): ${err?.message || err}`
+      });
+    }
   });
 
   // API Endpoint: High-throughput Batch Request processing for high load testing / submission spikes

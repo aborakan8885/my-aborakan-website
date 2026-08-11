@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Send, User, Phone, MessageSquareHeart, Code2, CheckCircle2, Sparkles, MessageCircle } from 'lucide-react';
 import { BeneficiaryFeedback } from '../types';
+import { sendOfficialEmail } from '../utils/emailService';
 
 interface ContactFeedbackModalProps {
   isOpen: boolean;
@@ -29,10 +30,22 @@ export default function ContactFeedbackModal({
       return;
     }
 
+    const name = senderName.trim() || 'مستفيد زائر';
+    const phone = senderPhone.trim() || 'غير محدد';
+    const msgText = message.trim();
+
     onSendFeedback({
-      senderName: senderName.trim() || 'مستفيد زائر',
-      senderPhone: senderPhone.trim() || 'غير محدد',
-      message: message.trim()
+      senderName: name,
+      senderPhone: phone,
+      message: msgText
+    });
+
+    // Send notification email via official account qabulmadinah@gmail.com
+    sendOfficialEmail({
+      to: 'qabulmadinah@gmail.com',
+      subject: `✉️ رسالة رأي/اقتراح جديدة من المستفيد: (${name})`,
+      bodyText: `تم استلام ملاحظة أو مقترح جديد عبر نافذة التواصل والتطوير:\n\nاسم المستفيد: ${name}\nرقم الجوال: ${phone}\nنص الرسالة:\n${msgText}\n\nتاريخ الرسالة: ${new Date().toLocaleString('ar-SA')}`,
+      triggerReason: 'Beneficiary Feedback Submission'
     });
 
     setSubmitted(true);
@@ -106,7 +119,7 @@ export default function ContactFeedbackModal({
                 <div className="leading-relaxed">
                   <span className="font-extrabold text-slate-700 dark:text-cyan-200 block text-xs">فكرة وتطوير النظام:</span>
                   <span className="font-black text-sm sm:text-base text-[#1b6583] dark:text-cyan-100 bg-cyan-100/90 dark:bg-[#218caa]/40 px-3 py-1 rounded-xl border border-[#218caa]/30 inline-block mt-1 shadow-2xs">
-                    الأستاذ / سالم محمد الترجمي - وحدة القبول
+                    الأستاذ / سالم بن محمد الترجمي - وحدة القبول
                   </span>
                 </div>
               </div>

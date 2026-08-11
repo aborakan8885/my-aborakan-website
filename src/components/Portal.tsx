@@ -32,6 +32,7 @@ import {
   Star,
   Building2,
   X,
+  XCircle,
   ArrowRightLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -140,8 +141,8 @@ export default function Portal({
   // Active filter for principal dashboard: 'all' | 'pending' | 'resolved'
   const [principalTab, setPrincipalTab] = useState<'all' | 'pending' | 'resolved'>('all');
 
-  // Principal dashboard secondary tab: 'parents' | 'placement-requests' | 'principal-reports'
-  const [dashboardSubTab, setDashboardSubTab] = useState<'parents' | 'placement-requests' | 'principal-reports'>('placement-requests');
+  // Principal dashboard secondary tab: 'parents' | 'placement-requests' | 'eq-placement-requests' | 'principal-reports'
+  const [dashboardSubTab, setDashboardSubTab] = useState<'parents' | 'placement-requests' | 'eq-placement-requests' | 'principal-reports'>('placement-requests');
 
   // Active filter for placement requests from admissions unit: 'all' | 'pending' | 'confirmed'
   const [placementFilter, setPlacementFilter] = useState<'all' | 'pending' | 'confirmed'>('pending');
@@ -378,7 +379,7 @@ export default function Portal({
     return principalReports.filter(r => r.schoolCode === principalSession.schoolCode);
   }, [principalReports, principalSession]);
 
-  // Incoming placement requests sent to this principal's school from Admissions Unit
+  // Incoming placement requests sent to this principal's school
   const placementRequests = useMemo(() => {
     if (!principalSession) return [];
     const pCode = (principalSession.schoolCode || '').toLowerCase().trim();
@@ -404,39 +405,66 @@ export default function Portal({
     });
   }, [surveys, principalSession]);
 
+  // Equivalency Placement Requests (طلبات التسكين وفق المعادلات)
+  const equivalencyPlacementRequests = useMemo(() => {
+    return placementRequests.filter((s) => {
+      return (s as any).isEqualizationRequest || 
+        (s as any).isNonFreshStudent || 
+        s.problemType === 'cert_primary_eq' || 
+        s.problemType === 'cert_intermediate_eq' || 
+        s.problemType === 'cert_secondary_eq' || 
+        !!(s as any).equalizationStage;
+    });
+  }, [placementRequests]);
+
+  // Admissions Placement Requests (طلبات التسكين المرسلة من وحدة القبول - excludes Equivalency Requests)
+  const admissionsPlacementRequests = useMemo(() => {
+    return placementRequests.filter((s) => {
+      const isEq = (s as any).isEqualizationRequest || 
+        (s as any).isNonFreshStudent || 
+        s.problemType === 'cert_primary_eq' || 
+        s.problemType === 'cert_intermediate_eq' || 
+        s.problemType === 'cert_secondary_eq' || 
+        !!(s as any).equalizationStage;
+      return !isEq;
+    });
+  }, [placementRequests]);
+
+  // Active Placement Source List based on active subtab
+  const activePlacementSourceList = useMemo(() => {
+    if (dashboardSubTab === 'eq-placement-requests') {
+      return equivalencyPlacementRequests;
+    }
+    return admissionsPlacementRequests;
+  }, [dashboardSubTab, equivalencyPlacementRequests, admissionsPlacementRequests]);
+
   // Filtered placement requests according to active placement sub-filter
   const displayedPlacementRequests = useMemo(() => {
-    return placementRequests.filter(s => {
-      const isConfirmed = s.principalConfirmedStaffing || s.vacancyRequestStatus === 'staffing_confirmed' || s.vacancyRequestStatus === 'executed' || s.isResolved;
+    return activePlacementSourceList.filter(s => {
+      const isConfirmed = s.principalConfirmedStaffing || s.vacancyRequestStatus === 'staffing_confirmed' || s.vacancyRequestStatus === 'executed';
       const isReturned = (s as any).returnedByPrincipal || s.vacancyRequestStatus === 'returned_no_vacancy';
       if (placementFilter === 'pending') return !isConfirmed && !isReturned;
       if (placementFilter === 'confirmed') return isConfirmed;
       return true;
     });
-  }, [placementRequests, placementFilter]);
+  }, [activePlacementSourceList, placementFilter]);
 
-  // Handler for Principal clicking "تم التسكين" (Approve Staffing & Finalize Request)
+  // Handler for Principal clicking "اعتماد التسكين الميداني ✅" (Approve Staffing)
   const handleConfirmPlacement = (survey: SurveyResponse) => {
-    const confirmPrint = window.confirm(
-      isRtl
-        ? `⚠️ تنبيه تحذيري هام لمدير المدرسة:\n\nيرجى التأكد من طباعة الإثباتات ووثائق المعادلة المرفقة وحفظها في ملف الطالب الورقي الآن، حيث سيتم حذف المرفقات نهائياً من النظام والسيرفر فور القبول والتسكين لتفريغ المساحة.\n\nهل قمت بطباعة/حفظ المرفقات وترغب في إتمام القبول والتسكين فوراً؟`
-        : `Important Notice: Please make sure you printed all attached proofs and equivalency documents before placement. Attachments will be purged after staffing.\n\nDo you want to confirm placement now?`
-    );
-    if (!confirmPrint) return;
-
     const customNote = principalNotesMap[survey.id]?.trim() || (isRtl ? 'تم تسكين الطالب/ة بالمدرسة بنجاح وتأكيد الاعتماد النهائي من مدير/ة المدرسة.' : 'Student placed successfully by school principal.');
     const now = new Date().toISOString();
 
     const updatedSurvey: SurveyResponse = {
       ...survey,
-      isResolved: true,
+      isResolved: true, // Mark resolved and closed upon principal staffing confirmation
       vacancyRequestStatus: 'staffing_confirmed',
       principalConfirmedStaffing: true,
       sentToSchoolPrincipal: true,
       staffingConfirmedAt: now,
+      archivedAt: now,
       staffingConfirmedBy: principalSession?.principalName || 'مدير المدرسة',
       staffingNote: customNote,
-      unresolvedReason: isRtl ? 'تم التسكين بالمدرسة بنجاح وتأكيد الاعتماد النهائي من مدير/ة المدرسة' : 'Staffing confirmed by school principal',
+      unresolvedReason: customNote,
       transferAttachmentData: undefined,
       transferAttachmentName: undefined,
       attachmentsPurgedByPrincipal: true,
@@ -445,10 +473,6 @@ export default function Portal({
     if (onUpdateSurvey) {
       onUpdateSurvey(updatedSurvey);
     }
-
-    alert(isRtl 
-      ? `🎉 تم إتمام اعتماد تسكين الطالب/ة (${survey.beneficiaryName}) بالمدرسة بنجاح!\n\n• أُنهيت المعاملة وحُذفت المرفقات لتفريغ المساحة بعد التأكد من الطباعة.\n• أُرشفت المعاملة تلقائياً برقم مرجعي: (${survey.id}).\n• أُظهرت النتيجة فوراً في حساب المستفيد ليتمكن من التقييم.` 
-      : `Placement confirmed for ${survey.beneficiaryName}! Transaction finalized & archived automatically. Hidden from active lists and ready for beneficiary evaluation.`);
   };
 
   // Handler for Principal opening return request modal
@@ -1249,8 +1273,8 @@ export default function Portal({
                             </div>
                           )}
 
-                          {/* Scheduled Review Appointment Box for Equivalency */}
-                          {((survey as any).hasReviewAppointment || (survey as any).appointmentDate) && (
+                          {/* Scheduled Review Appointment Box for Equivalency (Only shown when not finalized) */}
+                          {!((survey as any).principalConfirmedStaffing || (survey as any).vacancyRequestStatus === 'staffing_confirmed' || (survey as any).vacancyRequestStatus === 'executed' || survey.isResolved) && ((survey as any).hasReviewAppointment || (survey as any).appointmentDate) && (
                             <div className={`p-4 rounded-2xl border text-start space-y-3 shadow-sm ${
                               isDark ? 'bg-amber-950/40 border-amber-500/50 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-950'
                             }`}>
@@ -1304,93 +1328,161 @@ export default function Portal({
                                   </p>
                                 </div>
                               </div>
+
+                              {/* Beneficiary Attendance Confirmation Option */}
+                              <div className="pt-2 border-t border-amber-200/80 dark:border-amber-800/80 flex flex-wrap items-center justify-between gap-3">
+                                {(survey as any).appointmentCancelledDueToNoShow ? (
+                                  <div className="p-3 rounded-xl bg-red-100 dark:bg-red-950/80 text-red-900 dark:text-red-200 font-extrabold text-xs border border-red-300 flex items-center gap-2 w-full">
+                                    <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                                    <span>{isRtl ? '❌ تم إلغاء الطلب من قبل مسؤول المعادلات لعدم حضور المستفيد للموعد المحدد.' : 'Request cancelled due to no-show.'}</span>
+                                  </div>
+                                ) : (survey as any).appointmentConfirmedByBeneficiary ? (
+                                  <div className="flex items-center gap-2 text-xs font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-3.5 py-2.5 rounded-xl border border-emerald-300 dark:border-emerald-800 w-full">
+                                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                                    <span>
+                                      {isRtl 
+                                        ? `✅ تم تأكيد حضور الموعد من قبلك بنجاح بتاريخ: ${new Date((survey as any).appointmentConfirmedAt || Date.now()).toLocaleDateString('ar-SA')} - ظهر التحديث لدى مسؤول المعادلات.` 
+                                        : 'Attendance confirmed by beneficiary'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (onUpdateSurvey) {
+                                        onUpdateSurvey({
+                                          ...survey,
+                                          appointmentConfirmedByBeneficiary: true,
+                                          appointmentConfirmedAt: new Date().toISOString()
+                                        } as any);
+                                      }
+                                      alert(isRtl ? '✅ تم تأكيد حضورك للموعد بنجاح! سيظهر التحديث لمسؤول المعادلات.' : 'Attendance confirmed successfully!');
+                                    }}
+                                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                    <span>{isRtl ? 'تأكيد حضور الموعد مع مسؤول المعادلات' : 'Confirm Appointment Attendance'}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
 
-                          {/* Request Processing Status Banner */}
+                          {/* Request Processing & Final Placement Status Banners */}
                           {(() => {
                             const isVac = (survey as any).isVacancyRequest;
                             const st = (survey as any).vacancyRequestStatus;
                             const isDone = survey.isResolved || st === 'executed' || st === 'staffing_confirmed' || (survey as any).principalConfirmedStaffing;
 
+                            // 1. FINAL PLACEMENT APPROVED (Ordered strictly as requested by user)
+                            if (isDone) {
+                              const placedSchoolName = (survey as any).vacancyOpenedSchoolName || survey.schoolName;
+                              const stageFormatted = isRtl ? (survey.stage === 'EarlyChildhood' ? 'طفولة مبكرة' : survey.stage === 'Kindergarten' ? 'رياض أطفال' : survey.stage === 'Primary' ? 'ابتدائي' : survey.stage === 'Intermediate' ? 'متوسط' : 'ثانوي') : survey.stage;
+
+                              return (
+                                <div className="space-y-4">
+                                  {/* Step 1: Education Directorate Congratulation Banner */}
+                                  <div className={`p-5 rounded-2xl border flex items-center gap-4 ${
+                                    isDark ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200' : 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                                  }`}>
+                                    <CheckCircle className={`w-8 h-8 shrink-0 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                                    <div className="space-y-1">
+                                      <h3 className="text-base sm:text-lg font-black leading-snug">
+                                        🎉 {isRtl 
+                                          ? 'تبارك لك الإدارة العامة للتعليم بمنطقة المدينة المنورة بقبول ابنكم/ابنتكم' 
+                                          : 'Congratulations! Your student has been accepted by Madinah Education Directorate.'}
+                                      </h3>
+                                      <p className="text-xs font-bold opacity-90">
+                                        {isRtl ? 'تم اعتماد التسكين نهائياً بالمدرسة. يمكنك الاطلاع على بيانات التسكين والتأكيد أدناه.' : 'Placement confirmed. Please view school details and evaluate our service below.'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Step 2: Placed School Details Box & Guidance to Beneficiary */}
+                                  <div className={`p-5 rounded-2xl border space-y-4 shadow-sm ${
+                                    isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
+                                  }`}>
+                                    <div className="flex items-center gap-2 border-b pb-3 border-emerald-200 dark:border-teal-800/60 font-black text-sm text-emerald-800 dark:text-emerald-300">
+                                      <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                      <span>{isRtl ? '🏫 بيانات المدرسة المسكن بها الطالب والمرحلة والصف:' : '🏫 Placed School & Grade Details:'}</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-extrabold">
+                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المدرسة المسكن عليها:' : 'Assigned School:'}</span>
+                                        <span className="text-sm font-black text-emerald-900 dark:text-emerald-200">{placedSchoolName}</span>
+                                      </div>
+                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المرحلة الدراسية:' : 'Stage:'}</span>
+                                        <span className="text-sm font-black text-slate-900 dark:text-white">{stageFormatted}</span>
+                                      </div>
+                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'الصف المسكن به:' : 'Assigned Grade:'}</span>
+                                        <span className="text-sm font-black text-slate-900 dark:text-white">{survey.grade || 'غير محدد'}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs shadow-xs flex items-center gap-3">
+                                      <Clock className="w-5 h-5 shrink-0 text-slate-900" />
+                                      <span className="leading-relaxed">
+                                        {isRtl 
+                                          ? '⚡ تأكيد وتوجيه عاجل لولي الأمر: يرجى المبادرة وسرعة مراجعة إدارة المدرسة المسكن بها الطالب/ة لاستكمال باقي إجراءات القيد والتثبيت الفعلي بالفصول.'
+                                          : '⚡ Important Note: Please quickly visit the school administration to finalize enrollment procedures.'}
+                                      </span>
+                                    </div>
+
+                                    {(survey as any).staffingNote && (
+                                      <div className="text-[11px] bg-slate-50 dark:bg-black/20 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 font-bold">
+                                        📌 {isRtl ? `ملاحظة التسكين الميداني: ${(survey as any).staffingNote}` : `Placement Note: ${(survey as any).staffingNote}`}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 2 & 3. Sent to school principal or returned by principal for vacancy study
+                            if (st === 'sent_to_school_principal' || (survey as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || (survey as any).sentToLeadership || st === 'returned_to_eq_officer' || st === 'returned_from_principal') {
+                              return (
+                                <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
+                                  isDark ? 'bg-sky-950/30 border-sky-800/50 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-900'
+                                }`}>
+                                  <Clock className={`w-6 h-6 shrink-0 ${isDark ? 'text-sky-400' : 'text-sky-600'}`} />
+                                  <div>
+                                    <span className="block text-sm font-black">
+                                      {isRtl ? 'تم ارسال الطلب لمدير المدرسة' : 'Request Sent to School Principal'}
+                                    </span>
+                                    <span className="block text-xs font-bold opacity-90 mt-0.5">
+                                      {isRtl ? 'تمت إحالة الطلب مباشرة لإدارة المدرسة المعنية لتسكين الطالب بالصفوف والتحقق الميداني من المقعد.' : 'Request forwarded to school principal for class assignment.'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 1. Appointment Scheduled & Equivalency Processing
+                            if ((survey as any).appointmentDate || (survey as any).appointmentTime || (survey as any).appointmentDetails || st === 'appointment_scheduled') {
+                              return (
+                                <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
+                                  isDark ? 'bg-purple-950/30 border-purple-800/50 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-900'
+                                }`}>
+                                  <Clock className={`w-6 h-6 shrink-0 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
+                                  <div>
+                                    <span className="block text-sm font-black">
+                                      {isRtl ? 'تم تحديد الموعد وجاري عمل المعادلات' : 'Appointment Scheduled & Processing Equivalency'}
+                                    </span>
+                                    <span className="block text-xs font-bold opacity-90 mt-0.5">
+                                      {isRtl 
+                                        ? `موعد الحضور المحدد: ${(survey as any).appointmentDate || 'تم التحديد'} - ${(survey as any).appointmentTime || ''}. جاري دراسة وإعداد شهادة المعادلة.` 
+                                        : 'Appointment details confirmed. Processing equivalency certificates.'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // Vacancy Study with Planning Officer
                             if (isVac) {
-                              if (isDone) {
-                                return (
-                                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
-                                    isDark ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                                  }`}>
-                                    <CheckCircle className={`w-6 h-6 shrink-0 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                                    <div>
-                                      <span className="block text-sm font-black">
-                                        {isRtl ? '✅ تم اعتماد فتح الشاغر وتسكين الطالب/الطالبة بالمدرسة بنجاح!' : '✅ Vacancy Approved & Student Staffed Successfully!'}
-                                      </span>
-                                      <span className="block text-xs font-bold opacity-90 mt-0.5">
-                                        {isRtl ? 'تم إنهاء كافة إجراءات فتح الشاغر بالفصول والتسكين الميداني بالمدرسة المقترحة. يرجى لطفاً تقييم الخدمة أدناه.' : 'Classroom vacancy opened and student placed in school. Please evaluate our service below.'}
-                                      </span>
-                                      {(survey as any).staffingNote && (
-                                        <div className="mt-2 text-[11px] bg-white/60 dark:bg-black/20 p-2 rounded-lg font-semibold">
-                                          📌 {isRtl ? `ملاحظات التسكين بالمدرسة: ${(survey as any).staffingNote}` : `Staffing Note: ${(survey as any).staffingNote}`}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (st === 'sent_to_school_principal' || (survey as any).sentToSchoolPrincipal) {
-                                return (
-                                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
-                                    isDark ? 'bg-sky-950/30 border-sky-800/50 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-900'
-                                  }`}>
-                                    <Clock className={`w-6 h-6 shrink-0 ${isDark ? 'text-sky-400' : 'text-sky-600'}`} />
-                                    <div>
-                                      <span className="block text-sm font-black">
-                                        {isRtl ? '🏫📍 تم إرسال الطلب للمدرسة لاعتماد التسكين' : '🏫 Sent to School Principal for Approval'}
-                                      </span>
-                                      <span className="block text-xs font-bold opacity-90 mt-0.5">
-                                        {isRtl ? 'تم إرسال الطلب مباشرة إلى إدارة المدرسة لاعتماد تسكين الطالب بالفصل الدراسي.' : 'Request sent to school principal for placement approval.'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (st === 'sent_to_leadership' || (survey as any).sentToLeadership) {
-                                return (
-                                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
-                                    isDark ? 'bg-indigo-950/30 border-indigo-800/50 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                                  }`}>
-                                    <Clock className={`w-6 h-6 shrink-0 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
-                                    <div>
-                                      <span className="block text-sm font-black">
-                                        {isRtl ? '🏫➡️ تم الإرسال لمشرف القيادة المدرسية للمتابعة' : '🏫 Sent to Leadership Supervisor for Follow-up'}
-                                      </span>
-                                      <span className="block text-xs font-bold opacity-90 mt-0.5">
-                                        {isRtl ? 'تم تحويل الطلب لمشرف القيادة المدرسية للمتابعة الميدانية وإتمام إجراءات التسكين.' : 'Request transferred to leadership supervisor for follow-up.'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (st === 'approved') {
-                                return (
-                                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
-                                    isDark ? 'bg-teal-950/30 border-teal-800/50 text-teal-300' : 'bg-teal-50 border-teal-200 text-teal-900'
-                                  }`}>
-                                    <CheckCircle className={`w-6 h-6 shrink-0 ${isDark ? 'text-teal-400' : 'text-teal-600'}`} />
-                                    <div>
-                                      <span className="block text-sm font-black">
-                                        {isRtl ? '🔓 تم فتح الشاغر بالفصول بنجاح من التخطيط المدرسي' : '🔓 Vacancy Opened by School Planning'}
-                                      </span>
-                                      <span className="block text-xs font-bold opacity-90 mt-0.5">
-                                        {isRtl ? 'تمت موافقة التخطيط المدرسي وجاري توجيه الطلب لمشرف القيادة المدرسية لإتمام التسكين.' : 'Planning approval granted. Routing for leadership staffing.'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-
                               return (
                                 <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
                                   isDark ? 'bg-amber-950/30 border-amber-800/50 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
@@ -1408,6 +1500,7 @@ export default function Portal({
                               );
                             }
 
+                            // Standard Default Status
                             return (
                               <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
                                 survey.isResolved
@@ -1437,19 +1530,41 @@ export default function Portal({
                             );
                           })()}
 
-                          {/* Evaluation & Feedback Form */}
-                          <div className={`border-t pt-6 space-y-6 ${isDark ? 'border-teal-800/20' : 'border-slate-100'}`}>
-                            <div className="space-y-1">
-                              <h4 className={`text-base font-black flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                <Award className="w-5 h-5 text-amber-500" />
-                                <span>{isRtl ? 'استبيان قياس رضا المستفيد والتقييم' : 'Beneficiary Satisfaction & Evaluation Survey'}</span>
-                              </h4>
-                              <p className="text-xs text-slate-400 leading-relaxed">
-                                {isRtl 
-                                  ? 'رأيك يساهم بشكل مباشر في تحسين حوكمة القبول والتوجيه. الرجاء تقييم تجربتك معنا بكل شفافية.' 
-                                  : 'Your evaluation directly helps in optimizing the quality governance. Please rate objectively.'}
-                              </p>
-                            </div>
+                          {/* Evaluation & Feedback Form (Only visible after final placement by School Principal) */}
+                          {(() => {
+                            const isPlacedByPrincipal = survey.principalConfirmedStaffing || (survey as any).vacancyRequestStatus === 'staffing_confirmed' || (survey as any).vacancyRequestStatus === 'executed' || survey.isResolved;
+
+                            if (!isPlacedByPrincipal) {
+                              return (
+                                <div className={`border-t pt-5 p-4 rounded-2xl border text-center space-y-2 ${
+                                  isDark ? 'bg-amber-950/20 border-amber-800/40 text-amber-300' : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                                }`}>
+                                  <div className="flex items-center justify-center gap-2 font-black text-xs">
+                                    <Lock className="w-4 h-4 text-amber-500" />
+                                    <span>{isRtl ? 'استبيان قياس رضا المستفيد والتقييم مغلق حالياً 🔒' : 'Satisfaction Survey Currently Locked 🔒'}</span>
+                                  </div>
+                                  <p className="text-[11px] font-bold opacity-90 max-w-lg mx-auto leading-relaxed">
+                                    {isRtl
+                                      ? '📌 يظهر استبيان قياس رضا المستفيد والتقييم فقط بعد تسكين الطالب نهائياً من قبل مدير المدرسة.'
+                                      : 'The satisfaction survey and evaluation will be enabled only after final student placement by the school principal.'}
+                                  </p>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className={`border-t pt-6 space-y-6 ${isDark ? 'border-teal-800/20' : 'border-slate-100'}`}>
+                                <div className="space-y-1">
+                                  <h4 className={`text-base font-black flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                    <Award className="w-5 h-5 text-amber-500" />
+                                    <span>{isRtl ? 'استبيان قياس رضا المستفيد والتقييم' : 'Beneficiary Satisfaction & Evaluation Survey'}</span>
+                                  </h4>
+                                  <p className="text-xs text-slate-400 leading-relaxed">
+                                    {isRtl 
+                                      ? 'رأيك يساهم بشكل مباشر في تحسين حوكمة القبول والتوجيه. الرجاء تقييم تجربتك معنا بكل شفافية.' 
+                                      : 'Your evaluation directly helps in optimizing the quality governance. Please rate objectively.'}
+                                  </p>
+                                </div>
 
                             {/* Success Notification */}
                             {local.success && (
@@ -1590,6 +1705,8 @@ export default function Portal({
                             </div>
 
                           </div>
+                        );
+                      })()}
                         </div>
                       );
                     })}
@@ -2506,9 +2623,37 @@ export default function Portal({
                     ? 'bg-sky-950/60 text-sky-300 border-sky-800/40'
                     : 'bg-sky-50 text-sky-700 border-sky-100'
                 }`}>
-                  {placementRequests.length}
+                  {admissionsPlacementRequests.length}
                 </span>
-                {placementRequests.filter(s => !s.principalConfirmedStaffing && s.vacancyRequestStatus !== 'staffing_confirmed' && s.vacancyRequestStatus !== 'executed').length > 0 && (
+                {admissionsPlacementRequests.filter(s => !s.principalConfirmedStaffing && s.vacancyRequestStatus !== 'staffing_confirmed' && s.vacancyRequestStatus !== 'executed').length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setDashboardSubTab('eq-placement-requests');
+                  setIsReporting(false);
+                }}
+                className={`pb-3 text-sm font-extrabold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+                  dashboardSubTab === 'eq-placement-requests'
+                    ? isDark
+                      ? 'border-purple-400 text-purple-300 font-black'
+                      : 'border-purple-600 text-purple-700 font-black'
+                    : `border-transparent ${isDark ? 'text-teal-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`
+                }`}
+                id="portal-subtab-eq-placement-requests"
+              >
+                <FileCheck2 className={`w-4 h-4 ${isDark ? 'text-purple-300' : 'text-purple-600'}`} />
+                <span>{isRtl ? 'طلبات التسكين وفق المعادلات' : 'Placement Requests according to Equivalency'}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${
+                  isDark
+                    ? 'bg-purple-950/60 text-purple-300 border-purple-800/40'
+                    : 'bg-purple-50 text-purple-700 border-purple-100'
+                }`}>
+                  {equivalencyPlacementRequests.length}
+                </span>
+                {equivalencyPlacementRequests.filter(s => !s.principalConfirmedStaffing && s.vacancyRequestStatus !== 'staffing_confirmed' && s.vacancyRequestStatus !== 'executed').length > 0 && (
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
                 )}
               </button>
@@ -2565,8 +2710,8 @@ export default function Portal({
             </div>
 
             <AnimatePresence mode="wait">
-              {/* SUB-TAB 0: PLACEMENT REQUESTS FROM ADMISSIONS UNIT */}
-              {dashboardSubTab === 'placement-requests' && (
+              {/* SUB-TAB 0: PLACEMENT REQUESTS FROM ADMISSIONS OR EQUIVALENCY */}
+              {(dashboardSubTab === 'placement-requests' || dashboardSubTab === 'eq-placement-requests') && (
                 <motion.div
                   key="placement-requests-tab"
                   initial={{ opacity: 0, y: 10 }}
@@ -2790,10 +2935,10 @@ export default function Portal({
                                     <button
                                       type="button"
                                       onClick={() => handleConfirmPlacement(req)}
-                                      className="flex-1 py-3 px-3 bg-gradient-to-r from-[#218caa] via-[#2883a4] to-[#3078a6] hover:brightness-110 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                      className="flex-1 py-3 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-emerald-500 hover:scale-[1.01]"
                                     >
                                       <CheckCircle className="w-4 h-4 text-white" />
-                                      <span>{isRtl ? 'اعتماد التسكين وإنهاء الطلب 🏫✅' : 'Approve Staffing 🏫✅'}</span>
+                                       <span>{isRtl ? 'اعتماد التسكين الميداني ✅' : 'Approve Placement ✅'}</span>
                                     </button>
 
                                     <button

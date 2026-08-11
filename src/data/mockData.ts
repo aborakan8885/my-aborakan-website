@@ -6,17 +6,17 @@
 import { SurveyResponse, EmailLog, SystemIntegrationLog, AppConfig, SchoolItem } from '../types';
 
 export const EMPLOYEES = [
-  { id: 'emp_1', nameAr: 'سالم الترجمي', nameEn: 'Salem Al-Turjumi' }
+  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', nameEn: 'Salem Al-Turjumi' }
 ];
 
 export const INITIAL_CONFIG: AppConfig = {
-  adminEmails: 'admin@edu.gov.sa, supervisor@edu.gov.sa',
+  adminEmails: 'qabulmadinah@gmail.com, admin@edu.gov.sa',
   autoBackupEnabled: true,
   backupInterval: 60,
   encryptionEnabled: true,
   thirdPartyIntegrationEnabled: true,
-  institutionNameAr: 'وزارة التعليم - إدارة رعاية المستفيدين',
-  institutionNameEn: 'Ministry of Education - Beneficiary Care Dept'
+  institutionNameAr: 'وزارة التعليم - إدارة رعاية المستفيدين بالمدينة المنورة',
+  institutionNameEn: 'Ministry of Education - Beneficiary Care Dept (Madinah)'
 };
 
 export const INITIAL_SURVEYS: SurveyResponse[] = [];

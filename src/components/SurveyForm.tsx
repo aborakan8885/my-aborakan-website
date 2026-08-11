@@ -350,6 +350,9 @@ export default function SurveyForm({
         if (!equalizationStage) {
           newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
         }
+        if (!schoolName.trim()) {
+          newErrors.schoolName = isRtl ? 'يرجى اختيار/إدخال المدرسة الأساسية المرغوبة للالتحاق بعد المعادلة' : 'Please select desired primary school for enrollment after equalization';
+        }
       } else {
         // Fresh Student validation
         if (!stage) {
@@ -438,10 +441,10 @@ export default function SurveyForm({
 
           stage: isEq ? eqStageMapped : stage,
           sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-          schoolName: isEq ? `وحدة القبول المعدلات (${eqStageLabelAr})` : schoolName.trim(),
-          schoolCode: isEq ? undefined : (schoolCode.trim() || undefined),
-          secondSchoolName: isEq ? undefined : (secondSchoolName.trim() || undefined),
-          thirdSchoolName: isEq ? undefined : (thirdSchoolName.trim() || undefined),
+          schoolName: (isEq && schoolName.trim()) ? schoolName.trim() : (isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim()),
+          schoolCode: (schoolCode.trim() || undefined),
+          secondSchoolName: (secondSchoolName.trim() || undefined),
+          thirdSchoolName: (thirdSchoolName.trim() || undefined),
           agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
           problemType: 'unregistered_desire',
           serviceEmployee: '',
@@ -490,8 +493,8 @@ export default function SurveyForm({
 
         stage: isEq ? eqStageMapped : stage,
         sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-        schoolName: isEq ? `وحدة القبول المعدلات (${eqStageLabelAr})` : schoolName.trim(),
-        schoolCode: isEq ? undefined : (schoolCode.trim() || undefined),
+        schoolName: (isEq && schoolName.trim()) ? schoolName.trim() : (isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim()),
+        schoolCode: (schoolCode.trim() || undefined),
         problemType: isEq ? 'other' : (problemType as ProblemType),
         serviceEmployee: '',
         isResolved: false,
@@ -511,8 +514,8 @@ export default function SurveyForm({
         otherProblemDetails: isEq 
           ? `طلب معادلة شهادة دراسية للمرحلة (${eqStageLabelAr})` 
           : (problemType === 'other' ? otherProblemDetails.trim() : undefined),
-        secondSchoolName: isEq ? undefined : (secondSchoolName.trim() || undefined),
-        thirdSchoolName: isEq ? undefined : (thirdSchoolName.trim() || undefined),
+        secondSchoolName: (secondSchoolName.trim() || undefined),
+        thirdSchoolName: (thirdSchoolName.trim() || undefined),
         agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
         isVacancyRequest: isVac ? true : undefined,
         vacancyRequestStatus: isVac ? 'pending_vacancy' : undefined
@@ -1509,6 +1512,66 @@ export default function SurveyForm({
                   }`}
                   dir={isRtl ? 'rtl' : 'ltr'}
                 />
+              </div>
+
+              {/* Preferred School Selection after Equivalency */}
+              <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/40 space-y-4">
+                <div id="field-schoolName">
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={schoolName}
+                    onChange={(name, code) => {
+                      setSchoolName(name);
+                      if (code) setSchoolCode(code);
+                    }}
+                    label={isRtl ? 'المدرسة الأساسية المرغوبة للالتحاق بعد المعادلة (الرغبة الأولى)' : 'Desired Primary School After Equalization (1st Choice)'}
+                    required
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    error={errors.schoolName}
+                    placeholder={isRtl ? '🔍 اختر المدرسة المرغوبة في الالتحاق (الاسم / الرقم الوزاري)...' : 'Search desired school...'}
+                    helperText={isRtl ? '💡 حدد المدرسة الأساسية المراد توجيه الطالب لها بعد إنهاء معادلة الشهادة.' : 'Select main target school.'}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={secondSchoolName}
+                    onChange={(name) => setSecondSchoolName(name)}
+                    label={isRtl ? 'الرغبة الثانية (اختياري)' : '2nd Choice School (Optional)'}
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    placeholder={isRtl ? '🔍 اختر مدرسة الرغبة الثانية...' : 'Search 2nd choice school...'}
+                  />
+
+                  <SchoolSelectDropdown
+                    schools={activeSchools}
+                    value={thirdSchoolName}
+                    onChange={(name) => setThirdSchoolName(name)}
+                    label={isRtl ? 'الرغبة الثالثة (اختياري)' : '3rd Choice School (Optional)'}
+                    isDark={isDark}
+                    isRtl={isRtl}
+                    placeholder={isRtl ? '🔍 اختر مدرسة الرغبة الثالثة...' : 'Search 3rd choice school...'}
+                  />
+                </div>
+
+                <div className={`p-3.5 rounded-xl border flex items-start gap-2.5 ${
+                  isDark ? 'bg-purple-950/40 border-purple-800/40 text-purple-200' : 'bg-white border-purple-200 text-slate-700'
+                }`}>
+                  <input
+                    type="checkbox"
+                    id="agreedToAlternativeSchoolPlacementEq"
+                    checked={agreedToAlternativeSchoolPlacement}
+                    onChange={(e) => setAgreedToAlternativeSchoolPlacement(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                  />
+                  <label htmlFor="agreedToAlternativeSchoolPlacementEq" className="text-xs font-semibold cursor-pointer leading-relaxed">
+                    {isRtl
+                      ? 'أتعهد وأوافق كولي أمر على تسكين ابني/ابنتي في أقرب مدرسة متاحة في حال تعذر توفر الشواغر بالرغبات المحددة.'
+                      : 'I agree to place my student in the nearest available school if choices are unavailable.'}
+                  </label>
+                </div>
               </div>
 
               {/* Submit Equalization Button */}

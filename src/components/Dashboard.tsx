@@ -25,6 +25,7 @@ import {
   Users,
   CheckCircle,
   CheckCircle2,
+  XCircle,
   ClipboardCheck,
   Database,
   Search,
@@ -77,6 +78,7 @@ import {
 } from 'lucide-react';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
+import { sendOfficialEmail, OFFICIAL_SENDER_EMAIL } from '../utils/emailService';
 import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
 
 export function normalizeArabicText(str: string | number | undefined | null): string {
@@ -295,7 +297,7 @@ interface DashboardProps {
 }
 
 const DEFAULT_OFFICERS: OfficerUser[] = [
-  { id: 'emp_1', nameAr: 'سالم الترجمي', fullNameQuad: 'سالم بن محمد بن علي الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'Salim123321rs&', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
+  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', fullNameQuad: 'سالم بن محمد الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'Salim123321rs&', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
 ];
 
 interface TabItemConfig {
@@ -485,11 +487,12 @@ function Dashboard({
       const defaultQuadName = o.fullNameQuad || (o.nameAr.includes('بن') ? o.nameAr : `${o.nameAr} بن عبد الله السعودي`);
       const defaultEmail = o.personalEmail || `${o.id}@gmail.com`;
 
-      if (o.id === 'emp_1' || o.nameAr === 'سالم الترجمي' || o.nationalId === '1068575628' || o.nationalId === '1011112222') {
+      if (o.id === 'emp_1' || o.nameAr === 'سالم الترجمي' || o.nameAr === 'سالم بن محمد الترجمي' || o.nationalId === '1068575628' || o.nationalId === '1011112222') {
         return {
           ...o,
           nationalId: '1068575628',
-          fullNameQuad: o.fullNameQuad || 'سالم بن محمد بن علي الترجمي',
+          nameAr: 'سالم بن محمد الترجمي',
+          fullNameQuad: 'سالم بن محمد الترجمي',
           personalEmail: o.personalEmail || 'salem.turjumi@gmail.com',
           password: 'Salim123321rs&',
           role: 'admin',
@@ -631,6 +634,7 @@ function Dashboard({
   const [reportSearch, setReportSearch] = useState<string>('');
   const [aiGenerating, setAiGenerating] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<string>('');
+  const [eqApptTypeMap, setEqApptTypeMap] = useState<Record<string, 'gregorian' | 'hijri'>>({});
 
   // Helper: Extract First Name and Last Name (الاسم الأول واللقب) from Quad Name
   const extractFirstNameAndLastName = (fullName: string): string => {
@@ -884,7 +888,7 @@ function Dashboard({
           <div style="margin-top: 30px; border-top: 2px solid #006C70; padding-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-family: system-ui, sans-serif;">
             <div style="border: 1.5px solid #006C70; background-color: #f0fdf4; padding: 12px; border-radius: 8px; text-align: center;">
               <div style="font-size: 11px; font-weight: bold; color: #006C70; margin-bottom: 4px;">مُعدّ التقرير:</div>
-              <div style="font-size: 14px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">سالم محمد الترجمي</div>
+              <div style="font-size: 14px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">سالم بن محمد الترجمي</div>
               <div style="font-size: 10px; color: #475569;">وحدة القبول والتسجيل - إدارة رعاية المستفيدين</div>
             </div>
             <div style="border: 1.5px solid #006C70; background-color: #f0fdf4; padding: 12px; border-radius: 8px; text-align: center;">
@@ -1233,11 +1237,7 @@ Strategic Recommendations:
           const matchingSupervisor = updatedOfficers.find(o => 
             o.isActive &&
             o.role === 'school_leadership' && 
-            o.schoolNames && 
-            o.schoolNames.some(sName => {
-              const sNorm = normalizeArabicText(sName);
-              return sNorm && schoolToMatchNorm && (schoolToMatchNorm.includes(sNorm) || sNorm.includes(schoolToMatchNorm));
-            })
+            matchSchoolNames(o.schoolNames, rep.schoolName)
           );
           if (matchingSupervisor) {
             onUpdateReportStatus(rep.id, { assignedOfficerId: matchingSupervisor.id });
@@ -1881,10 +1881,16 @@ Strategic Recommendations:
       if (!s) return false;
       const st = (s as any).vacancyRequestStatus;
       const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+      const isEqReferredToPrincipal = isEqItem && ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed');
+      const isEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations;
+
+      // USER REQ #3: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
+      if (isEqItem && isEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
+        if (!isEqReferredToPrincipal) return false;
+      }
 
       const isPlacement = (s as any).isVacancyRequest ||
-        isEqItem ||
-        st === 'pending' ||
+        isEqReferredToPrincipal ||
         st === 'pending_vacancy' ||
         st === 'approved' ||
         st === 'sent_to_leadership' ||
@@ -1910,15 +1916,28 @@ Strategic Recommendations:
         const diffHours = (Date.now() - returnTime) / (1000 * 60 * 60);
         return diffHours >= 48;
       }
+
+      // USER REQ #2: Role Planning Supervisor (مشرف التخطيط)
       if (activeOfficer.role === 'school_planning') {
         if (s.isResolved || st === 'approved' || st === 'executed' || st === 'archived') return false;
-        return st === 'pending_vacancy' || st === 'pending' || !st || isReturned;
+        if (isReturned) return true;
+        const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
+        const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+        if (isAssignedToMe) return true;
+        if (isVacancyDirected) {
+          if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
+          if ((s as any).assignedPlanningOfficerId && (s as any).assignedPlanningOfficerId !== activeOfficer.id) return false;
+          return true;
+        }
+        return false;
       }
+
+      // Role Leadership Supervisor (مشرف القيادة المدرسية)
       if (activeOfficer.role === 'school_leadership') {
         if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) return false;
         if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) return true;
         if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || isReturned) {
-          if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+          if (activeOfficer.schoolNames) {
             if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
           }
           const studentStageCat = getSurveyStageCategory(s);
@@ -1927,13 +1946,14 @@ Strategic Recommendations:
           const studentGender = isGirls ? 'girls' : 'boys';
 
           const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
-          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
-          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || (typeof activeOfficer.assignedStage === 'string' && (activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat))) || (s.stage && typeof activeOfficer.assignedStage === 'string' && activeOfficer.assignedStage.includes(s.stage));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (typeof activeOfficer.assignedSector === 'string' && ((s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector))));
 
           if (genderOk && stageOk && sectorOk) return true;
         }
         return false;
       }
+
       return !s.isResolved;
     });
   }, [surveys, activeOfficer]);
@@ -2132,26 +2152,68 @@ Strategic Recommendations:
   const [instEn, setInstEn] = useState(config.institutionNameEn);
   const [showSettingsSaved, setShowSettingsSaved] = useState(false);
 
+  // Official Email Test Dispatcher State
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailSubject, setTestEmailSubject] = useState('رسالة اختبار من الحساب الرسمي qabulmadinah@gmail.com');
+  const [testEmailMessage, setTestEmailMessage] = useState('السلام عليكم ورحمة الله وبركاته، هذه رسالة تجريبية لتأكيد الربط بالبريد الرسمي لنظام القبول والمعادلات.');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<string | null>(null);
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmailRecipient.trim()) {
+      alert(currentLang === 'ar' ? 'يرجى إدخال البريد الإلكتروني للمستقبل!' : 'Please enter recipient email!');
+      return;
+    }
+    setIsSendingTestEmail(true);
+    setTestEmailStatus(currentLang === 'ar' ? 'جاري الاتصال وسيرفر الإرسال بالحساب الرسمي (qabulmadinah@gmail.com)...' : 'Sending via qabulmadinah@gmail.com...');
+    try {
+      const res = await sendOfficialEmail({
+        to: testEmailRecipient.trim(),
+        subject: testEmailSubject.trim() || 'تجربة البريد الرسمي',
+        bodyText: testEmailMessage.trim(),
+        triggerReason: 'Manual Admin Email Test'
+      });
+      if (res.success) {
+        const msg = currentLang === 'ar' ? `✓ تم إرسال البريد بنجاح من الحساب الرسمي (${OFFICIAL_SENDER_EMAIL})!` : `✓ Email sent successfully from ${OFFICIAL_SENDER_EMAIL}!`;
+        setTestEmailStatus(msg);
+        alert(msg);
+      } else {
+        const errStr = `❌ فشل الإرسال: ${res.error || 'خطأ في سيرفر البريد'}`;
+        setTestEmailStatus(errStr);
+        alert(errStr);
+      }
+    } catch (err: any) {
+      setTestEmailStatus(`❌ خطأ: ${err?.message || err}`);
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
   // Filter responses and sort by submission time (latest first)
   const filteredSurveys = useMemo(() => {
     const list = surveysScope.filter((s) => {
       if (!s) return false;
 
       // 1. Pipeline Tab Filter
-      if (supervisorFilterTab === 'new_unreceived') {
-        if (s.isReceived && s.assignedOfficerId) return false;
+      const isPlacedOrResolved = s.isResolved || s.vacancyRequestStatus === 'executed' || s.vacancyRequestStatus === 'archived' || s.vacancyRequestStatus === 'staffing_confirmed' || (s as any).principalConfirmedStaffing;
+
+      if (supervisorFilterTab === 'all') {
+        if (isPlacedOrResolved) return false;
+      } else if (supervisorFilterTab === 'new_unreceived') {
+        if ((s.isReceived && s.assignedOfficerId) || isPlacedOrResolved) return false;
       } else if (supervisorFilterTab === 'my_received') {
-        if ((s.assignedOfficerId !== activeOfficer.id && (s as any).referringOfficerId !== activeOfficer.id && (s as any).assignedLeadershipOfficerId !== activeOfficer.id) || s.isResolved) return false;
+        if ((s.assignedOfficerId !== activeOfficer.id && (s as any).referringOfficerId !== activeOfficer.id && (s as any).assignedLeadershipOfficerId !== activeOfficer.id) || isPlacedOrResolved) return false;
       } else if (supervisorFilterTab === 'vacancy_approved') {
-        if (s.vacancyRequestStatus !== 'approved' || s.isResolved) return false;
+        if (s.vacancyRequestStatus !== 'approved' || isPlacedOrResolved) return false;
       } else if (supervisorFilterTab === 'sent_leadership') {
-        if ((s.vacancyRequestStatus !== 'sent_to_leadership' && !(s as any).sentToLeadership) || s.isResolved) return false;
+        if ((s.vacancyRequestStatus !== 'sent_to_leadership' && !(s as any).sentToLeadership) || isPlacedOrResolved) return false;
       } else if (supervisorFilterTab === 'sent_principal') {
-        if ((s.vacancyRequestStatus !== 'sent_to_school_principal' && !(s as any).sentToSchoolPrincipal) || s.isResolved) return false;
+        if ((s.vacancyRequestStatus !== 'sent_to_school_principal' && !(s as any).sentToSchoolPrincipal) || isPlacedOrResolved) return false;
       } else if (supervisorFilterTab === 'staffing_confirmed') {
         if (s.vacancyRequestStatus !== 'staffing_confirmed' && !(s as any).principalConfirmedStaffing) return false;
       } else if (supervisorFilterTab === 'archived') {
-        if (!s.isResolved && s.vacancyRequestStatus !== 'executed' && s.vacancyRequestStatus !== 'archived') return false;
+        if (!isPlacedOrResolved) return false;
       }
 
       const matchesSearch = matchesSearchQuery(
@@ -2244,7 +2306,17 @@ Strategic Recommendations:
       label: isRtl ? 'طلبات التسكين والمتابعة بالمدارس 🏫' : 'Placement & School Routing 🏫',
       icon: School,
       color: 'teal',
-      badge: vacancyRequestsList.filter(s => !s.isResolved && ((s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'pending_vacancy' || (s as any).returnedByPrincipal)).length || null,
+      badge: vacancyRequestsList.filter(s => {
+        if (!s || s.isResolved) return false;
+        const st = (s as any).vacancyRequestStatus;
+        if (activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) {
+          return st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal;
+        }
+        if (activeOfficer.role === 'school_planning') {
+          return st === 'pending_vacancy' || (s as any).isVacancyRequest === true || (s as any).returnedByPrincipal;
+        }
+        return st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'pending_vacancy' || (s as any).returnedByPrincipal;
+      }).length || null,
       animateIcon: vacancyRequestsList.some(s => (s as any).returnedByPrincipal)
     },
     {
@@ -2666,7 +2738,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
   <tr>
     <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; vertical-align: top; background-color: #f0fdf4;">
       <div style="font-weight: bold; color: #004d4f; font-size: 13px; margin-bottom: 5px;">مُعدّ التقرير:</div>
-      <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-bottom: 5px;">سالم محمد الترجمي</div>
+      <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-bottom: 5px;">سالم بن محمد الترجمي</div>
       <div style="font-size: 11px; color: #475569;">وحدة القبول والتسجيل - إدارة رعاية المستفيدين</div>
     </td>
     <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; vertical-align: top; background-color: #f0fdf4;">
@@ -3119,7 +3191,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 <table>
   <tr>
     <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; background-color: #f0fdf4;">
-      <b>مُعدّ التقرير:</b> سالم محمد الترجمي (وحدة القبول والتسجيل - إدارة رعاية المستفيدين)
+      <b>مُعدّ التقرير:</b> سالم بن محمد الترجمي (وحدة القبول والتسجيل - إدارة رعاية المستفيدين)
     </td>
     <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; background-color: #f0fdf4;">
       <b>اعتماد صاحب الصلاحية:</b> رئيس وحدة القبول - منصور صياح الميموني (معتمد إلكترونياً ✓)
@@ -3408,9 +3480,19 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     setForgotPersonalEmail(found.personalEmail || '');
     setForgotStep(2);
 
+    // Send actual email via official Gmail qabulmadinah@gmail.com
+    if (found.personalEmail) {
+      sendOfficialEmail({
+        to: found.personalEmail,
+        subject: `🔐 رمز التحقق لإعادة تعيين كلمة المرور (${code})`,
+        bodyText: `المكرم المستخدم: ${found.nameAr}\n\nرمز التحقق الخاص بك لإعادة تعيين كلمة المرور هو: [ ${code} ]\n\nيرجى إدخال هذا الرمز في شاشة استرجاع الحساب للتأكيد وتعيين كلمة المرور الجديدة.\n\nرسالة آليّة مُرسلة من الحساب الرسمي لنظام القبول والمعادلات:\nqabulmadinah@gmail.com`,
+        triggerReason: 'Password Reset Verification Code'
+      });
+    }
+
     alert(isRtl 
-      ? `تم توليد رمز استرجاع كلمة المرور وإرساله إلى البريد الإلكتروني الشخصي المسجل:\n(${found.personalEmail || 'البريد المسجل بالنظام'})\n\nرمز التفعيل للاختبار الفوري هو: [ ${code} ]`
-      : `Verification code generated and sent to personal email. Code: ${code}`
+      ? `تم توليد رمز استرجاع كلمة المرور وإرساله عبر البريد الإلكتروني الرسمي (qabulmadinah@gmail.com) إلى بريدك:\n(${found.personalEmail || 'البريد المسجل بالنظام'})\n\nرمز التفعيل للاختبار الفوري هو: [ ${code} ]`
+      : `Verification code sent via official email (${OFFICIAL_SENDER_EMAIL}). Code: ${code}`
     );
   };
 
@@ -3856,7 +3938,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           setRegFullNameQuad(e.target.value);
                           setRegNameAr(e.target.value);
                         }}
-                        placeholder="سالم بن محمد بن علي الترجمي"
+                        placeholder="سالم بن محمد الترجمي"
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                       />
                     </div>
@@ -4716,7 +4798,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     </h4>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {onClearAllSurveys && (
+                    {onClearAllSurveys && activeOfficer?.role === 'admin' && (
                       <button
                         type="button"
                         onClick={() => setShowClearAllModal(true)}
@@ -4745,7 +4827,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     { key: 'vacancy_approved', label: isRtl ? '🔓 تم فتح الشاغر' : '🔓 Vacancy Approved', count: surveysScope.filter(s => s.vacancyRequestStatus === 'approved' && !s.isResolved).length },
                     { key: 'sent_leadership', label: isRtl ? '🏫➡️ محال للقيادة المدرسية' : '🏫➡️ Routed to Leadership', count: surveysScope.filter(s => s.vacancyRequestStatus === 'sent_to_leadership' && !s.isResolved).length },
                     { key: 'sent_principal', label: isRtl ? '🏫📍 محال لمدير المدرسة' : '🏫📍 Routed to School', count: surveysScope.filter(s => s.vacancyRequestStatus === 'sent_to_school_principal' && !s.isResolved).length },
-                    { key: 'staffing_confirmed', label: isRtl ? '🎉✓ تم التسكين' : '🎉✓ Staffing Confirmed', count: surveysScope.filter(s => (s.vacancyRequestStatus === 'staffing_confirmed' || s.principalConfirmedStaffing) && !s.isResolved).length },
+                    { key: 'staffing_confirmed', label: isRtl ? '🎉✓ تم التسكين' : '🎉✓ Staffing Confirmed', count: surveysScope.filter(s => s.vacancyRequestStatus === 'staffing_confirmed' || s.principalConfirmedStaffing).length },
                     { key: 'archived', label: isRtl ? '📁✓ الأرشيف والمنجز' : '📁✓ Archived & Completed', count: surveysScope.filter(s => s.isResolved || s.vacancyRequestStatus === 'executed').length },
                   ].map(tab => (
                     <button
@@ -5153,6 +5235,19 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                                       {/* 2. أيقونة تحديد موعد للمستفيد */}
                                       <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 space-y-1.5">
+                                        {(survey as any).appointmentConfirmedByBeneficiary && (
+                                          <div className="p-1.5 bg-emerald-100/90 dark:bg-emerald-950/80 rounded-lg border border-emerald-400 text-[9.5px] font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                            <span>{isRtl ? '✅ تم تأكيد حضور الموعد من قبل المستفيد (ولي الأمر)' : '✓ Attendance confirmed by beneficiary'}</span>
+                                          </div>
+                                        )}
+
+                                        {(survey as any).appointmentCancelledDueToNoShow && (
+                                          <div className="p-1.5 bg-red-100/90 dark:bg-red-950/80 rounded-lg border border-red-400 text-[9.5px] font-black text-red-900 dark:text-red-200 flex items-center gap-1">
+                                            <XCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                            <span>{isRtl ? '❌ ملغى لعدم حضور المستفيد للموعد' : 'Cancelled due to no-show'}</span>
+                                          </div>
+                                        )}
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
                                             <Calendar className="w-3.5 h-3.5 text-amber-600" />
@@ -5178,6 +5273,33 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                 : (isRtl ? "📅 2. أيقونة تحديد موعد للمستفيد" : "2. Appointment Icon")}
                                           </span>
                                         </button>
+
+                                        {survey.hasReviewAppointment && !(survey as any).appointmentCancelledDueToNoShow && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (window.confirm(isRtl ? 'هل أنت متأكد من إلغاء الطلب لعدم حضور المستفيد للموعد المحدد؟' : 'Are you sure you want to cancel the request due to beneficiary no-show?')) {
+                                                const now = new Date().toISOString();
+                                                if (onUpdateSurvey) {
+                                                  onUpdateSurvey({
+                                                    ...survey,
+                                                    appointmentCancelledDueToNoShow: true,
+                                                    appointmentCancelledAt: now,
+                                                    isResolved: true,
+                                                    vacancyRequestStatus: 'archived',
+                                                    unresolvedReason: 'تم إلغاء الطلب لعدم حضور المستفيد للموعد المحدد لعمل المعادلة',
+                                                    notes: isRtl ? '❌ تم إلغاء الطلب من قبل مسؤول المعادلات لعدم حضور المستفيد للموعد المحدد.' : 'Request cancelled by equivalency officer due to beneficiary no-show.',
+                                                  } as any);
+                                                  alert(isRtl ? '✓ تم إلغاء الطلب وإغلاقه وأرشفته لعدم حضور المستفيد.' : 'Request cancelled and archived due to no-show.');
+                                                }
+                                              }
+                                            }}
+                                            className="w-full py-1.5 px-2 bg-red-600 hover:bg-red-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1 active:scale-95 border border-red-500 mt-1"
+                                          >
+                                            <XCircle className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? '🚨 إلغاء الطلب لعدم حضور المستفيد' : 'Cancel Request (No-Show)'}</span>
+                                          </button>
+                                        )}
 
                                         {/* Calendar Picker Box */}
                                         {showApptPickerMap[survey.id] && (
@@ -5987,7 +6109,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               </div>
               
               <div className="flex flex-wrap gap-2.5 shrink-0 w-full md:w-auto">
-                {onClearAllSurveys && (
+                {onClearAllSurveys && activeOfficer?.role === 'admin' && (
                   <button
                     type="button"
                     onClick={() => setShowClearAllModal(true)}
@@ -6123,7 +6245,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       />
                     </label>
 
-                    {onClearAllSurveys && (
+                    {onClearAllSurveys && activeOfficer?.role === 'admin' && (
                       <button
                         type="button"
                         onClick={() => setShowClearAllModal(true)}
@@ -7900,7 +8022,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     </label>
                     <input
                       type="text"
-                      placeholder="مثال: سالم بن محمد بن علي الترجمي"
+                      placeholder="مثال: سالم بن محمد الترجمي"
                       value={newUserFullNameQuad}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -10502,7 +10624,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               }`}>
                 <div className={`p-4 rounded-xl text-center border ${isDark ? 'bg-teal-950/40 border-teal-800' : 'bg-teal-50 border-teal-200'}`}>
                   <p className="text-teal-700 dark:text-teal-300 font-bold mb-1">{isRtl ? 'مُعدّ التقرير:' : 'Report Prepared By:'}</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">{isRtl ? 'سالم محمد الترجمي' : 'Salem Mohammad Al-Tarjami'}</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">{isRtl ? 'سالم بن محمد الترجمي' : 'Salem Mohammad Al-Tarjami'}</p>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{isRtl ? 'وحدة القبول والتسجيل - إدارة رعاية المستفيدين' : 'Admissions Unit - Beneficiary Care Dept'}</p>
                 </div>
                 
@@ -10539,7 +10661,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     ? 'تعرض هذه الصفحة كافة الطلبات المحالة من مشرفي القبول والتسجيل لطلب فتح فصول أو شواغر إضافية. يرجى مراجعة بيانات المدرسة والصف الدراسي لاتخاذ الإجراء المناسب.'
                     : 'This page shows all requests forwarded by admission supervisors to open additional classrooms or vacancies. Check school and class details to take actions.'}
                 </p>
-                {onClearAllSurveys && (
+                {onClearAllSurveys && activeOfficer?.role === 'admin' && (
                   <button
                     type="button"
                     onClick={() => setShowClearAllModal(true)}
@@ -10659,8 +10781,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                       const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-                      // RULE 1: Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director), UNLESS referred to Leadership or Principal!
-                      if (isEqItem && !canEqAuthUser) {
+                      // RULE 1: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
+                      if (isEqItem && canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
+                        if (!isEqDoneItem) return false;
+                      }
+
+                      // RULE 1.2: For non-Equivalency Officers, equivalency requests MUST NOT appear unless referred to leadership/principal!
+                      if (isEqItem && !canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
                         const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
                         if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
                           return false;
@@ -10668,8 +10795,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       }
 
                       const isPlacement = (s as any).isVacancyRequest ||
-                        isEqItem ||
-                        st === 'pending' ||
+                        isEqDoneItem ||
                         st === 'pending_vacancy' ||
                         st === 'approved' ||
                         st === 'sent_to_leadership' ||
@@ -10693,7 +10819,17 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         if (s.isResolved || st === 'approved' || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || st === 'executed' || st === 'archived') {
                           return false;
                         }
-                        return st === 'pending_vacancy' || st === 'pending' || !st || (s as any).returnedByPrincipal === true;
+                        const isReturned = (s as any).returnedByPrincipal === true || st === 'returned_no_vacancy';
+                        if (isReturned) return true;
+                        const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
+                        const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+                        if (isAssignedToMe) return true;
+                        if (isVacancyDirected) {
+                          if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
+                          if ((s as any).assignedPlanningOfficerId && (s as any).assignedPlanningOfficerId !== activeOfficer.id) return false;
+                          return true;
+                        }
+                        return false;
                       }
 
                       // Role 2: Leadership Supervisor (مشرف القيادة المدرسية)
@@ -10741,25 +10877,27 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       return diffHours >= 24;
                     }).length;
 
-                    const activeAllCount = baseList.filter(s => !s.isResolved && (s as any).vacancyRequestStatus !== 'executed' && (s as any).vacancyRequestStatus !== 'archived').length;
+                    const checkPlaced = (s: any) => s.isResolved || s.vacancyRequestStatus === 'executed' || s.vacancyRequestStatus === 'archived' || s.vacancyRequestStatus === 'staffing_confirmed' || s.principalConfirmedStaffing;
+
+                    const activeAllCount = baseList.filter(s => !checkPlaced(s)).length;
 
                     const canEqAuth = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
-                    const eqCount = baseList.filter(s => (s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq').length;
+                    const eqCount = baseList.filter(s => !checkPlaced(s) && ((s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq')).length;
 
-                    const fromAdmissionsCount = baseList.filter(s => ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !s.isResolved && !(s as any).returnedByPrincipal).length;
+                    const fromAdmissionsCount = baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal).length;
 
                     return [
                       { key: 'all', label: isRtl ? 'الكل النشط' : 'Active All', count: activeAllCount },
                       { key: 'from_admissions', label: isRtl ? '📥 الطلبات المرسلة من القبول' : '📥 Sent from Admissions', count: fromAdmissionsCount },
-                      { key: 'pending', label: isRtl ? '📌 بانتظار فتح الشاغر' : '📌 Pending Vacancy', count: baseList.filter(s => ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !s.isResolved && !(s as any).returnedByPrincipal).length },
-                      { key: 'approved', label: isRtl ? '🔓 تم فتح الشاغر' : '🔓 Vacancy Opened', count: baseList.filter(s => (s as any).vacancyRequestStatus === 'approved' && !s.isResolved).length },
+                      { key: 'pending', label: isRtl ? '📌 بانتظار فتح الشاغر' : '📌 Pending Vacancy', count: baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !(s as any).returnedByPrincipal).length },
+                      { key: 'approved', label: isRtl ? '🔓 تم فتح الشاغر' : '🔓 Vacancy Opened', count: baseList.filter(s => !checkPlaced(s) && (s as any).vacancyRequestStatus === 'approved').length },
                       { key: 'returned_no_vacancy', label: isRtl ? '🚨 معاد لعدم توفر شاغر' : '🚨 Returned No Vacancy', count: returnedCount, isWarning: returnedCount > 0 },
                       ...(canEqAuth ? [{ key: 'equalization', label: isRtl ? '🎓 معادلة الشهادات' : '🎓 Equalization', count: eqCount }] : []),
-                      { key: 'sent_to_leadership', label: isRtl ? '🏫 جاري التسكين' : '🏫 In Staffing', count: baseList.filter(s => ((s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal') && !s.isResolved).length },
+                      { key: 'sent_to_leadership', label: isRtl ? '🏫 جاري التسكين' : '🏫 In Staffing', count: baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal')).length },
                       { key: 'delayed', label: isRtl ? '🚨 المتأخرة عن التسكين (>24س)' : '🚨 Delayed (>24h)', count: delayedCount, isWarning: delayedCount > 0 },
                       { key: 'stale_update', label: isRtl ? '⚠️ تجاوزت يوم عمل بدون تحديث' : '⚠️ >24h Without Update', count: staleUpdateCount, isWarning: staleUpdateCount > 0 },
                       { key: 'staffing_confirmed', label: isRtl ? '🏫✓ تم التسكين' : '🏫✓ Staffing Confirmed', count: baseList.filter(s => (s as any).vacancyRequestStatus === 'staffing_confirmed' || (s as any).principalConfirmedStaffing).length },
-                      { key: 'archived', label: isRtl ? '📁✓ التقارير المنجزة' : '📁✓ Archived Reports', count: baseList.filter(s => (s as any).vacancyRequestStatus === 'executed' || (s as any).vacancyRequestStatus === 'archived' || s.isResolved).length }
+                      { key: 'archived', label: isRtl ? '📁✓ التقارير المنجزة' : '📁✓ Archived Reports', count: baseList.filter(s => checkPlaced(s)).length }
                     ].map((tab) => (
                       <button
                         key={tab.key}
@@ -10815,8 +10953,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                         const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-                        // RULE 1: Equivalency Requests MUST ONLY appear in Equivalency Officer accounts (or Admin/Director), UNLESS referred to Leadership or Principal!
-                        if (isEqItem && !canEqAuthUser) {
+                        // RULE 1: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
+                        if (isEqItem && canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
+                          if (!isEqDoneItem) return false;
+                        }
+
+                        // RULE 1.2: For non-Equivalency Officers, equivalency requests MUST NOT appear unless referred to leadership/principal!
+                        if (isEqItem && !canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
                           const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
                           if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
                             return false;
@@ -10824,8 +10967,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         }
 
                         const isPlacement = (s as any).isVacancyRequest ||
-                          isEqItem ||
-                          st === 'pending' ||
+                          isEqDoneItem ||
                           st === 'pending_vacancy' ||
                           st === 'approved' ||
                           st === 'sent_to_leadership' ||
@@ -10867,7 +11009,15 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           if (isReturned) {
                             return true; // Returned requests show DIRECTLY in Planning Officer account!
                           }
-                          return st === 'pending_vacancy' || st === 'pending' || !st;
+                          const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
+                          const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+                          if (isAssignedToMe) return true;
+                          if (isVacancyDirected) {
+                            if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
+                            if ((s as any).assignedPlanningOfficerId && (s as any).assignedPlanningOfficerId !== activeOfficer.id) return false;
+                            return true;
+                          }
+                          return false;
                         }
 
                         // Role 2: Leadership Supervisor (مسؤول القيادة المدرسية)
@@ -10895,6 +11045,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
 
                             if (genderOk && stageOk && sectorOk) return true;
+                            // Fallback for equivalency requests sent to leadership stage
+                            if (isEqItem) return true;
                           }
                           return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
                         }
@@ -10915,29 +11067,31 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                       const filteredList = baseList.filter((s) => {
                         const st = (s as any).vacancyRequestStatus;
-                        if (vacancyFilterStatus === 'all') return !s.isResolved && st !== 'executed' && st !== 'archived';
-                        if (vacancyFilterStatus === 'from_admissions') return ((st === 'pending' || st === 'pending_vacancy' || !st || (s as any).problemType === 'registered_desire') && !s.isResolved && !(s as any).returnedByPrincipal);
-                        if (vacancyFilterStatus === 'pending') return (st === 'pending' || st === 'pending_vacancy' || !st) && !s.isResolved && !(s as any).returnedByPrincipal;
-                        if (vacancyFilterStatus === 'approved') return st === 'approved' && !s.isResolved;
-                        if (vacancyFilterStatus === 'returned_no_vacancy') return (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true) && !s.isResolved;
-                        if (vacancyFilterStatus === 'equalization') return (s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq';
-                        if (vacancyFilterStatus === 'sent_to_leadership') return (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal) && !s.isResolved;
+                        const isPlacedOrClosed = (s as any).principalConfirmedStaffing || st === 'staffing_confirmed' || st === 'executed' || st === 'archived' || s.isResolved;
+
+                        if (vacancyFilterStatus === 'all') return !isPlacedOrClosed;
+                        if (vacancyFilterStatus === 'from_admissions') return !isPlacedOrClosed && ((st === 'pending' || st === 'pending_vacancy' || !st || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal);
+                        if (vacancyFilterStatus === 'pending') return !isPlacedOrClosed && (st === 'pending' || st === 'pending_vacancy' || !st) && !(s as any).returnedByPrincipal;
+                        if (vacancyFilterStatus === 'approved') return !isPlacedOrClosed && st === 'approved';
+                        if (vacancyFilterStatus === 'returned_no_vacancy') return !isPlacedOrClosed && (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true);
+                        if (vacancyFilterStatus === 'equalization') return !isPlacedOrClosed && ((s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq');
+                        if (vacancyFilterStatus === 'sent_to_leadership') return !isPlacedOrClosed && (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal);
                         if (vacancyFilterStatus === 'delayed') {
-                          if ((st !== 'sent_to_leadership' && st !== 'sent_to_school_principal') || s.isResolved) return false;
+                          if (isPlacedOrClosed || (st !== 'sent_to_leadership' && st !== 'sent_to_school_principal')) return false;
                           const sentTime = (s as any).sentToLeadershipAt || (s as any).sentToPrincipalAt || s.createdAt;
                           const sentDate = sentTime ? new Date(sentTime) : new Date();
                           const diffHours = (new Date().getTime() - sentDate.getTime()) / (1000 * 60 * 60);
                           return diffHours >= 24;
                         }
                         if (vacancyFilterStatus === 'stale_update') {
-                          if (s.isResolved || st === 'executed' || st === 'archived') return false;
+                          if (isPlacedOrClosed) return false;
                           const targetTime = s.lastUpdatedAt || s.createdAt;
                           if (!targetTime) return false;
                           const diffHours = (new Date().getTime() - new Date(targetTime).getTime()) / (1000 * 60 * 60);
                           return diffHours >= 24;
                         }
                         if (vacancyFilterStatus === 'staffing_confirmed') return (st === 'staffing_confirmed' || (s as any).principalConfirmedStaffing);
-                        if (vacancyFilterStatus === 'archived') return st === 'executed' || st === 'archived' || s.isResolved;
+                        if (vacancyFilterStatus === 'archived') return isPlacedOrClosed;
                         return true;
                       });
 
@@ -10956,6 +11110,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         .slice((vacancyPage - 1) * VACANCY_PAGE_SIZE, vacancyPage * VACANCY_PAGE_SIZE)
                         .map((survey) => {
                           const status = (survey as any).vacancyRequestStatus;
+                          const isReturned = (survey as any).returnedByPrincipal === true || status === 'returned_no_vacancy';
                           const isArchived = status === 'executed' || status === 'archived' || survey.isResolved;
                           const isStaffingConfirmed = status === 'staffing_confirmed';
                           const isSentToLeadership = status === 'sent_to_leadership' || status === 'sent_to_school_principal';
@@ -10978,7 +11133,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           const leadershipOfficers = officers.filter(o => o.isActive && (o.role === 'school_leadership' || o.role === 'admin' || o.role === 'director'));
 
                           const matchedLeadershipOfficer = leadershipOfficers.find(off => 
-                            off.schoolNames && survey.schoolName && off.schoolNames.some(s => survey.schoolName.toLowerCase().includes(s.toLowerCase().trim()))
+                            survey.schoolName && matchSchoolNames(off.schoolNames, survey.schoolName)
                           );
 
                           const isCurrentActiveLeadership = activeOfficer.role === 'school_leadership' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).assignedLeadershipOfficerId === activeOfficer.id;
@@ -11270,30 +11425,117 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                           </div>
                                         )}
 
+                                        {(survey as any).appointmentConfirmedByBeneficiary && (
+                                          <div className="p-2 bg-emerald-100/90 dark:bg-emerald-950/80 rounded-xl border border-emerald-400 text-[10px] font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5 my-2">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span>{isRtl ? '✅ تم تأكيد حضور الموعد من قبل المستفيد (ولي الأمر)' : '✓ Attendance confirmed by beneficiary'}</span>
+                                          </div>
+                                        )}
+
+                                        {(survey as any).appointmentCancelledDueToNoShow && (
+                                          <div className="p-2 bg-red-100/90 dark:bg-red-950/80 rounded-xl border border-red-400 text-[10px] font-black text-red-900 dark:text-red-200 flex items-center gap-1.5 my-2">
+                                            <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                                            <span>{isRtl ? '❌ ملغى لعدم حضور المستفيد للموعد' : 'Cancelled due to no-show'}</span>
+                                          </div>
+                                        )}
+
+                                        {survey.hasReviewAppointment && !(survey as any).appointmentCancelledDueToNoShow && (
+                                          <div className="my-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (window.confirm(isRtl ? 'هل أنت متأكد من إلغاء الطلب لعدم حضور المستفيد للموعد المحدد؟' : 'Are you sure you want to cancel the request due to beneficiary no-show?')) {
+                                                  const now = new Date().toISOString();
+                                                  if (onUpdateSurvey) {
+                                                    onUpdateSurvey({
+                                                      ...survey,
+                                                      appointmentCancelledDueToNoShow: true,
+                                                      appointmentCancelledAt: now,
+                                                      isResolved: true,
+                                                      vacancyRequestStatus: 'archived',
+                                                      unresolvedReason: 'تم إلغاء الطلب لعدم حضور المستفيد للموعد المحدد لعمل المعادلة',
+                                                       notes: isRtl ? '❌ تم إلغاء الطلب من قبل مسؤول المعادلات لعدم حضور المستفيد للموعد المحدد.' : 'Request cancelled by equivalency officer due to beneficiary no-show.',
+                                                    } as any);
+                                                    alert(isRtl ? '✓ تم إلغاء الطلب وإغلاقه وأرشفته لعدم حضور المستفيد.' : 'Request cancelled and archived due to no-show.');
+                                                  }
+                                                }
+                                              }}
+                                              className="w-full py-2 px-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 border border-red-500"
+                                            >
+                                              <XCircle className="w-4 h-4 text-white" />
+                                              <span>{isRtl ? '🚨 إلغاء الطلب في حال عدم الحضور من قبل المستفيد' : 'Cancel Request (Beneficiary No-Show)'}</span>
+                                            </button>
+                                          </div>
+                                        )}
+
                                         {/* Calendar & Appointment Interactive Picker */}
                                         {showApptPickerMap[survey.id] && (
                                           <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border-2 border-amber-400/80 dark:border-amber-700/80 space-y-3 text-xs shadow-sm">
-                                            <div className="font-extrabold text-amber-950 dark:text-amber-200 text-[11px] flex items-center gap-1.5">
+                                            <div className="font-extrabold text-amber-950 dark:text-amber-200 text-[11px] flex flex-wrap items-center justify-between gap-1.5">
                                               <span>🗓️ {isRtl ? 'الروزنامة وحجز موعد المراجعة لمقر الإدارة:' : 'Review Appointment Calendar & Time Setup:'}</span>
+                                              <div className="flex items-center gap-1 bg-amber-100 dark:bg-amber-900/80 p-0.5 rounded-lg border border-amber-300 dark:border-amber-700">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setEqApptTypeMap({ ...eqApptTypeMap, [survey.id]: 'gregorian' })}
+                                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                                    (eqApptTypeMap[survey.id] || 'gregorian') === 'gregorian'
+                                                      ? 'bg-amber-600 text-white shadow-xs'
+                                                      : 'text-amber-900 dark:text-amber-200 hover:bg-amber-200/50'
+                                                  }`}
+                                                >
+                                                  📅 {isRtl ? 'تاريخ ميلادي' : 'Gregorian'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setEqApptTypeMap({ ...eqApptTypeMap, [survey.id]: 'hijri' })}
+                                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                                    eqApptTypeMap[survey.id] === 'hijri'
+                                                      ? 'bg-amber-600 text-white shadow-xs'
+                                                      : 'text-amber-900 dark:text-amber-200 hover:bg-amber-200/50'
+                                                  }`}
+                                                >
+                                                  🌙 {isRtl ? 'تاريخ هجري' : 'Hijri'}
+                                                </button>
+                                              </div>
                                             </div>
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                               <div>
-                                                <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
-                                                  📅 {isRtl ? 'تحديد اليوم والتاريخ (الروزنامة):' : 'Select Calendar Date:'}
-                                                </label>
-                                                <input
-                                                  type="date"
-                                                  value={eqApptDateMap[survey.id] || survey.appointmentDate || ''}
-                                                  onChange={(e) => setEqApptDateMap({ ...eqApptDateMap, [survey.id]: e.target.value })}
-                                                  className="w-full p-2 text-[11px] font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                                                />
-                                                <div className="mt-1 p-1.5 bg-amber-100/90 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700 text-[9px] font-black text-amber-950 dark:text-amber-200 flex items-center justify-between gap-1">
-                                                  <span>🌙 {isRtl ? "التاريخ الهجري (أم القرى):" : "Hijri Date:"}</span>
-                                                  <span className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded text-amber-900 dark:text-amber-300 font-extrabold border border-amber-200 dark:border-amber-800">
-                                                    {getHijriDateFromGregorian(eqApptDateMap[survey.id] || survey.appointmentDate) || (isRtl ? "اختر تاريخاً بالروزنامة" : "Select date")}
-                                                  </span>
-                                                </div>
+                                                {eqApptTypeMap[survey.id] === 'hijri' ? (
+                                                  <div className="space-y-1">
+                                                    <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                      🌙 {isRtl ? 'تحديد اليوم والتاريخ الهجري (أم القرى):' : 'Select Hijri Date:'}
+                                                    </label>
+                                                    <input
+                                                      type="text"
+                                                      value={eqApptDateMap[survey.id] !== undefined ? eqApptDateMap[survey.id] : (survey.appointmentDate || '1447/03/15 هـ')}
+                                                      onChange={(e) => setEqApptDateMap({ ...eqApptDateMap, [survey.id]: e.target.value })}
+                                                      placeholder="مثال: 1447/03/15 هـ"
+                                                      className="w-full p-2 text-[11px] font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
+                                                    />
+                                                    <div className="p-1.5 bg-amber-100/90 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700 text-[9px] font-black text-amber-950 dark:text-amber-200">
+                                                      <span>✨ {isRtl ? 'تم تفعيل إدخال التاريخ الهجري مباشرة للمستفيد' : 'Hijri date selection active'}</span>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <div>
+                                                    <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
+                                                      📅 {isRtl ? 'تحديد اليوم والتاريخ (الروزنامة الميلادية):' : 'Select Gregorian Date:'}
+                                                    </label>
+                                                    <input
+                                                      type="date"
+                                                      value={eqApptDateMap[survey.id] || survey.appointmentDate || ''}
+                                                      onChange={(e) => setEqApptDateMap({ ...eqApptDateMap, [survey.id]: e.target.value })}
+                                                      className="w-full p-2 text-[11px] font-extrabold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                                                    />
+                                                    <div className="mt-1 p-1.5 bg-amber-100/90 dark:bg-amber-900/60 rounded-lg border border-amber-300 dark:border-amber-700 text-[9px] font-black text-amber-950 dark:text-amber-200 flex items-center justify-between gap-1">
+                                                      <span>🌙 {isRtl ? "المكافئ الهجري:" : "Hijri Equivalent:"}</span>
+                                                      <span className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded text-amber-900 dark:text-amber-300 font-extrabold border border-amber-200 dark:border-amber-800">
+                                                        {getHijriDateFromGregorian(eqApptDateMap[survey.id] || survey.appointmentDate) || (isRtl ? "اختر تاريخاً بالروزنامة" : "Select date")}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                )}
                                               </div>
 
                                               <div>
@@ -11738,55 +11980,80 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                       </div>
                                     </div>
                                   )}
-                                   {/* Planning Officer Assignment for Pending Surveys */}
-                                   {(activeOfficer.role === "school_planning" || activeOfficer.role === "admin" || activeOfficer.role === "director" || activeOfficer.role === "supervisor" || activeOfficer.role === "equivalency_supervisor" || activeOfficer.canHandleEqualizations) && !isVacancyOpened && !isArchived && (
+                                   {/* Planning Officer Assignment for Pending Surveys (Hidden when returned) */}
+                                   {(activeOfficer.role === "school_planning" || activeOfficer.role === "admin" || activeOfficer.role === "director" || activeOfficer.role === "supervisor" || activeOfficer.role === "equivalency_supervisor" || activeOfficer.canHandleEqualizations) && !isVacancyOpened && !isArchived && !isReturned && (
                                      <div className="p-2 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1.5 text-start">
                                        <label className="block text-[10px] font-extrabold text-amber-900 dark:text-amber-200">
                                          👤 {isRtl ? "تكليفات التخطيط / القبول:" : "Assign Planning Officer:"}
                                        </label>
                                        <div className="flex items-center gap-1.5">
-                                      <select
+                                         <select
+                                           value={selectedPlanningOfficerMap[survey.id] || survey.assignedOfficerId || ''}
+                                           onChange={(e) => setSelectedPlanningOfficerMap({ ...selectedPlanningOfficerMap, [survey.id]: e.target.value })}
+                                           className="text-[10px] p-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                         >
+                                           <option value="">{isRtl ? '-- اختر مشرف التخطيط أو القبول --' : '-- Select Officer --'}</option>
+                                           {planningOfficers.map(off => (
+                                             <option key={off.id} value={off.id}>
+                                               {off.nameAr} ({off.role === 'school_planning' ? 'مشرف تخطيط' : 'مشرف قبول'})
+                                             </option>
+                                           ))}
+                                         </select>
+                                         <button
+                                           onClick={() => {
+                                             const targetId = selectedPlanningOfficerMap[survey.id] || survey.assignedOfficerId;
+                                             if (!targetId) {
+                                               alert(isRtl ? '⚠️ يرجى اختيار اسم المشرف المختص بفتح الشاغر أولاً.' : 'Please select a supervisor first.');
+                                               return;
+                                             }
+                                             const targetOff = officers.find(o => o.id === targetId);
+                                             if (targetOff && onUpdateSurvey) {
+                                               onUpdateSurvey({
+                                                 ...survey,
+                                                 assignedOfficerId: targetOff.id,
+                                                 serviceEmployee: targetOff.nameAr,
+                                                 assignedPlanningOfficerId: targetOff.id,
+                                                 planningOfficerName: targetOff.nameAr,
+                                                 vacancyRequestStatus: 'pending_vacancy',
+                                                 referringOfficerId: activeOfficer.id,
+                                                 referringOfficerName: activeOfficer.nameAr
+                                               } as any);
+                                               alert(isRtl ? `✓ تم تحديد وتكليف المشرف المختص (${targetOff.nameAr}) لفتح الشاغر بنجاح!` : 'Vacancy supervisor assigned successfully!');
+                                             }
+                                           }}
+                                           className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black rounded-lg cursor-pointer whitespace-nowrap"
+                                         >
+                                           {isRtl ? 'حفظ وإرسال' : 'Assign'}
+                                         </button>
+                                       </div>
+                                     </div>
+                                   )}
 
-                                          value={selectedPlanningOfficerMap[survey.id] || survey.assignedOfficerId || ''}
-                                          onChange={(e) => setSelectedPlanningOfficerMap({ ...selectedPlanningOfficerMap, [survey.id]: e.target.value })}
-                                          className="text-[10px] p-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                        >
-                                          <option value="">{isRtl ? '-- اختر مشرف التخطيط أو القبول --' : '-- Select Officer --'}</option>
-                                          {planningOfficers.map(off => (
-                                            <option key={off.id} value={off.id}>
-                                              {off.nameAr} ({off.role === 'school_planning' ? 'مشرف تخطيط' : 'مشرف قبول'})
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <button
-                                          onClick={() => {
-                                            const targetId = selectedPlanningOfficerMap[survey.id] || survey.assignedOfficerId;
-                                            if (!targetId) {
-                                              alert(isRtl ? '⚠️ يرجى اختيار اسم المشرف المختص بفتح الشاغر أولاً.' : 'Please select a supervisor first.');
-                                              return;
-                                            }
-                                            const targetOff = officers.find(o => o.id === targetId);
-                                            if (targetOff && onUpdateSurvey) {
-                                              onUpdateSurvey({
-                                                ...survey,
-                                                assignedOfficerId: targetOff.id,
-                                                serviceEmployee: targetOff.nameAr,
-                                                assignedPlanningOfficerId: targetOff.id,
-                                                planningOfficerName: targetOff.nameAr,
-                                                vacancyRequestStatus: 'pending_vacancy',
-                                                referringOfficerId: activeOfficer.id,
-                                                referringOfficerName: activeOfficer.nameAr
-                                              } as any);
-                                              alert(isRtl ? `✓ تم تحديد وتكليف المشرف المختص (${targetOff.nameAr}) لفتح الشاغر بنجاح!` : 'Vacancy supervisor assigned successfully!');
-                                            }
-                                          }}
-                                          className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black rounded-lg cursor-pointer whitespace-nowrap"
-                                        >
-                                          {isRtl ? 'حفظ وإرسال' : 'Assign'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
+                                   {/* STEP 2A (Returned Requests): Open Vacancy and Return Directly to School Principal */}
+                                   {!isArchived && isReturned && (activeOfficer.role === 'school_planning' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) && (
+                                     <button
+                                       type="button"
+                                       onClick={() => {
+                                         if (onUpdateSurvey) {
+                                           onUpdateSurvey({
+                                             ...survey,
+                                             vacancyRequestStatus: 'sent_to_school_principal',
+                                             sentToSchoolPrincipal: true,
+                                             returnedByPrincipal: false,
+                                             isResolved: false,
+                                             notes: isRtl 
+                                               ? `🔓 تم فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (${activeOfficer.nameAr}) وعاد الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين.` 
+                                               : `Vacancy opened by planning officer (${activeOfficer.nameAr}) and returned directly to principal.`
+                                           } as any);
+                                           alert(isRtl ? `✓ تم فتح الشاغر بنجاح! وعاد الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين.` : 'Vacancy opened! Request returned directly to principal.');
+                                         }
+                                       }}
+                                       className="w-full px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-black text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 active:scale-95 border border-emerald-500"
+                                     >
+                                       <Building className="w-4 h-4 text-white" />
+                                       <span>🔓 {isRtl ? 'تم فتح الشاغر (يعود مباشرة لمدير المدرسة) 🏫' : 'Vacancy Opened (Return to Principal) 🏫'}</span>
+                                     </button>
+                                   )}
 
                                   {/* STEP 2: Open Vacancy (تم فتح الشاغر 🔓) */}
                                   {!isArchived && isPendingVacancy && !isVacancyOpened && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'school_planning' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
@@ -12266,7 +12533,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       )}
 
       {/* React Modal for Deleting All Requests */}
-      {showClearAllModal && (
+      {showClearAllModal && activeOfficer?.role === 'admin' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
           <div className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${
             isDark ? 'bg-slate-900 border-rose-800 text-white' : 'bg-white border-rose-200 text-slate-900'
@@ -12292,6 +12559,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   type="button"
                   onClick={() => {
                     if (onClearAllSurveys) {
+                      if (activeOfficer?.role !== 'admin') {
+                        alert(isRtl ? 'عذراً، خاصية حذف كافة الطلبات مقتصرة حصرياً على مدير النظام (الأدمن).' : 'Delete all requests is restricted to Admin only.');
+                        setShowClearAllModal(false);
+                        return;
+                      }
                       onClearAllSurveys();
                     }
                     setShowClearAllModal(false);
