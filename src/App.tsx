@@ -28,7 +28,7 @@ import {
   TRANSLATIONS
 } from './data/mockData';
 import { processSurveysInBatchAsync } from './utils/batchProcessor';
-import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity, MessageSquareHeart } from 'lucide-react';
+import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity, MessageSquareHeart, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -254,7 +254,7 @@ export default function App() {
       sendOfficialEmail({
         to: targetEmails,
         subject: `⚠️ تنبيه فوري: تقييم سلبي من مستفيد (${newResponse.beneficiaryName})`,
-        bodyText: `تم استلام تقييم سلبي جديد في نظام القبول والمعادلات:\n\nالمستفيد: ${newResponse.beneficiaryName}\nرقم الجوال: ${newResponse.phone}\nالمرحلة: ${newResponse.stage}\nنوع المشكلة: ${newResponse.problemType}\nتقييم الموظف: ${newResponse.staffSatisfaction || '-'}\nتقييم الاستقبال: ${newResponse.receptionSatisfaction || '-'}\nالملاحظات: ${newResponse.reviewerNotes || 'لا يوجد'}\n\nتاريخ الطلب: ${nowStr}`,
+        bodyText: `تم استلام تقييم سلبي جديد في نظام القبول والمعادلات:\n\nالمستفيد: ${newResponse.beneficiaryName}\nرقم الجوال: ${newResponse.phoneNumber}\nالمرحلة: ${newResponse.stage}\nنوع المشكلة: ${newResponse.problemType}\nتقييم الموظف: ${newResponse.staffSatisfaction || '-'}\nتقييم الاستقبال: ${newResponse.receptionSatisfaction || '-'}\nالملاحظات: ${newResponse.notes || 'لا يوجد'}\n\nتاريخ الطلب: ${nowStr}`,
         triggerReason: 'Negative Feedback Alert'
       });
 
@@ -901,6 +901,21 @@ export default function App() {
         onSendFeedback={handleSendFeedback}
         isDark={isDark}
       />
+
+      {/* Floating Action Button (FAB) to return to Portal Gateway from any view */}
+      {userRole !== 'portal' && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <button
+            type="button"
+            onClick={() => setUserRole('portal')}
+            className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
+            id="fab-return-portal"
+          >
+            <Home className="w-5 h-5 text-amber-300 group-hover:scale-110 transition-transform" />
+            <span>{currentLang === 'ar' ? 'العودة لبوابة الدخول الرئيسية' : 'Return to Main Gateway'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

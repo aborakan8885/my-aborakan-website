@@ -1229,6 +1229,8 @@ export default function SurveyForm({
               </div>
             )}
 
+
+
             {/* Nationality (الجنسية مع قائمة منسدلة قابلة للبحث) */}
             <div id="field-nationality" className="relative">
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
@@ -1298,10 +1300,10 @@ export default function SurveyForm({
               )}
             </div>
 
-            {/* Residency Type (نوع الاقامة) */}
+            {/* Residency Type (الهوية / الإقامة) */}
             <div id="field-residencyType">
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
-                {isRtl ? 'نوع الاقامة' : 'Residency Type'} <span className="text-red-500">*</span>
+                {isRtl ? 'الهوية / الإقامة' : 'ID / Residency Type'} <span className="text-red-500">*</span>
               </label>
               <select
                 value={residencyType}
@@ -1311,9 +1313,10 @@ export default function SurveyForm({
                 } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
                 dir={isRtl ? 'rtl' : 'ltr'}
               >
-                <option value="regular">{isRtl ? 'إقامة نظامية' : 'Regular Residency'}</option>
+                <option value="national_id">{isRtl ? 'الهوية الوطنية' : 'National ID'}</option>
+                <option value="residency">{isRtl ? 'إقامة' : 'Residency'}</option>
                 <option value="visit">{isRtl ? 'زيارة' : 'Visit Visa'}</option>
-                <option value="other">{isRtl ? 'أخرى (يرجى توضيح نوعها)' : 'Other'}</option>
+                <option value="other">{isRtl ? 'أخرى' : 'Other'}</option>
               </select>
             </div>
 
@@ -1390,7 +1393,7 @@ export default function SurveyForm({
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 ${isTransferMode ? 'md:grid-cols-2' : ''} gap-4`}>
             {/* Card 1 */}
             <button
               type="button"
@@ -1419,33 +1422,31 @@ export default function SurveyForm({
               </p>
             </button>
 
-            {/* Card 2 */}
-            <button
-              type="button"
-              onClick={() => {
-                setStudentCategoryType('non_fresh');
-                setEqualizationStage('primary');
-              }}
-              className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
-                studentCategoryType === 'non_fresh' && equalizationStage !== ''
-                  ? 'bg-purple-500/10 border-purple-600 shadow-md ring-2 ring-purple-500/20'
-                  : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' && equalizationStage !== '' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
-                  {isTransferMode
-                    ? (isRtl ? 'طلب معادلة المؤهلات' : 'Qualification Equivalency Request')
-                    : (isRtl ? '📘 طالب غير مستجد (معادلة المؤهلات)' : 'Non-Fresh Student (Certificate Equalization)')}
-                </span>
-                {studentCategoryType === 'non_fresh' && equalizationStage !== '' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
-              </div>
-              <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-purple-200' : 'text-purple-900'}`}>
-                {isTransferMode
-                  ? (isRtl ? 'تقديم طلب معادلة مؤهل دراسي صادر من خارج المملكة أو من نظام تعليمي آخر.' : 'Request certificate equivalency for foreign qualifications.')
-                  : (isRtl ? 'أي الطالب حاصل على شهادات في صفوف متقدمة خارج المملكة أو من نظام تعليمي آخر ويرغب بمعادلة المؤهل الدراسي.' : 'Student holds advanced certificates from outside KSA or needs formal equivalency evaluation.')}
-              </p>
-            </button>
+            {/* Card 2 (Only for Transfer Mode) */}
+            {isTransferMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentCategoryType('non_fresh');
+                  setEqualizationStage('primary');
+                }}
+                className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
+                  studentCategoryType === 'non_fresh' && equalizationStage !== ''
+                    ? 'bg-purple-500/10 border-purple-600 shadow-md ring-2 ring-purple-500/20'
+                    : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' && equalizationStage !== '' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                    {isRtl ? 'طلب معادلة المؤهلات' : 'Qualification Equivalency Request'}
+                  </span>
+                  {studentCategoryType === 'non_fresh' && equalizationStage !== '' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
+                </div>
+                <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-purple-200' : 'text-purple-900'}`}>
+                  {isRtl ? 'تقديم طلب معادلة مؤهل دراسي صادر من خارج المملكة أو من نظام تعليمي آخر.' : 'Request certificate equivalency for foreign qualifications.'}
+                </p>
+              </button>
+            )}
           </div>
         </div>
 
