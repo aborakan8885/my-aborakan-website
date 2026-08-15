@@ -301,7 +301,7 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border border-teal-300/40">
-                  {isRtl ? 'وزارة التعليم - القواعد التنفيذية للقبول' : 'Ministry Regulation Audit'}
+                  {isRtl ? 'الإدارة العامة للتعليم بالمدينة المنورة – القواعد التنفيذية للقبول' : 'General Directorate of Education in Madinah - Admission Executive Regulations'}
                 </span>
               </div>
               <h3 className="text-base sm:text-lg font-black mt-1 leading-tight text-slate-800 dark:text-teal-200">

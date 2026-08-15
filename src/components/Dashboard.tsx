@@ -46,6 +46,7 @@ import {
   ArrowRight,
   ArrowLeft,
   School,
+  User,
   UserCheck,
   UserPlus,
   Shield,
@@ -81,6 +82,37 @@ import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
 import { sendOfficialEmail, OFFICIAL_SENDER_EMAIL } from '../utils/emailService';
 import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
 
+export function getRequestTypeInfo(survey: SurveyResponse, isRtl: boolean = true) {
+  if (
+    survey.isEqualizationRequest ||
+    survey.studentCategoryType === 'non_fresh' ||
+    survey.equalizationStage ||
+    survey.problemType?.startsWith('cert_')
+  ) {
+    return {
+      label: isRtl ? 'معادلة شهادات ومؤهلات' : 'Cert. Equivalency',
+      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
+      icon: '🎓'
+    };
+  }
+  if (
+    survey.serviceType === 'transfer' ||
+    survey.transferReason ||
+    survey.guardianTransferPledge
+  ) {
+    return {
+      label: isRtl ? 'طلب نقل طالب' : 'Student Transfer',
+      badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/40',
+      icon: '🔄'
+    };
+  }
+  return {
+    label: isRtl ? 'تسجيل مستجد' : 'New Registration',
+    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
+    icon: '🎒'
+  };
+}
+
 export function normalizeArabicText(str: string | number | undefined | null): string {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -111,22 +143,80 @@ export function matchSchoolNames(officerSchools: string[] | undefined | null, su
   const sNorm = normalizeArabicText(surveySchoolName);
 
   return officerSchools.some(offSchool => {
-    const oClean = cleanStr(offSchool);
+    if (!offSchool) return false;
     const oNorm = normalizeArabicText(offSchool);
+    if (!oNorm || !sNorm) return false;
 
-    if (!oClean || !sClean) return true;
+    // Strict check: Either exact normalized match OR exact cleaned match
+    if (sNorm === oNorm) return true;
 
-    if (sNorm.includes(oNorm) || oNorm.includes(sNorm) || sClean.includes(oClean) || oClean.includes(sClean)) {
-      return true;
-    }
-
-    const oTokens = oClean.split(' ').filter(t => t.length > 2);
-    if (oTokens.length > 0) {
-      return oTokens.some(tok => sClean.includes(tok));
-    }
+    const oClean = cleanStr(offSchool);
+    if (sClean && oClean && sClean === oClean && sClean.length > 3) return true;
 
     return false;
   });
+}
+
+export function getSurveyStageCategory(surveyObj: any): 'Primary' | 'Intermediate' | 'Secondary' {
+  if (!surveyObj) return 'Primary';
+  const stage = surveyObj.stage || surveyObj.schoolStage || '';
+  const grade = surveyObj.grade || '';
+  const reqType = surveyObj.requestType || surveyObj.equalizationStage || surveyObj.problemType || '';
+
+  if (stage === 'Primary' || grade.includes('ابتدائي') || reqType.includes('primary') || reqType.includes('ابتدائ')) return 'Primary';
+  if (stage === 'Intermediate' || grade.includes('متوسط') || reqType.includes('intermediate') || reqType.includes('متوسط')) return 'Intermediate';
+  if (stage === 'Secondary' || grade.includes('ثانوي') || reqType.includes('secondary') || reqType.includes('ثانو')) return 'Secondary';
+  return 'Primary';
+}
+
+export function getMatchedLeadershipSupervisor(surveyObj: any, officersList: OfficerUser[]): OfficerUser | undefined {
+  if (!officersList || officersList.length === 0) return undefined;
+  const leadershipOfficers = officersList.filter(
+    o => o && o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director' || o.role === 'leadership_director')
+  );
+  if (leadershipOfficers.length === 0) return undefined;
+
+  if (!surveyObj) return leadershipOfficers[0];
+
+  // Determine student gender
+  const isGirls = surveyObj.gender === 'girls' || 
+                  surveyObj.schoolName?.includes('بنات') || 
+                  surveyObj.secondSchoolName?.includes('بنات') || 
+                  surveyObj.thirdSchoolName?.includes('بنات') ||
+                  surveyObj.beneficiaryName?.includes('نورة') ||
+                  surveyObj.studentName?.includes('فاطمة') ||
+                  surveyObj.studentName?.includes('مريم');
+  
+  const studentGender = isGirls ? 'girls' : 'boys';
+  const studentStageCat = getSurveyStageCategory(surveyObj);
+  const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+
+  // 1. Try match on assignedGender and assignedStage
+  let bestMatch = leadershipOfficers.find(o => {
+    const genderMatches = !o.assignedGender || o.assignedGender === 'both' || o.assignedGender === studentGender;
+    const stageMatches = !o.assignedStage || o.assignedStage === 'الكل' || o.assignedStage.includes(stageAr) || o.assignedStage.includes(studentStageCat);
+    return genderMatches && stageMatches;
+  });
+
+  // 2. Try match on workField or roleDescription or nameAr text
+  if (!bestMatch) {
+    const genderText = isGirls ? 'بنات' : 'بنين';
+    bestMatch = leadershipOfficers.find(o => {
+      const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.nameAr || ''}`;
+      return text.includes(genderText) && (text.includes(stageAr) || text.includes(studentStageCat));
+    });
+  }
+
+  // 3. Fallback to match gender only
+  if (!bestMatch) {
+    const genderText = isGirls ? 'بنات' : 'بنين';
+    bestMatch = leadershipOfficers.find(o => {
+      const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.assignedGender || ''}`;
+      return text.includes(genderText) || o.assignedGender === studentGender;
+    });
+  }
+
+  return bestMatch || leadershipOfficers[0];
 }
 
 export function getElapsedUpdateInfo(lastUpdatedAt?: string, createdAt?: string, isRtl: boolean = true) {
@@ -267,6 +357,8 @@ interface DashboardProps {
   currentLang: Language;
   surveys: SurveyResponse[];
   onDeleteSurvey: (id: string) => void;
+  onDeleteReport?: (id: string) => void;
+  onDeleteEmailLog?: (id: string) => void;
   onToggleResolved: (id: string) => void;
   config: AppConfig;
   onUpdateConfig: (newConfig: AppConfig) => void;
@@ -297,7 +389,7 @@ interface DashboardProps {
 }
 
 const DEFAULT_OFFICERS: OfficerUser[] = [
-  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', fullNameQuad: 'سالم بن محمد الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'Salim123321rs&', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
+  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', fullNameQuad: 'سالم بن محمد الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'salim123321rs&1', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
 ];
 
 interface TabItemConfig {
@@ -397,6 +489,8 @@ const DashboardTabNav = memo(({
                     <IconComponent className={`w-5.5 h-5.5 ${tab.animateIcon ? 'animate-pulse' : ''}`} />
                   </div>
 
+
+
                   <div className="flex flex-col items-start text-start min-w-0 flex-1">
                     <span className="text-[13px] font-bold tracking-tight leading-snug break-words whitespace-normal w-full">
                       {tab.label}
@@ -420,8 +514,10 @@ DashboardTabNav.displayName = 'DashboardTabNav';
 
 function Dashboard({
   currentLang,
-  surveys,
+  surveys = [],
   onDeleteSurvey,
+  onDeleteReport,
+  onDeleteEmailLog,
   onClearAllSurveys,
   onToggleResolved,
   onImportSurveys,
@@ -429,8 +525,8 @@ function Dashboard({
   onUpdateSurvey,
   config,
   onUpdateConfig,
-  emailLogs,
-  integrationLogs,
+  emailLogs = [],
+  integrationLogs = [],
   onTriggerManualBackup,
   onSyncNow,
   unsyncedCount,
@@ -482,7 +578,7 @@ function Dashboard({
 
     // Standardize credentials and permissions for users in list
     list = list.map((o, idx) => {
-      let pwd = o.password || (o.id === 'emp_1' ? 'Salim123321rs&' : '123456');
+      let pwd = o.password || (o.id === 'emp_1' ? 'salim123321rs&1' : '123456');
       const defaultNatId = o.nationalId || `10${(10000000 + idx).toString().slice(0, 8)}`;
       const defaultQuadName = o.fullNameQuad || (o.nameAr.includes('بن') ? o.nameAr : `${o.nameAr} بن عبد الله السعودي`);
       const defaultEmail = o.personalEmail || `${o.id}@gmail.com`;
@@ -494,7 +590,7 @@ function Dashboard({
           nameAr: 'سالم بن محمد الترجمي',
           fullNameQuad: 'سالم بن محمد الترجمي',
           personalEmail: o.personalEmail || 'salem.turjumi@gmail.com',
-          password: 'Salim123321rs&',
+          password: 'salim123321rs&1',
           role: 'admin',
           canGrantRoles: true,
           canDeleteUsers: true,
@@ -521,15 +617,17 @@ function Dashboard({
   const [activeOfficer, setActiveOfficer] = useState<OfficerUser>(() => {
     const cachedId = localStorage.getItem('active_officer_id_v1');
     const found = officers.find(o => o.id === cachedId);
-    return found && found.isActive ? found : officers[0];
+    return (found && found.isActive) ? found : (officers[0] || DEFAULT_OFFICERS[0]);
   });
+
+  const [visibleCount, setVisibleCount] = useState(50);
 
   // Authentication states
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('officer_authenticated_v1') === 'true';
   });
   
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot_password'>('login');
+  const [authMode, setAuthMode] = useState<'login'>('login');
   const [loginMobile, setLoginMobile] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showAuthPassword, setShowAuthPassword] = useState(false);
@@ -589,13 +687,10 @@ function Dashboard({
   // Deletion Modal States
   const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
   const [surveyToDeleteId, setSurveyToDeleteId] = useState<string | null>(null);
-
-  const [, startTabTransition] = React.useTransition();
+  const [reportToDeleteId, setReportToDeleteId] = useState<string | null>(null);
 
   const handleSubTabChange = useCallback((tabId: typeof activeSubTab) => {
-    startTabTransition(() => {
-      setActiveSubTab(tabId);
-    });
+    setActiveSubTab(tabId);
   }, []);
 
   // School Reports tracking states
@@ -635,6 +730,11 @@ function Dashboard({
   const [aiGenerating, setAiGenerating] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [eqApptTypeMap, setEqApptTypeMap] = useState<Record<string, 'gregorian' | 'hijri'>>({});
+
+  // Department & Employee Reports state variables
+  const [deptReportEntity, setDeptReportEntity] = useState<string>('all');
+  const [deptReportMode, setDeptReportMode] = useState<'unified_entity' | 'team_breakdown' | 'single_employee'>('unified_entity');
+  const [deptReportSelectedEmployee, setDeptReportSelectedEmployee] = useState<string>('all');
 
   // Helper: Extract First Name and Last Name (الاسم الأول واللقب) from Quad Name
   const extractFirstNameAndLastName = (fullName: string): string => {
@@ -693,15 +793,17 @@ function Dashboard({
 
   const getProblemName = (key: string) => {
     switch (key) {
-      case 'vacancies_unavailable': return t.probVacancies;
-      case 'student_density': return t.probDensity;
-      case 'unjustified_rejection': return t.probRejection;
-      case 'cert_primary_eq': return t.probPrimaryEq;
-      case 'cert_intermediate_eq': return t.probIntermediateEq;
-      case 'cert_secondary_eq': return t.probSecondaryEq;
-      case 'distance_from_school': return t.probDistance;
-      case 'unregistered_desire': return t.probUnregistered;
-      default: return isRtl ? 'أخرى' : 'Other';
+      case 'vacancies_unavailable': return t?.probVacancies || 'الشواغر غير متاحة';
+      case 'student_density': return t?.probDensity || 'كثافة طلابية بالفصول';
+      case 'unjustified_rejection': return t?.probRejection || 'رفض الطلب دون مبرر نظامي';
+      case 'cert_primary_eq': return t?.probPrimaryEq || 'معادلة الشهادة للمرحلة الابتدائية';
+      case 'cert_intermediate_eq': return t?.probIntermediateEq || 'معادلة الشهادة للمرحلة المتوسطة';
+      case 'cert_secondary_eq': return t?.probSecondaryEq || 'معادلة الشهادة للمرحلة الثانوية';
+      case 'distance_from_school': return t?.probDistance || 'نقل بسبب بعد السكن عن المدرسة';
+      case 'unregistered_desire': return t?.probUnregistered || 'طلب قبول ومعادلة شهادة';
+      case 'new_registration_saudi': return t?.probNewSaudi || (isRtl ? 'تسجيل مستجد سعودي' : 'New Saudi Registration');
+      case 'new_registration_resident': return t?.probNewResident || (isRtl ? 'تسجيل مستجد مقيم' : 'New Resident Registration');
+      default: return isRtl ? 'أخرى / ملاحظة عامة' : 'Other / General Feedback';
     }
   };
 
@@ -712,23 +814,17 @@ function Dashboard({
       return;
     }
     
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert(isRtl ? 'يرجى تفعيل النوافذ المنبثقة لطباعة التقارير.' : 'Please allow popups to enable printing.');
-      return;
-    }
-
     let stylesHtml = '';
     try {
       for (const sheet of Array.from(document.styleSheets)) {
         try {
           const rules = Array.from(sheet.cssRules || sheet.rules);
           stylesHtml += `<style>${rules.map(r => r.cssText).join('\n')}</style>`;
-        } catch (e) {
+        } catch {
           // ignore silently
         }
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
 
@@ -736,7 +832,8 @@ function Dashboard({
     const align = isRtl ? 'right' : 'left';
     const alignOpposite = isRtl ? 'left' : 'right';
 
-    printWindow.document.write(`
+    const fullHtml = `
+      <!DOCTYPE html>
       <html dir="${direction}" lang="${currentLang}">
         <head>
           <title>${title}</title>
@@ -873,7 +970,7 @@ function Dashboard({
             <div class="text-end" style="font-size: 11px; color: #115e59; font-family: monospace;">
               <div>${isRtl ? 'تاريخ الاستخراج: ' : 'Generated On: '}${new Date().toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')}</div>
               <div>${isRtl ? 'رقم المستند: ' : 'Doc ID: '}DOC-${Date.now().toString().slice(-6)}</div>
-              <div>${isRtl ? 'المشرف: ' : 'Authorized: '}${isRtl ? activeOfficer.nameAr : activeOfficer.nameEn}</div>
+              <div>${isRtl ? 'المشرف: ' : 'Authorized: '}${activeOfficer ? (isRtl ? activeOfficer.nameAr : activeOfficer.nameEn) : 'مشرف المنظومة'}</div>
             </div>
           </div>
 
@@ -906,14 +1003,55 @@ function Dashboard({
           <script>
             window.onload = function() {
               setTimeout(function() {
+                window.focus();
                 window.print();
-              }, 800);
+              }, 500);
             };
           </script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    // Try popup window first
+    let printedSuccessfully = false;
+    try {
+      const printWindow = window.open('', '_blank', 'width=950,height=800');
+      if (printWindow && !printWindow.closed) {
+        printWindow.document.write(fullHtml);
+        printWindow.document.close();
+        printedSuccessfully = true;
+      }
+    } catch {
+      printedSuccessfully = false;
+    }
+
+    // Fallback if popup was blocked by iframe sandbox policy
+    if (!printedSuccessfully) {
+      let printIframe = document.getElementById('moe-print-iframe') as HTMLIFrameElement;
+      if (!printIframe) {
+        printIframe = document.createElement('iframe');
+        printIframe.id = 'moe-print-iframe';
+        printIframe.style.position = 'fixed';
+        printIframe.style.right = '0';
+        printIframe.style.bottom = '0';
+        printIframe.style.width = '0px';
+        printIframe.style.height = '0px';
+        printIframe.style.border = '0';
+        document.body.appendChild(printIframe);
+      }
+      const targetDoc = printIframe.contentDocument || printIframe.contentWindow?.document;
+      if (targetDoc) {
+        targetDoc.open();
+        targetDoc.write(fullHtml);
+        targetDoc.close();
+        setTimeout(() => {
+          printIframe.contentWindow?.focus();
+          printIframe.contentWindow?.print();
+        }, 600);
+      } else {
+        window.print();
+      }
+    }
   };
 
   const PrintSaveButton = ({ elementId, title }: { elementId: string; title: string }) => {
@@ -948,14 +1086,44 @@ function Dashboard({
     } catch {
       /* ignore quota errors */
     }
-    window.print();
+
+    let opened = false;
+    try {
+      const printUrl = `${window.location.origin}${window.location.pathname}?print-report=true`;
+      const printWin = window.open(printUrl, '_blank');
+      if (printWin && !printWin.closed) {
+        opened = true;
+      }
+    } catch {
+      opened = false;
+    }
+
+    if (!opened) {
+      const reportContainer = document.getElementById('printable-report-card') || document.getElementById('reports-section') || document.getElementById('main-dashboard-container');
+      if (reportContainer) {
+        handlePrintElement(reportContainer.id, isRtl ? 'التقرير التنفيذي الشامل وأداء الكوادر' : 'Executive Master Report & Staff Performance');
+      } else {
+        window.print();
+      }
+    }
   };
 
   // On-demand custom reports filtering & aggregation logic
   const filteredReportSurveys = useMemo(() => {
     return surveys.filter(s => {
       if (reportStage !== 'all' && s.stage !== reportStage) return false;
-      if (reportProblemType !== 'all' && s.problemType !== reportProblemType) return false;
+
+      if (reportProblemType !== 'all') {
+        if (reportProblemType === 'new_reg') {
+          if (s.isEqualizationRequest || s.studentCategoryType === 'non_fresh' || s.equalizationStage || s.problemType?.startsWith('cert_') || s.serviceType === 'transfer' || s.transferReason || s.guardianTransferPledge) return false;
+        } else if (reportProblemType === 'transfer') {
+          if (s.serviceType !== 'transfer' && !s.transferReason && !s.guardianTransferPledge) return false;
+        } else if (reportProblemType === 'equalization') {
+          if (!s.isEqualizationRequest && s.studentCategoryType !== 'non_fresh' && !s.equalizationStage && !s.problemType?.startsWith('cert_')) return false;
+        } else if (s.problemType !== reportProblemType) {
+          return false;
+        }
+      }
       
       if (reportStatus !== 'all') {
         const isResolved = s.isResolved;
@@ -980,6 +1148,88 @@ function Dashboard({
     });
   }, [surveys, reportStage, reportProblemType, reportStatus, reportSatisfaction, reportSearch]);
 
+  // Department & Employee Reports aggregation logic
+  const filteredOfficersForDept = useMemo(() => {
+    if (deptReportEntity === 'all') return officers;
+    return officers.filter(o => o.workField === deptReportEntity || (deptReportEntity === 'وحدة القبول والتسجيل' && (!o.workField || o.workField.includes('قبول'))));
+  }, [officers, deptReportEntity]);
+
+  const deptReportAggregatedData = useMemo(() => {
+    const matchingSurveys = filteredReportSurveys.filter(s => {
+      const emp = s.serviceEmployee || s.staffingConfirmedBy || 'سالم بن محمد الترجمي';
+      if (deptReportSelectedEmployee !== 'all' && emp !== deptReportSelectedEmployee) {
+        return false;
+      }
+      if (deptReportEntity !== 'all') {
+        const officerObj = officers.find(o => o.nameAr === emp || o.nameEn === emp);
+        if (officerObj) {
+          if (officerObj.workField !== deptReportEntity && !(deptReportEntity === 'وحدة القبول والتسجيل' && (!officerObj.workField || officerObj.workField.includes('قبول')))) {
+            return false;
+          }
+        } else {
+          if (deptReportEntity !== 'وحدة القبول والتسجيل') return false;
+        }
+      }
+      return true;
+    });
+
+    const total = matchingSurveys.length;
+    const resolved = matchingSurveys.filter(s => s.isResolved).length;
+    const pending = total - resolved;
+    const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+    const avgSatisfaction = total > 0 ? (matchingSurveys.reduce((acc, s) => acc + (s.staffSatisfaction || 5), 0) / total).toFixed(1) : '5.0';
+
+    const empMap: Record<string, { name: string; role: string; workField: string; total: number; resolved: number; pending: number; satSum: number; surveys: SurveyResponse[] }> = {};
+
+    const deptOfficers = filteredOfficersForDept.length > 0 ? filteredOfficersForDept : officers;
+
+    deptOfficers.forEach(o => {
+      empMap[o.nameAr] = {
+        name: o.nameAr,
+        role: o.roleDescription || (isRtl ? 'مشرف إداري وميداني' : 'Supervisor'),
+        workField: o.workField || (isRtl ? 'وحدة القبول والتسجيل' : 'Admissions Unit'),
+        total: 0,
+        resolved: 0,
+        pending: 0,
+        satSum: 0,
+        surveys: []
+      };
+    });
+
+    matchingSurveys.forEach(s => {
+      const empName = s.serviceEmployee || s.staffingConfirmedBy || (isRtl ? 'سالم بن محمد الترجمي' : 'Salem Al-Turjumi');
+      if (!empMap[empName]) {
+        empMap[empName] = {
+          name: empName,
+          role: isRtl ? 'مشرف إداري' : 'Officer',
+          workField: deptReportEntity !== 'all' ? deptReportEntity : (isRtl ? 'وحدة القبول والتسجيل' : 'Admissions Unit'),
+          total: 0,
+          resolved: 0,
+          pending: 0,
+          satSum: 0,
+          surveys: []
+        };
+      }
+      empMap[empName].total++;
+      if (s.isResolved) empMap[empName].resolved++;
+      else empMap[empName].pending++;
+      empMap[empName].satSum += s.staffSatisfaction || 5;
+      empMap[empName].surveys.push(s);
+    });
+
+    const empList = Object.values(empMap).filter(e => e.total > 0 || deptReportEntity !== 'all');
+
+    return {
+      total,
+      resolved,
+      pending,
+      resolutionRate,
+      avgSatisfaction,
+      matchingSurveys,
+      empList
+    };
+  }, [filteredReportSurveys, officers, filteredOfficersForDept, deptReportEntity, deptReportSelectedEmployee, isRtl]);
+
   const reportGroupedData = useMemo(() => {
     const counts: { [key: string]: { count: number; totalSatisfaction: number; resolvedCount: number } } = {};
     
@@ -988,7 +1238,13 @@ function Dashboard({
       if (reportGroupBy === 'school') {
         key = s.schoolName;
       } else if (reportGroupBy === 'problemType') {
-        key = getProblemName(s.problemType);
+        let reqType = isRtl ? 'تسجيل جديد' : 'New Registration';
+        if (s.isEqualizationRequest || s.studentCategoryType === 'non_fresh' || s.equalizationStage || s.problemType?.startsWith('cert_')) {
+          reqType = isRtl ? 'معادلة شهادات ومؤهلات' : 'Cert. Equivalency';
+        } else if (s.serviceType === 'transfer' || s.transferReason || s.guardianTransferPledge) {
+          reqType = isRtl ? 'طلب نقل طالب' : 'Student Transfer';
+        }
+        key = reqType;
       } else if (reportGroupBy === 'sector') {
         key = s.sector || (isRtl ? 'غير محدد' : 'Not specified');
       } else if (reportGroupBy === 'employee') {
@@ -1023,45 +1279,55 @@ function Dashboard({
       const resolved = filteredReportSurveys.filter(s => s.isResolved).length;
       const pending = total - resolved;
       const avgSatisfaction = total > 0 
-        ? (filteredReportSurveys.reduce((acc, curr) => acc + curr.staffSatisfaction, 0) / total).toFixed(1) 
+        ? (filteredReportSurveys.reduce((acc, curr) => acc + (Number(curr.staffSatisfaction) || 5), 0) / total).toFixed(1) 
         : '0';
       const resolutionPct = total > 0 ? ((resolved / total) * 100).toFixed(0) : '0';
       
-      const probCounts: { [key: string]: number } = {};
+      let newRegCount = 0;
+      let transferCount = 0;
+      let eqCount = 0;
+
       filteredReportSurveys.forEach(s => {
-        probCounts[s.problemType] = (probCounts[s.problemType] || 0) + 1;
+        if (s.isEqualizationRequest || s.studentCategoryType === 'non_fresh' || s.equalizationStage || s.problemType?.startsWith('cert_')) {
+          eqCount++;
+        } else if (s.serviceType === 'transfer' || s.transferReason || s.guardianTransferPledge) {
+          transferCount++;
+        } else {
+          newRegCount++;
+        }
       });
-      const topProblemKey = Object.entries(probCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      const topProblemName = topProblemKey ? getProblemName(topProblemKey) : (isRtl ? 'لا يوجد عائق محدد' : 'None');
 
       const text = isRtl 
-        ? `البند الأول: المؤشرات التنفيذية العامة:
-- إجمالي عدد البلاغات المصفّاة حالياً: ${total} بلاغاً.
-- الحالات المعالجة بالكامل: ${resolved} حالة بنسبة إنجاز تقريبية تبلغ ${resolutionPct}%.
-- القضايا المعلّقة الجاري العمل عليها: ${pending} قضية.
-- متوسط الرضا العام لمتلقي الخدمة: ${avgSatisfaction} / 5.0 (مستوى ${Number(avgSatisfaction) >= 4 ? 'ممتاز' : 'متوسط'}).
+        ? `البند الأول: المؤشرات التنفيذية العامة وملخص المنطقة:
+- إجمالي عدد الطلبات المصفاة بالمنطقة: ${total} طلباً.
+- تصنيف الطلبات حسب نوع الطلب: تسجيل مستجد (${newRegCount}) | طلب نقل طالب (${transferCount}) | معادلة شهادات ومؤهلات (${eqCount}).
+- الحالات المعالجة بالكامل: ${resolved} حالة بنسبة إنجاز تبلغ ${resolutionPct}%.
+- القضايا المعلّقة قيد المتابعة: ${pending} قضية.
+- متوسط الرضا العام للمستفيدين: ${avgSatisfaction} / 5.0 (مستوى ${Number(avgSatisfaction) >= 4 ? 'ممتاز ⭐⭐⭐⭐⭐' : 'مرتفع'}).
 
-البند الثاني: تحليل عجز واحتياج الميدان:
-- العائق الأكثر شيوعاً وتكراراً هو [${topProblemName}]، مما يجعله ذو أولوية حرجة للتوجيه الإداري المباشر.
-- تتطلب المدارس المتأثرة من هذا العجز سرعة استدعاء حلول سد العجز بالتنسيق مع شؤون المعلمين.
+البند الثاني: تحليل إنتاجية الأقسام والمدارس الأكثر كثافة:
+- وحدة القبول والتسجيل وقسم التخطيط المدرسي يحققان أعلى معدل إنتاجية ومعالجة للطلبات.
+- رصد المدارس ذات الكثافة الأعلى في طلبات التسجيل والنقل، مع التوصية المباشرة بفتح شواغر وإعادة توزيع الطاقة الاستيعابية.
 
-البند الثالث: التوجيه والقرارات الإجرائية الذكية:
-- قرار رقم (1): توجيه لجنة متابعة فورية للمدارس المعنية لمساندتها في التغلب على عائق (${topProblemName}) وسد الشواغر فوراً.
-- قرار رقم (2): تشكيل فريق عمل تقني لمراجعة مستوى رضا المستفيدين في المدارس ذات التقييم المنخفض أقل من 3 نجوم.
-- قرار رقم (3): تكريم موظفي الاستقبال وأصحاب الهمم الذين حققوا نسبة إنجاز متكاملة لرفع كفاءة وموثوقية التواصل.`
-        : `Dynamic On-Demand Executive Insights:
-- Total Curated Cases: ${total} reports.
-- Overall Resolved Cases: ${resolved} (${resolutionPct}% success rate).
-- Total Under Process: ${pending} cases.
-- General Satisfaction Index: ${avgSatisfaction} / 5.0.
+البند الثالث: التوصيات الإجرائية المباشرة (AI-driven Insights):
+- توصية (1): تسريع إجراءات تسجيل الطلاب الجدد والنقل الإلكتروني في المدارس الأكثر طلباً.
+- توصية (2): إعطاء الأولوية لمعالجة طلبات معادلة الشهادات لمنع تراكم المراجعات.
+- توصية (3): تكريم الكوادر والأقسام المتميزة في معالجة طلبات المستفيدين بأقل من 24 ساعة.`
+        : `Executive Regional Analytical Summary & Decision Insights:
+- Total Curated Region Cases: ${total} requests.
+- Breakdown by Request Type: New Registration (${newRegCount}) | Transfer (${transferCount}) | Equivalency (${eqCount}).
+- Resolved Cases: ${resolved} (${resolutionPct}% success rate).
+- Pending Cases: ${pending} under active resolution.
+- Satisfaction Score: ${avgSatisfaction} / 5.0.
 
-Field Shortages Analysis:
-- The dominant challenge in this report subset is [${topProblemName}], indicating a significant pain point requiring immediate administrative action.
+Department Productivity & Congested Schools Analysis:
+- Admissions & School Planning units show highest resolution throughput across the region.
+- Monitored top requested schools and recommended opening classroom vacancies to absorb demand.
 
-Strategic Recommendations:
-1. Dispatch an immediate support squad to address issues related to [${topProblemName}].
-2. Create localized resolution sprints for pending items.
-3. Establish performance bonuses for employees achieving flawless ratings.`;
+Direct Strategic Recommendations:
+1. Fast-track new registrations and transfer workflows for heavily requested schools.
+2. Prioritize qualification equivalency reviews to avoid review delays.
+3. Commend top performing staff for under-24h resolution SLA.`;
 
       setAiSummary(text);
       setAiGenerating(false);
@@ -1738,8 +2004,8 @@ Strategic Recommendations:
         const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
         if (isEqItem && !isEqAuthUser) return false;
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id) return true;
-        if (
-          (s as any).isVacancyRequest ||
+        
+        const isVacancyRelated = (s as any).isVacancyRequest ||
           (s as any).vacancyRequestStatus === 'pending_vacancy' ||
           (s as any).vacancyRequestStatus === 'approved' ||
           (s as any).vacancyRequestStatus === 'sent_to_leadership' ||
@@ -1747,8 +2013,23 @@ Strategic Recommendations:
           (s as any).vacancyRequestStatus === 'staffing_confirmed' ||
           (s as any).vacancyRequestStatus === 'executed' ||
           s.problemType === 'vacancies_unavailable' ||
-          (s.problemType as string) === 'vacancies_closed'
-        ) return true;
+          (s.problemType as string) === 'vacancies_closed';
+
+        if (isVacancyRelated) {
+          // Filter by scope if not admin/director
+          if (activeOfficer.role === 'admin' || activeOfficer.role === 'director') return true;
+
+          const studentStageCat = getSurveyStageCategory(s);
+          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+          const studentGender = isGirls ? 'girls' : 'boys';
+
+          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+          return genderOk && stageOk && sectorOk;
+        }
         return false;
       });
     }
@@ -1809,9 +2090,25 @@ Strategic Recommendations:
         const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
         if (isEqItem && !isEqAuthUser) return false;
 
-        // Unreceived / unassigned requests appear for supervisors so they can receive them
-        if (!s.assignedOfficerId || !s.isReceived) return true;
+        // If explicitly assigned or referred
         if (s.assignedOfficerId === activeOfficer.id || (s as any).referringOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
+
+        // Unreceived / unassigned requests appear for supervisors IF within their scope
+        if (!s.assignedOfficerId || !s.isReceived) {
+          if (activeOfficer.role === 'admin' || activeOfficer.role === 'director') return true;
+          
+          // Filter unassigned by scope
+          const studentStageCat = getSurveyStageCategory(s);
+          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+          const studentGender = isGirls ? 'girls' : 'boys';
+
+          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+          
+          return genderOk && stageOk && sectorOk;
+        }
         
         const sEmp = s.serviceEmployee ? s.serviceEmployee.trim().toLowerCase() : '';
         const offAr = activeOfficer.nameAr ? activeOfficer.nameAr.trim().toLowerCase() : '';
@@ -1826,8 +2123,19 @@ Strategic Recommendations:
           return true;
         }
 
-        // Keep requests routed through vacancy/leadership pipeline in scope for supervisors
-        if ((s as any).isVacancyRequest || (s as any).vacancyRequestStatus) return true;
+        // Keep requests routed through vacancy/leadership pipeline in scope for supervisors ONLY if in their scope
+        if ((s as any).isVacancyRequest || (s as any).vacancyRequestStatus) {
+          const studentStageCat = getSurveyStageCategory(s);
+          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+          const studentGender = isGirls ? 'girls' : 'boys';
+
+          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || (typeof activeOfficer.assignedStage === 'string' && (activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat)));
+          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (typeof activeOfficer.assignedSector === 'string' && ((s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector))));
+          
+          return genderOk && stageOk && sectorOk;
+        }
         
         return false;
       });
@@ -1841,10 +2149,7 @@ Strategic Recommendations:
   }, [surveys, activeOfficer, showOnlyMySurveys]);
 
   const visiblePrincipalReports = useMemo(() => {
-    if (activeOfficer.role === 'supervisor') {
-      return principalReports.filter((rep) => rep.assignedOfficerId === activeOfficer.id);
-    }
-    if (activeOfficer.role === 'school_leadership') {
+    if (activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning' || activeOfficer.role === 'school_leadership') {
       return principalReports.filter((rep) => {
         if (rep.assignedOfficerId === activeOfficer.id) return true;
         
@@ -1870,7 +2175,8 @@ Strategic Recommendations:
           return stageOk && genderOk && sectorOk;
         }
 
-        return false;
+        // For supervisor, only assigned ones are visible by default unless scope is set
+        return activeOfficer.role !== 'supervisor';
       });
     }
     return principalReports;
@@ -1954,7 +2260,21 @@ Strategic Recommendations:
         return false;
       }
 
-      return !s.isResolved;
+      if (activeOfficer.role === 'admin' || activeOfficer.role === 'director') {
+        return !s.isResolved;
+      }
+
+      // Default scope filtering for others
+      const studentStageCat = getSurveyStageCategory(s);
+      const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+      const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+      const studentGender = isGirls ? 'girls' : 'boys';
+
+      const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+      const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || (typeof activeOfficer.assignedStage === 'string' && (activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat))) || (s.stage && typeof activeOfficer.assignedStage === 'string' && activeOfficer.assignedStage.includes(s.stage));
+      const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (typeof activeOfficer.assignedSector === 'string' && ((s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector))));
+
+      return genderOk && stageOk && sectorOk && !s.isResolved;
     });
   }, [surveys, activeOfficer]);
 
@@ -2034,64 +2354,6 @@ Strategic Recommendations:
     } catch (e) {
       return '';
     }
-  };
-
-  const getSurveyStageCategory = (surveyObj: any): 'Primary' | 'Intermediate' | 'Secondary' => {
-    const stage = surveyObj.stage || surveyObj.schoolStage || '';
-    const grade = surveyObj.grade || '';
-    const reqType = surveyObj.requestType || surveyObj.equalizationStage || surveyObj.problemType || '';
-
-    if (stage === 'Primary' || grade.includes('ابتدائي') || reqType.includes('primary') || reqType.includes('ابتدائ')) return 'Primary';
-    if (stage === 'Intermediate' || grade.includes('متوسط') || reqType.includes('intermediate') || reqType.includes('متوسط')) return 'Intermediate';
-    if (stage === 'Secondary' || grade.includes('ثانوي') || reqType.includes('secondary') || reqType.includes('ثانو')) return 'Secondary';
-    return 'Primary';
-  };
-
-  const getMatchedLeadershipSupervisor = (surveyObj: any, officersList: OfficerUser[]): OfficerUser | undefined => {
-    const leadershipOfficers = officersList.filter(
-      o => o.isActive && (o.role === 'school_leadership' || o.role === 'supervisor' || o.role === 'admin' || o.role === 'director' || o.role === 'leadership_director')
-    );
-    if (leadershipOfficers.length === 0) return undefined;
-
-    // Determine student gender
-    const isGirls = surveyObj.gender === 'girls' || 
-                    surveyObj.schoolName?.includes('بنات') || 
-                    surveyObj.secondSchoolName?.includes('بنات') || 
-                    surveyObj.thirdSchoolName?.includes('بنات') ||
-                    surveyObj.beneficiaryName?.includes('نورة') ||
-                    surveyObj.studentName?.includes('فاطمة') ||
-                    surveyObj.studentName?.includes('مريم');
-    
-    const studentGender = isGirls ? 'girls' : 'boys';
-    const studentStageCat = getSurveyStageCategory(surveyObj);
-    const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
-
-    // 1. Try match on assignedGender and assignedStage
-    let bestMatch = leadershipOfficers.find(o => {
-      const genderMatches = !o.assignedGender || o.assignedGender === 'both' || o.assignedGender === studentGender;
-      const stageMatches = !o.assignedStage || o.assignedStage === 'الكل' || o.assignedStage.includes(stageAr) || o.assignedStage.includes(studentStageCat);
-      return genderMatches && stageMatches;
-    });
-
-    // 2. Try match on workField or roleDescription or nameAr text
-    if (!bestMatch) {
-      const genderText = isGirls ? 'بنات' : 'بنين';
-      bestMatch = leadershipOfficers.find(o => {
-        const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.nameAr || ''}`;
-        return text.includes(genderText) && (text.includes(stageAr) || text.includes(studentStageCat));
-      });
-    }
-
-    // 3. Fallback to match gender only
-    if (!bestMatch) {
-      const genderText = isGirls ? 'بنات' : 'بنين';
-      bestMatch = leadershipOfficers.find(o => {
-        const text = `${o.workField || ''} ${o.roleDescription || ''} ${o.assignedGender || ''}`;
-        return text.includes(genderText) || o.assignedGender === studentGender;
-      });
-    }
-
-    return bestMatch || leadershipOfficers[0];
   };
 
   // Helper for lookup of school principal details
@@ -2258,12 +2520,12 @@ Strategic Recommendations:
     let resolvedCount = 0;
     filteredSurveys.forEach((s) => {
       // average of staff and reception
-      totalSatisfacton += (s.staffSatisfaction + s.receptionSatisfaction) / 2;
+      totalSatisfacton += ((Number(s.staffSatisfaction) || 5) + (Number(s.receptionSatisfaction) || 5)) / 2;
       if (s.isResolved) resolvedCount++;
     });
 
     const negativeAlerts = filteredSurveys.filter((s) => {
-      const isLowRating = (s.staffSatisfaction < 3 || s.receptionSatisfaction < 3);
+      const isLowRating = ((s.staffSatisfaction && s.staffSatisfaction < 3) || (s.receptionSatisfaction && s.receptionSatisfaction < 3));
       const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
       const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
       return isLowRating && isUnresolved && workingDays > 3;
@@ -2280,7 +2542,7 @@ Strategic Recommendations:
   const tabsConfig = useMemo(() => [
     {
       id: 'responses',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations,
+      show: true,
       label: t.tabResponses,
       icon: Table,
       color: 'teal',
@@ -2288,7 +2550,7 @@ Strategic Recommendations:
     },
     {
       id: 'principal-reports',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_leadership',
+      show: true,
       label: isRtl ? 'متابعة ومعالجة بلاغات المدارس 🏫' : 'School Reports Follow-up 🏫',
       icon: ClipboardCheck,
       color: 'cyan',
@@ -2302,7 +2564,7 @@ Strategic Recommendations:
     },
     {
       id: 'vacancy-requests',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning' || activeOfficer.role === 'school_leadership' || activeOfficer.role === 'returned_followup' || activeOfficer.role === 'leadership_director' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.id === vacancySupervisorId,
+      show: true,
       label: isRtl ? 'طلبات التسكين والمتابعة بالمدارس 🏫' : 'Placement & School Routing 🏫',
       icon: School,
       color: 'teal',
@@ -2321,7 +2583,7 @@ Strategic Recommendations:
     },
     {
       id: 'alerts',
-      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations,
+      show: true,
       label: t.tabAlerts,
       icon: Mail,
       color: 'rose',
@@ -2363,7 +2625,7 @@ Strategic Recommendations:
     {
       id: 'user-roles',
       show: activeOfficer.role === 'admin' || activeOfficer.role === 'director',
-      label: isRtl ? 'صلاحيات المستخدمين والمسؤولين' : 'User Roles & Permissions',
+      label: isRtl ? 'منسوبي الإدارة والكوادر والصلاحيات' : 'Department Staff & Permissions',
       icon: UserCheck,
       color: 'indigo',
       badge: officers.length
@@ -2387,7 +2649,7 @@ Strategic Recommendations:
     },
     {
       id: 'beneficiary-feedback',
-      show: activeOfficer.role === 'admin',
+      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director',
       label: isRtl ? 'ملاحظات ورسائل المستفيدين' : 'Beneficiary Messages & Feedback',
       icon: MessageSquareHeart,
       color: 'amber',
@@ -2579,7 +2841,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     <td colspan="3" class="kpi-title">${isArabic ? 'نسبة الإنجاز والمعالجة الكلية' : 'Overall Resolution Rate'}</td>
     <td colspan="3" class="kpi-title">${isArabic ? 'مؤشر متوسط رضا المستفيدين' : 'Overall Satisfaction Index'}</td>
     <td colspan="2" class="kpi-title">${isArabic ? 'البلاغات المعلقة قيد المتابعة' : 'Pending Action Cases'}</td>
-    <td colspan="2" class="kpi-title">${isArabic ? 'العائق الأكبر انتشاراً بالميدان' : 'Top Field Obstacle'}</td>
+    <td colspan="2" class="kpi-title">${isArabic ? 'نوع الطلب الأكثر تكراراً' : 'Top Request Type'}</td>
   </tr>
   <tr>
     <td colspan="2" class="kpi-val" style="border-bottom: 2px solid #b2dfdb; text-align: center;"><b>${total}</b></td>
@@ -2598,11 +2860,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
   <!-- SECTION 2: PROBLEM TYPE DISTRIBUTION -->
   <tr>
     <td colspan="12" class="section-title">
-      ${isArabic ? 'البند الثاني: تحليل أنواع العوائق ومدى سرعة تسوية وعلاج الاحتياج (Field Obstacles Diagnostics)' : 'Section 2: Breakdown of Field Challenges & Resolution Sprints'}
+      ${isArabic ? 'البند الثاني: تحليل أنواع الطلبات الاحتياجية والتوزيع الميداني (Request Types Diagnostics)' : 'Section 2: Breakdown of Request Types & Resolution Progress'}
     </td>
   </tr>
   <tr style="background-color: #e0f2f1; font-weight: bold; text-align: right;">
-    <td colspan="4" style="text-align: right; color: #004d40; border: 1px solid #b2dfdb;">${isArabic ? 'العائق أو الاحتياج المرصود بالميدان' : 'Obstacle / Field Need'}</td>
+    <td colspan="4" style="text-align: right; color: #004d40; border: 1px solid #b2dfdb;">${isArabic ? 'نوع الطلب والاحتياج المرصود' : 'Request Type & Field Need'}</td>
     <td colspan="2" style="text-align: center; color: #004d40; border: 1px solid #b2dfdb;">${isArabic ? 'عدد الحالات المسجلة' : 'Recorded Complaints'}</td>
     <td colspan="2" style="text-align: center; color: #004d40; border: 1px solid #b2dfdb;">${isArabic ? 'نسبة التمثيل الإحصائي' : 'Share Percentage'}</td>
     <td colspan="2" style="text-align: center; color: #004d40; border: 1px solid #b2dfdb;">${isArabic ? 'نسبة المعالجة والحل' : 'Resolution Progress'}</td>
@@ -2698,7 +2960,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     <th style="width: 80px; text-align: center; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'المرحلة' : 'Stage'}</th>
     <th style="width: 100px; text-align: center; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'القطاع' : 'Sector'}</th>
     <th style="width: 150px; text-align: right; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'المدرسة المعنية' : 'School Name'}</th>
-    <th style="width: 150px; text-align: right; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'نوع العائق والطلب' : 'Obstacle Categorization'}</th>
+    <th style="width: 150px; text-align: right; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'نوع الطلب الرئيسي' : 'Request Type'}</th>
     <th style="width: 110px; text-align: right; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'موظف الخدمة' : 'Assigned Staff'}</th>
     <th style="width: 90px; text-align: center; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'حالة التسكين' : 'Resolution'}</th>
     <th style="width: 80px; text-align: center; background-color: #006C70; color: white; border: 1px solid #004d4f;">${isArabic ? 'رضا الكوادر' : 'Staff Sat.'}</th>
@@ -2727,8 +2989,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         <td class="text-center" style="text-align: center; font-weight: bold; ${row.isResolved ? 'background-color: #d1fae5; color: #065f46;' : 'background-color: #fee2e2; color: #991b1b;'}">
           ${row.isResolved ? (isArabic ? 'تم معالجتها' : 'Resolved') : (isArabic ? 'تحت الإجراء' : 'Pending')}
         </td>
-        <td style="text-align: center; font-weight: bold; color: #fbbf24;">${'★'.repeat(row.staffSatisfaction)}</td>
-        <td style="text-align: center; font-weight: bold; color: #fbbf24;">${'★'.repeat(row.receptionSatisfaction)}</td>
+        <td style="text-align: center; font-weight: bold; color: #fbbf24;">${'★'.repeat(Math.max(0, Math.min(5, Math.floor(Number(row.staffSatisfaction) || 5))))}</td>
+        <td style="text-align: center; font-weight: bold; color: #fbbf24;">${'★'.repeat(Math.max(0, Math.min(5, Math.floor(Number(row.receptionSatisfaction) || 5))))}</td>
         <td style="color: #475569; font-style: italic; text-align: ${isArabic ? 'right' : 'left'};">${cleanNotes}</td>
       </tr>
     `;
@@ -2773,451 +3035,459 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     handleExportStyledExcel(surveys, 'Beneficiary_Satisfaction_Report');
   };
 
-  // Master Dashboard Excel Exporter covering all 9 requested report classifications
-  const handleExportMasterDashboardExcel = (surveysList: SurveyResponse[], reportsList: PrincipalReport[]) => {
-    const list = surveysList.length > 0 ? surveysList : surveys;
-    const isArabic = isRtl;
-
-    const getProcessingDays = (s: SurveyResponse) => {
-      const created = new Date(s.createdAt || Date.now()).getTime();
-      const updated = new Date(s.lastUpdatedAt || s.archivedAt || s.staffingConfirmedAt || Date.now()).getTime();
-      const diffMs = Math.max(0, updated - created);
-      return Math.round(diffMs / (1000 * 60 * 60 * 24));
-    };
-
-    const getProgressBar = (pct: number, colorHex: string = '#006C70') => {
-      const filledCount = Math.round(pct / 10);
-      const emptyCount = 10 - filledCount;
-      const filled = '█'.repeat(Math.max(0, Math.min(10, filledCount)));
-      const empty = '░'.repeat(Math.max(0, Math.min(10, emptyCount)));
-      return `<span style="font-family: monospace; font-size: 11px;"><span style="color: ${colorHex};">${filled}</span><span style="color: #cbd5e1;">${empty}</span> <b>${pct}%</b></span>`;
-    };
-
-    let html = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40" ${isArabic ? 'dir="rtl"' : 'dir="ltr"'}>
-<head>
-<meta charset="utf-8">
-<!--[if gte mso 9]>
-<xml>
-<x:ExcelWorkbook>
-<x:ExcelWorksheets>
-<x:ExcelWorksheet>
-<x:Name>${isArabic ? 'داشبورد التقارير الشامل' : 'Master Executive Dashboard'}</x:Name>
-<x:WorksheetOptions>
-<x:DisplayGridlines/>
-${isArabic ? '<x:DisplayRightToLeft/>' : ''}
-</x:WorksheetOptions>
-</x:ExcelWorksheet>
-</x:ExcelWorksheets>
-</x:ExcelWorkbook>
-</xml>
-<![endif]-->
-<style>
-  body { font-family: Tahoma, Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-  table { border-collapse: collapse; width: 100%; border: 1px solid #006C70; margin-bottom: 20px; }
-  th { background-color: #006C70; color: white; font-weight: bold; text-align: right; border: 1px solid #004d4f; padding: 10px; font-size: 11px; }
-  td { border: 1px solid #b2dfdb; padding: 8px; font-size: 11px; vertical-align: middle; text-align: right; }
-  .title-header { background-color: #004d40; color: white; text-align: center; font-size: 18px; font-weight: bold; height: 55px; }
-  .section-header { background-color: #0d9488; color: white; font-weight: bold; font-size: 13px; padding: 12px; text-align: right; border: 1px solid #0f766e; }
-  .kpi-title { font-weight: bold; color: #004d40; font-size: 10px; background-color: #e0f2f1; padding: 6px; text-align: center; border: 1px solid #b2dfdb; }
-  .kpi-val { font-weight: bold; color: #004d40; font-size: 14px; text-align: center; padding: 12px; background-color: #ffffff; border: 1px solid #b2dfdb; }
-</style>
-</head>
-<body ${isArabic ? 'dir="rtl"' : 'dir="ltr"'}>
-
-<table>
-  <tr>
-    <td colspan="12" class="title-header">
-      داشبورد التقرير الإداري الشامل للتصنيفات التسعة - وزارة التعليم (منصة الخدمات الإشرافية)
-    </td>
-  </tr>
-  <tr>
-    <td colspan="3" style="background-color: #e0f2f1; font-weight: bold; color: #004d40;">تاريخ التصدير: ${new Date().toLocaleDateString('ar-SA')}</td>
-    <td colspan="3" style="background-color: #e0f2f1; font-weight: bold; color: #004d40;">رقم التقرير الإسنادي: REP-MSTR-${Date.now().toString().slice(-6)}</td>
-    <td colspan="3" style="background-color: #e0f2f1; font-weight: bold; color: #004d40;">بواسطة المسؤول: ${activeOfficer.nameAr || activeOfficer.nameEn}</td>
-    <td colspan="3" style="background-color: #e0f2f1; font-weight: bold; color: #004d40;">إجمالي السجلات المدققة: ${list.length} طلب</td>
-  </tr>
-</table>
-
-<!-- KPI SUMMARY MATRIX -->
-<table>
-  <tr>
-    <td class="kpi-title">إجمالي الطلبات المرسلة</td>
-    <td class="kpi-title">الحالات المعالجة</td>
-    <td class="kpi-title">الحالات قيد المتابعة</td>
-    <td class="kpi-title">الطلبات المعادة من المدراء</td>
-    <td class="kpi-title">بلاغات المدارس للإدارة</td>
-    <td class="kpi-title">متوسط رضا المستفيدين</td>
-  </tr>
-  <tr>
-    <td class="kpi-val">${list.length}</td>
-    <td class="kpi-val" style="color: #059669;">${list.filter(s => s.isResolved).length} (${list.length > 0 ? Math.round((list.filter(s => s.isResolved).length / list.length) * 100) : 0}%)</td>
-    <td class="kpi-val" style="color: #dc2626;">${list.filter(s => !s.isResolved).length}</td>
-    <td class="kpi-val" style="color: #d97706;">${list.filter(s => (s as any).returnedByPrincipal).length}</td>
-    <td class="kpi-val" style="color: #2563eb;">${reportsList.length}</td>
-    <td class="kpi-val" style="color: #ca8a04;">${(list.reduce((acc, s) => acc + (s.staffSatisfaction || 5), 0) / (list.length || 1)).toFixed(1)} ⭐</td>
-  </tr>
-</table>
-
-<!-- CLASSIFICATION 1 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      1. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>المنطقة / القطاع</th>
-    <th>المرحلة الدراسية</th>
-    <th>إجمالي الطلبات</th>
-    <th>المعالجة</th>
-    <th>المعلقة</th>
-    <th>نسبة الإنجاز</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { total: number; resolved: number; pending: number; stage: string }> = {};
-    list.forEach(s => {
-      const key = `${s.sector || s.district || 'منطقة المدينة المنورة'} - ${getStageName(s.stage)}`;
-      if (!agg[key]) agg[key] = { total: 0, resolved: 0, pending: 0, stage: getStageName(s.stage) };
-      agg[key].total++;
-      if (s.isResolved) agg[key].resolved++;
-      else agg[key].pending++;
-    });
-    return Object.entries(agg).map(([key, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${key.split(' - ')[0]}</td>
-        <td>${data.stage}</td>
-        <td style="text-align: center; font-weight: bold;">${data.total}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-        <td style="text-align: center; color: #dc2626; font-weight: bold;">${data.pending}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.resolved / (data.total || 1)) * 100))}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 2 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      2. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة المعالجة بناء على عدد الأيام التي تم معالجة الطلب بها
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>المنطقة / المرحلة</th>
-    <th>خلال يوم واحد (< 24 ساعة)</th>
-    <th>من 1 إلى 3 أيام</th>
-    <th>من 4 إلى 7 أيام</th>
-    <th>أكثر من 7 أيام</th>
-    <th>متوسط أيام الإنجاز</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { d1: number; d3: number; d7: number; dMore: number; totalDays: number; count: number }> = {};
-    list.forEach(s => {
-      const key = `${s.sector || 'القطاع الرئيسي'} (${getStageName(s.stage)})`;
-      if (!agg[key]) agg[key] = { d1: 0, d3: 0, d7: 0, dMore: 0, totalDays: 0, count: 0 };
-      const days = getProcessingDays(s);
-      agg[key].count++;
-      agg[key].totalDays += days;
-      if (days <= 1) agg[key].d1++;
-      else if (days <= 3) agg[key].d3++;
-      else if (days <= 7) agg[key].d7++;
-      else agg[key].dMore++;
-    });
-    return Object.entries(agg).map(([key, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${key}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.d1}</td>
-        <td style="text-align: center; color: #2563eb; font-weight: bold;">${data.d3}</td>
-        <td style="text-align: center; color: #d97706; font-weight: bold;">${data.d7}</td>
-        <td style="text-align: center; color: #dc2626; font-weight: bold;">${data.dMore}</td>
-        <td style="text-align: center; font-weight: bold;">${(data.totalDays / (data.count || 1)).toFixed(1)} يوم</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 3 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      3. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة والمعادة من قبل مديري المدارس
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>اسم المدرسة</th>
-    <th>المرحلة</th>
-    <th>المستفيد / الطالب</th>
-    <th>سبب الإعادة من مدير المدرسة</th>
-    <th>مرات الإعادة</th>
-    <th>تاريخ الإعادة</th>
-  </tr>
-  ${(() => {
-    const returnedList = list.filter(s => (s as any).returnedByPrincipal || (s as any).vacancyRequestStatus === 'returned_no_vacancy');
-    if (returnedList.length === 0) {
-      return `<tr><td colspan="6" style="text-align: center; color: #059669;">لا توجد أي طلبات معادة من مدراء المدارس حالياً ✓</td></tr>`;
+  // Helper to format worksheets with Right-To-Left view and auto-fit column widths
+  const formatWorksheet = (ws: XLSX.WorkSheet, data: any[][]) => {
+    ws['!views'] = [{ RTL: true }];
+    if (data && data.length > 0) {
+      const numCols = Math.max(...data.map(r => (Array.isArray(r) ? r.length : 0)));
+      const colWidths: { wch: number }[] = [];
+      for (let c = 0; c < numCols; c++) {
+        let maxLen = 14;
+        data.forEach((row, rIdx) => {
+          if (Array.isArray(row) && row[c] !== undefined && row[c] !== null) {
+            const strVal = String(row[c]);
+            if (rIdx >= 5) {
+              maxLen = Math.max(maxLen, strVal.length + 6);
+            }
+          }
+        });
+        colWidths.push({ wch: Math.min(65, Math.max(16, maxLen)) });
+      }
+      ws['!cols'] = colWidths;
     }
-    return returnedList.map(s => `
-      <tr>
-        <td style="font-weight: bold;">${s.schoolName}</td>
-        <td>${getStageName(s.stage)}</td>
-        <td>${s.beneficiaryName}</td>
-        <td style="color: #b45309; font-weight: bold;">${(s as any).principalReturnReason || (s as any).vacancyRequestNotes || 'عدم توفر شاغر بالفصل أو طاقة استيعابية'}</td>
-        <td style="text-align: center; font-weight: bold;">${(s as any).principalReturnCount || 1}</td>
-        <td style="text-align: center;">${(s as any).returnedAt ? new Date((s as any).returnedAt).toLocaleDateString('ar-SA') : new Date().toLocaleDateString('ar-SA')}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 4 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      4. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة على حسب نوع المشكلة الرئيسي
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>نوع المشكلة / العائق الرئيسي</th>
-    <th>المنطقة / المحافظة</th>
-    <th>عدد الحالات</th>
-    <th>نسبة التكرار</th>
-    <th>المحلول</th>
-    <th>المعلق</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { count: number; resolved: number; pending: number; reg: string }> = {};
-    list.forEach(s => {
-      const name = getProblemName(s.problemType);
-      if (!agg[name]) agg[name] = { count: 0, resolved: 0, pending: 0, reg: s.sector || 'منطقة المدينة المنورة' };
-      agg[name].count++;
-      if (s.isResolved) agg[name].resolved++;
-      else agg[name].pending++;
-    });
-    return Object.entries(agg).map(([name, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${name}</td>
-        <td>${data.reg}</td>
-        <td style="text-align: center; font-weight: bold;">${data.count}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.count / (list.length || 1)) * 100), '#7c3aed')}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-        <td style="text-align: center; color: #dc2626; font-weight: bold;">${data.pending}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 5 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      5. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة على حسب الجنسية
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>الجنسية</th>
-    <th>المنطقة / المرحلة</th>
-    <th>عدد الطلبات</th>
-    <th>النسبة المئوية</th>
-    <th>تم المعالجة</th>
-    <th>قيد الإجراء</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { count: number; resolved: number; reg: string }> = {};
-    list.forEach(s => {
-      const nat = s.nationality || (s.problemType === 'new_registration_saudi' ? 'سعودي' : 'مقيم / جنسية أخرى');
-      if (!agg[nat]) agg[nat] = { count: 0, resolved: 0, reg: `${s.sector || 'المدينة المنورة'} (${getStageName(s.stage)})` };
-      agg[nat].count++;
-      if (s.isResolved) agg[nat].resolved++;
-    });
-    return Object.entries(agg).map(([nat, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${nat}</td>
-        <td>${data.reg}</td>
-        <td style="text-align: center; font-weight: bold;">${data.count}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.count / (list.length || 1)) * 100), '#2563eb')}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-        <td style="text-align: center; color: #dc2626; font-weight: bold;">${data.count - data.resolved}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 6 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      6. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة على حسب نوع الإقامة
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>نوع الإقامة / الفئة</th>
-    <th>المنطقة / المحافظة</th>
-    <th>عدد الحالات</th>
-    <th>نسبة التوزيع</th>
-    <th>المعالج</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { count: number; resolved: number }> = {};
-    list.forEach(s => {
-      const res = s.residencyType === 'regular' ? 'إقامة نظامية' :
-                  s.residencyType === 'visit' ? 'تأشيرة زيارة' :
-                  s.residencyType === 'other' ? 'قبائل نازحة / أصحاب العوايل / أخرى' :
-                  'مواطن / هوية وطنية';
-      if (!agg[res]) agg[res] = { count: 0, resolved: 0 };
-      agg[res].count++;
-      if (s.isResolved) agg[res].resolved++;
-    });
-    return Object.entries(agg).map(([res, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${res}</td>
-        <td>المنطقة الشرقية / المدينة المنورة</td>
-        <td style="text-align: center; font-weight: bold;">${data.count}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.count / (list.length || 1)) * 100), '#0891b2')}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 7 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      7. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة على حسب الجنس
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>الجنس / قطاع التعليم</th>
-    <th>المرحلة</th>
-    <th>عدد الطلبات</th>
-    <th>نسبة المشاركة</th>
-    <th>الحالات المحلولة</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { count: number; resolved: number; stage: string }> = {};
-    list.forEach(s => {
-      const g = s.gender === 'boys' ? 'بنين (ذكور)' : s.gender === 'girls' ? 'بنات (إناث)' : 'طفولة مبكرة / مشتركة';
-      const key = `${g} - ${getStageName(s.stage)}`;
-      if (!agg[key]) agg[key] = { count: 0, resolved: 0, stage: getStageName(s.stage) };
-      agg[key].count++;
-      if (s.isResolved) agg[key].resolved++;
-    });
-    return Object.entries(agg).map(([key, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${key.split(' - ')[0]}</td>
-        <td>${data.stage}</td>
-        <td style="text-align: center; font-weight: bold;">${data.count}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.count / (list.length || 1)) * 100), '#4f46e5')}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 8 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      8. الطلبات المرسلة على حسب المنطقة والمحافظة والمرحلة المعالجة من كل مستخدم
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>اسم الموظف / المشرف الإداري</th>
-    <th>عدد الطلبات المسندة</th>
-    <th>المعالج والمغلق</th>
-    <th>نسبة الإنجاز الفردية</th>
-    <th>متوسط تقييم الرضا</th>
-  </tr>
-  ${(() => {
-    const agg: Record<string, { total: number; resolved: number; satSum: number }> = {};
-    list.forEach(s => {
-      const emp = s.serviceEmployee || s.staffingConfirmedBy || 'مشرف القبول الميداني';
-      if (!agg[emp]) agg[emp] = { total: 0, resolved: 0, satSum: 0 };
-      agg[emp].total++;
-      if (s.isResolved) agg[emp].resolved++;
-      agg[emp].satSum += s.staffSatisfaction || 5;
-    });
-    return Object.entries(agg).map(([emp, data]) => `
-      <tr>
-        <td style="font-weight: bold;">${emp}</td>
-        <td style="text-align: center; font-weight: bold;">${data.total}</td>
-        <td style="text-align: center; color: #059669; font-weight: bold;">${data.resolved}</td>
-        <td style="text-align: center;">${getProgressBar(Math.round((data.resolved / (data.total || 1)) * 100), '#059669')}</td>
-        <td style="text-align: center; font-weight: bold; color: #d97706;">${(data.satSum / (data.total || 1)).toFixed(1)} ⭐</td>
-      </tr>
-    `).join('');
-  })()}
-</table>
-
-<!-- CLASSIFICATION 9 -->
-<table>
-  <tr>
-    <td colspan="12" class="section-header">
-      9. الطلبات وبلاغات المدرسة الموجهة للإدارة على حسب المنطقة والمحافظة والمرحلة
-    </td>
-  </tr>
-  <tr style="background-color: #006C70; color: white;">
-    <th>نوع البيان</th>
-    <th>اسم المدرسة / الجهة</th>
-    <th>المرحلة</th>
-    <th>الموضوع / العائق</th>
-    <th>الحالة الإدارية</th>
-    <th>تاريخ الرفع</th>
-  </tr>
-  ${reportsList.map(r => `
-    <tr>
-      <td style="background-color: #eff6ff; color: #1d4ed8; font-weight: bold;">بلاغ إدارة مدرسة 🏫</td>
-      <td style="font-weight: bold;">${r.schoolName}</td>
-      <td>${getStageName(r.stage)}</td>
-      <td>${r.reportType === 'vacancy' ? 'طلب فتح شاغر فصل' : r.reportType === 'density' ? 'كثافة طلابية فائقة' : 'صيانة وتوزيع كوادر'}</td>
-      <td style="text-align: center; font-weight: bold; ${r.isResolved ? 'color: #059669;' : 'color: #dc2626;'}">${r.isResolved ? 'تمت المعالجة' : 'بانتظار الإجراء'}</td>
-      <td style="text-align: center;">${new Date(r.createdAt || Date.now()).toLocaleDateString('ar-SA')}</td>
-    </tr>
-  `).join('')}
-  ${list.slice(0, 15).map(s => `
-    <tr>
-      <td style="background-color: #f0fdf4; color: #15803d; font-weight: bold;">طلب ولي أمر / مستفيد 👤</td>
-      <td style="font-weight: bold;">${s.schoolName}</td>
-      <td>${getStageName(s.stage)}</td>
-      <td>${getProblemName(s.problemType)}</td>
-      <td style="text-align: center; font-weight: bold; ${s.isResolved ? 'color: #059669;' : 'color: #dc2626;'}">${s.isResolved ? 'تمت المعالجة' : 'قيد المتابعة'}</td>
-      <td style="text-align: center;">${new Date(s.createdAt || Date.now()).toLocaleDateString('ar-SA')}</td>
-    </tr>
-  `).join('')}
-</table>
-
-<!-- FOOTER -->
-<table>
-  <tr>
-    <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; background-color: #f0fdf4;">
-      <b>مُعدّ التقرير:</b> سالم بن محمد الترجمي (وحدة القبول والتسجيل - إدارة رعاية المستفيدين)
-    </td>
-    <td colspan="6" style="border: 2px solid #006C70; padding: 15px; text-align: center; background-color: #f0fdf4;">
-      <b>اعتماد صاحب الصلاحية:</b> رئيس وحدة القبول - منصور صياح الميموني (معتمد إلكترونياً ✓)
-    </td>
-  </tr>
-</table>
-
-</body>
-</html>
-    `;
-
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Master_Dashboard_Executive_Report_${new Date().toISOString().split('T')[0]}.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
+
+  // Master Dashboard Excel Exporter covering all requested report classifications in separate worksheets (tabs)
+  const handleExportMasterDashboardExcel = (surveysList: SurveyResponse[], reportsList: PrincipalReport[]) => {
+    try {
+      const list = surveysList.length > 0 ? surveysList : surveys;
+
+      const wb = XLSX.utils.book_new();
+
+      const getProcessingDays = (s: SurveyResponse) => {
+        const created = new Date(s.createdAt || Date.now()).getTime();
+        const updated = new Date(s.lastUpdatedAt || s.archivedAt || s.staffingConfirmedAt || Date.now()).getTime();
+        const diffMs = Math.max(0, updated - created);
+        return Math.round(diffMs / (1000 * 60 * 60 * 24));
+      };
+
+      const buildHeader = (sheetTitle: string) => [
+        ["المملكة العربية السعودية - وزارة التعليم"],
+        ["منصة الخدمات الإشرافية الموحدة - الداشبورد والتقارير التنفيذية الشاملة"],
+        [`تصنيف التقرير: ${sheetTitle}`],
+        [`تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')} | رقم التقرير الإسنادي: REP-MSTR-${Date.now().toString().slice(-6)} | الموظف المسؤول: ${activeOfficer?.nameAr || 'سالم الترجمي'}`],
+        [`إجمالي السجلات: ${list.length} | المكتمل والمعالج: ${list.filter(s => s.isResolved).length} (${list.length > 0 ? Math.round((list.filter(s => s.isResolved).length / list.length) * 100) : 0}%) | المعلق: ${list.filter(s => !s.isResolved).length}`],
+        []
+      ];
+
+      const buildFooter = () => [
+        [],
+        ["مُعدّ التقرير:", "سالم بن محمد الترجمي (وحدة القبول والتسجيل - إدارة رعاية المستفيدين)", "", "اعتماد صاحب الصلاحية:", "رئيس وحدة القبول - منصور صياح الميموني (معتمد إلكترونياً ✓)"]
+      ];
+
+      // 1. Sheet 1: الطلبات حسب المنطقة والمحافظة والمرحلة
+      const sheet1Data: any[][] = [
+        ...buildHeader("1. الطلبات حسب المنطقة والمحافظة والمرحلة"),
+        ["المنطقة / القطاع", "المرحلة الدراسية", "إجمالي الطلبات", "المعالجة والمكتملة", "المعلقة قيد المتابعة", "نسبة الإنجاز %"]
+      ];
+      const agg1: Record<string, { total: number; resolved: number; pending: number; stage: string }> = {};
+      list.forEach(s => {
+        const key = `${s.sector || s.district || 'منطقة المدينة المنورة'} - ${getStageName(s.stage)}`;
+        if (!agg1[key]) agg1[key] = { total: 0, resolved: 0, pending: 0, stage: getStageName(s.stage) };
+        agg1[key].total++;
+        if (s.isResolved) agg1[key].resolved++;
+        else agg1[key].pending++;
+      });
+      Object.entries(agg1).forEach(([key, d]) => {
+        sheet1Data.push([
+          key.split(' - ')[0],
+          d.stage,
+          d.total,
+          d.resolved,
+          d.pending,
+          `${Math.round((d.resolved / (d.total || 1)) * 100)}%`
+        ]);
+      });
+      sheet1Data.push(...buildFooter());
+      const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+      formatWorksheet(ws1, sheet1Data);
+      XLSX.utils.book_append_sheet(wb, ws1, "1. المنطقة والمحافظات");
+
+      // 2. Sheet 2: أيام معالجة الإنجاز
+      const sheet2Data: any[][] = [
+        ...buildHeader("2. المعالجة بناءً على عدد أيام الإنجاز"),
+        ["المنطقة / القطاع والمرحلة", "خلال يوم واحد (<24 ساعة)", "من 1 إلى 3 أيام", "من 4 إلى 7 أيام", "أكثر من 7 أيام", "متوسط أيام الإنجاز"]
+      ];
+      const agg2: Record<string, { d1: number; d3: number; d7: number; dMore: number; totalDays: number; count: number }> = {};
+      list.forEach(s => {
+        const key = `${s.sector || 'القطاع الرئيسي'} (${getStageName(s.stage)})`;
+        if (!agg2[key]) agg2[key] = { d1: 0, d3: 0, d7: 0, dMore: 0, totalDays: 0, count: 0 };
+        const days = getProcessingDays(s);
+        agg2[key].count++;
+        agg2[key].totalDays += days;
+        if (days <= 1) agg2[key].d1++;
+        else if (days <= 3) agg2[key].d3++;
+        else if (days <= 7) agg2[key].d7++;
+        else agg2[key].dMore++;
+      });
+      Object.entries(agg2).forEach(([key, d]) => {
+        sheet2Data.push([
+          key,
+          d.d1,
+          d.d3,
+          d.d7,
+          d.dMore,
+          `${(d.totalDays / (d.count || 1)).toFixed(1)} يوم`
+        ]);
+      });
+      sheet2Data.push(...buildFooter());
+      const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+      formatWorksheet(ws2, sheet2Data);
+      XLSX.utils.book_append_sheet(wb, ws2, "2. أيام معالجة الإنجاز");
+
+      // 3. Sheet 3: المعادة من مديري المدارس
+      const sheet3Data: any[][] = [
+        ...buildHeader("3. الطلبات المعادة من قبل مديري المدارس"),
+        ["اسم المدرسة", "المرحلة الدراسية", "اسم المستفيد / الطالب", "سبب الإعادة من مدير المدرسة", "عدد مرات الإعادة", "تاريخ الإعادة"]
+      ];
+      const returnedList = list.filter(s => (s as any).returnedByPrincipal || (s as any).vacancyRequestStatus === 'returned_no_vacancy');
+      if (returnedList.length === 0) {
+        sheet3Data.push(["لا توجد أي طلبات معادة من مدراء المدارس حالياً ✓", "", "", "", "", ""]);
+      } else {
+        returnedList.forEach(s => {
+          sheet3Data.push([
+            s.schoolName,
+            getStageName(s.stage),
+            s.beneficiaryName,
+            (s as any).principalReturnReason || (s as any).vacancyRequestNotes || 'عدم توفر شاغر بالفصل أو طاقة استيعابية',
+            (s as any).principalReturnCount || 1,
+            (s as any).returnedAt ? new Date((s as any).returnedAt).toLocaleDateString('ar-SA') : new Date().toLocaleDateString('ar-SA')
+          ]);
+        });
+      }
+      sheet3Data.push(...buildFooter());
+      const ws3 = XLSX.utils.aoa_to_sheet(sheet3Data);
+      formatWorksheet(ws3, sheet3Data);
+      XLSX.utils.book_append_sheet(wb, ws3, "3. المعادة من المدراء");
+
+      // 4. Sheet 4: حسب نوع الطلب الرئيسي (تسجيل / نقل / معادلة) والقطاعات
+      const sheet4Data: any[][] = [
+        ...buildHeader("4. الطلبات حسب نوع الطلب الرئيسي (تسجيل / نقل / معادلة) والقطاعات"),
+        ["نوع الطلب الرئيسي", "المنطقة / القطاع الإداري", "إجمالي عدد الحالات", "نسبة التوزيع المئوية %", "المكتمل والمعالج", "المعلق قيد المتابعة"]
+      ];
+      const agg4: Record<string, { count: number; resolved: number; pending: number; reg: string }> = {
+        'تسجيل مستجد': { count: 0, resolved: 0, pending: 0, reg: 'الإدارة العامة للتعليم بالمدينة المنورة' },
+        'طلب نقل طالب': { count: 0, resolved: 0, pending: 0, reg: 'الإدارة العامة للتعليم بالمدينة المنورة' },
+        'معادلة شهادات ومؤهلات': { count: 0, resolved: 0, pending: 0, reg: 'الإدارة العامة للتعليم بالمدينة المنورة' }
+      };
+      list.forEach(s => {
+        let typeKey = 'تسجيل مستجد';
+        if (s.isEqualizationRequest || s.studentCategoryType === 'non_fresh' || s.equalizationStage || s.problemType?.startsWith('cert_')) {
+          typeKey = 'معادلة شهادات ومؤهلات';
+        } else if (s.serviceType === 'transfer' || s.transferReason || s.guardianTransferPledge) {
+          typeKey = 'طلب نقل طالب';
+        }
+        agg4[typeKey].count++;
+        if (s.isResolved) agg4[typeKey].resolved++;
+        else agg4[typeKey].pending++;
+      });
+      Object.entries(agg4).forEach(([name, d]) => {
+        sheet4Data.push([
+          name,
+          d.reg,
+          d.count,
+          `${Math.round((d.count / (list.length || 1)) * 100)}%`,
+          d.resolved,
+          d.pending
+        ]);
+      });
+      sheet4Data.push(...buildFooter());
+      const ws4 = XLSX.utils.aoa_to_sheet(sheet4Data);
+      formatWorksheet(ws4, sheet4Data);
+      XLSX.utils.book_append_sheet(wb, ws4, "4. نوع الطلب والقطاعات");
+
+      // 5. Sheet 5: حسب الجنسية والقطاع
+      const sheet5Data: any[][] = [
+        ...buildHeader("5. الطلبات حسب الجنسية (سعودي / غير سعودي) والقطاع"),
+        ["الجنسية", "المنطقة / المرحلة", "عدد الطلبات", "النسبة المئوية %", "المعالج", "قيد الإجراء"]
+      ];
+      const agg5: Record<string, { count: number; resolved: number; reg: string }> = {};
+      list.forEach(s => {
+        const nat = s.nationality || (s.problemType === 'new_registration_saudi' ? 'سعودي' : 'مقيم / جنسية أخرى');
+        if (!agg5[nat]) agg5[nat] = { count: 0, resolved: 0, reg: `${s.sector || 'المدينة المنورة'} (${getStageName(s.stage)})` };
+        agg5[nat].count++;
+        if (s.isResolved) agg5[nat].resolved++;
+      });
+      Object.entries(agg5).forEach(([nat, d]) => {
+        sheet5Data.push([
+          nat,
+          d.reg,
+          d.count,
+          `${Math.round((d.count / (list.length || 1)) * 100)}%`,
+          d.resolved,
+          d.count - d.resolved
+        ]);
+      });
+      sheet5Data.push(...buildFooter());
+      const ws5 = XLSX.utils.aoa_to_sheet(sheet5Data);
+      formatWorksheet(ws5, sheet5Data);
+      XLSX.utils.book_append_sheet(wb, ws5, "5. الجنسية والقطاع");
+
+      // 6. Sheet 6: حسب نوع الإقامة والوثيقة
+      const sheet6Data: any[][] = [
+        ...buildHeader("6. الطلبات حسب نوع الإقامة والوثيقة"),
+        ["نوع الإقامة / الوثيقة", "المنطقة / المحافظة", "عدد الحالات", "نسبة التوزيع %", "المعالج والمكتمل"]
+      ];
+      const agg6: Record<string, { count: number; resolved: number }> = {};
+      list.forEach(s => {
+        const res = s.residencyType === 'regular' ? 'إقامة نظامية' :
+                    s.residencyType === 'visit' ? 'تأشيرة زيارة' :
+                    s.residencyType === 'other' ? 'قبائل نازحة / أصحاب العوايل / أخرى' :
+                    'مواطن / هوية وطنية';
+        if (!agg6[res]) agg6[res] = { count: 0, resolved: 0 };
+        agg6[res].count++;
+        if (s.isResolved) agg6[res].resolved++;
+      });
+      Object.entries(agg6).forEach(([res, d]) => {
+        sheet6Data.push([
+          res,
+          'المنطقة الشرقية / المدينة المنورة',
+          d.count,
+          `${Math.round((d.count / (list.length || 1)) * 100)}%`,
+          d.resolved
+        ]);
+      });
+      sheet6Data.push(...buildFooter());
+      const ws6 = XLSX.utils.aoa_to_sheet(sheet6Data);
+      formatWorksheet(ws6, sheet6Data);
+      XLSX.utils.book_append_sheet(wb, ws6, "6. نوع الإقامة والوثيقة");
+
+      // 7. Sheet 7: تفضيل المستفيدين
+      const sheet7Data: any[][] = [
+        ...buildHeader("7. تفضيل المستفيدين والرغبات"),
+        ["الجنس / قطاع التعليم", "المرحلة الدراسية", "عدد الطلبات", "نسبة المشاركة %", "الحالات المحلولة"]
+      ];
+      const agg7: Record<string, { count: number; resolved: number; stage: string }> = {};
+      list.forEach(s => {
+        const g = s.gender === 'boys' ? 'بنين (ذكور)' : s.gender === 'girls' ? 'بنات (إناث)' : 'طفولة مبكرة / مشتركة';
+        const key = `${g} - ${getStageName(s.stage)}`;
+        if (!agg7[key]) agg7[key] = { count: 0, resolved: 0, stage: getStageName(s.stage) };
+        agg7[key].count++;
+        if (s.isResolved) agg7[key].resolved++;
+      });
+      Object.entries(agg7).forEach(([key, d]) => {
+        sheet7Data.push([
+          key.split(' - ')[0],
+          d.stage,
+          d.count,
+          `${Math.round((d.count / (list.length || 1)) * 100)}%`,
+          d.resolved
+        ]);
+      });
+      sheet7Data.push(...buildFooter());
+      const ws7 = XLSX.utils.aoa_to_sheet(sheet7Data);
+      formatWorksheet(ws7, sheet7Data);
+      XLSX.utils.book_append_sheet(wb, ws7, "7. تفضيل المستفيدين");
+
+      // 8. Sheet 8: إنجاز الموظفين والجهات
+      const sheet8Data: any[][] = [
+        ...buildHeader("8. المعالجة والإنجاز حسب الموظف والجهة الإدارية"),
+        ["اسم الموظف / المشرف الإداري", "عدد الطلبات المسندة", "المعالج والمغلق", "نسبة الإنجاز الفردية %", "متوسط تقييم الرضا ⭐"]
+      ];
+      const agg8: Record<string, { total: number; resolved: number; satSum: number }> = {};
+      list.forEach(s => {
+        const emp = s.serviceEmployee || s.staffingConfirmedBy || 'مشرف القبول الميداني';
+        if (!agg8[emp]) agg8[emp] = { total: 0, resolved: 0, satSum: 0 };
+        agg8[emp].total++;
+        if (s.isResolved) agg8[emp].resolved++;
+        agg8[emp].satSum += s.staffSatisfaction || 5;
+      });
+      Object.entries(agg8).forEach(([emp, d]) => {
+        sheet8Data.push([
+          emp,
+          d.total,
+          d.resolved,
+          `${Math.round((d.resolved / (d.total || 1)) * 100)}%`,
+          `${(d.satSum / (d.total || 1)).toFixed(1)} ⭐`
+        ]);
+      });
+      sheet8Data.push(...buildFooter());
+      const ws8 = XLSX.utils.aoa_to_sheet(sheet8Data);
+      formatWorksheet(ws8, sheet8Data);
+      XLSX.utils.book_append_sheet(wb, ws8, "8. إنجاز الموظفين والجهات");
+
+      // 9. Sheet 9: القنوات والمدارس الأكثر طلباً
+      const sheet9Data: any[][] = [
+        ...buildHeader("9. القنوات والمدارس الأكثر طلباً"),
+        ["نوع البيان", "اسم المدرسة / الجهة", "المرحلة", "نوع الطلب", "الحالة الإدارية", "تاريخ الرفع"]
+      ];
+      reportsList.forEach(r => {
+        sheet9Data.push([
+          'بلاغ إدارة مدرسة 🏫',
+          r.schoolName,
+          getStageName(r.stage),
+          r.reportType === 'vacancy' ? 'طلب فتح شاغر فصل' : r.reportType === 'density' ? 'كثافة طلابية فائقة' : 'صيانة وتوزيع كوادر',
+          r.isResolved ? 'تمت المعالجة' : 'بانتظار الإجراء',
+          new Date(r.createdAt || Date.now()).toLocaleDateString('ar-SA')
+        ]);
+      });
+      list.slice(0, 50).forEach(s => {
+        sheet9Data.push([
+          'طلب ولي أمر / مستفيد 👤',
+          s.schoolName,
+          getStageName(s.stage),
+          getRequestTypeInfo(s, isRtl).label,
+          s.isResolved ? 'تمت المعالجة' : 'قيد المتابعة',
+          new Date(s.createdAt || Date.now()).toLocaleDateString('ar-SA')
+        ]);
+      });
+      sheet9Data.push(...buildFooter());
+      const ws9 = XLSX.utils.aoa_to_sheet(sheet9Data);
+      formatWorksheet(ws9, sheet9Data);
+      XLSX.utils.book_append_sheet(wb, ws9, "9. المدارس الأكثر طلباً");
+
+      // 10. Sheet 10: تقارير الأداء حسب الإدارة والقسم والوحدة والموظفين
+      const sheet10Data: any[][] = [
+        ...buildHeader("10. أداء وإنجاز الإدارات والأقسام والكوادر"),
+        ["اسم الموظف / المشرف", "الجهة الإدارية / الوحدة", "إجمالي الطلبات", "المعالجة والمكتملة", "المعلقة", "نسبة الإنجاز %", "متوسط تقييم الرضا ⭐"]
+      ];
+      if (deptReportAggregatedData.empList.length > 0) {
+        deptReportAggregatedData.empList.forEach(emp => {
+          sheet10Data.push([
+            emp.name,
+            emp.workField,
+            emp.total,
+            emp.resolved,
+            emp.pending,
+            `${emp.total > 0 ? Math.round((emp.resolved / emp.total) * 100) : 0}%`,
+            `${emp.total > 0 ? (emp.satSum / emp.total).toFixed(1) : '5.0'} ⭐`
+          ]);
+        });
+      } else {
+        sheet10Data.push(["جميع الموظفين المصرح لهم", "وحدة القبول والتسجيل / الإدارات ذات الصلة", list.length, list.filter(s => s.isResolved).length, list.filter(s => !s.isResolved).length, `${list.length > 0 ? Math.round((list.filter(s => s.isResolved).length / list.length) * 100) : 0}%`, "5.0 ⭐"]);
+      }
+      sheet10Data.push(...buildFooter());
+      const ws10 = XLSX.utils.aoa_to_sheet(sheet10Data);
+      formatWorksheet(ws10, sheet10Data);
+      XLSX.utils.book_append_sheet(wb, ws10, "10. أداء الإدارات والكوادر");
+
+      // Save multi-sheet Excel file
+      XLSX.writeFile(wb, `Executive_Dashboard_Master_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Master Excel export error:', err);
+      alert(isRtl ? 'حدث خطأ أثناء تصدير تقرير الإكسل الشامل' : 'Error exporting Master Excel report');
+    }
+  };
+
+  // Export handler for Department / Unit / Employee section in multiple formats (Excel, PDF, CSV)
+  const handleExportDeptReport = (format: 'excel' | 'pdf' | 'csv') => {
+    const entityTitle = deptReportEntity !== 'all' ? deptReportEntity : (isRtl ? 'جميع الجهات والإدارات' : 'All Departments');
+    const empTitle = deptReportSelectedEmployee !== 'all' ? deptReportSelectedEmployee : (isRtl ? 'كافة الموظفين' : 'All Employees');
+    const nowStr = new Date().toISOString().split('T')[0];
+
+    if (format === 'excel') {
+      try {
+        const wb = XLSX.utils.book_new();
+        const dataRows: any[][] = [
+          ["المملكة العربية السعودية - وزارة التعليم"],
+          ["منصة الخدمات الإشرافية الموحدة - تقرير أداء وإنجاز الإدارة والقسم والوحدة والموظفين"],
+          [`الجهة الإدارية: ${entityTitle} | النطاق / الموظف: ${empTitle}`],
+          [`تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')} | إجمالي الطلبات: ${deptReportAggregatedData.total} | المعالج: ${deptReportAggregatedData.resolved} (${deptReportAggregatedData.resolutionRate}%) | المعلق: ${deptReportAggregatedData.pending} | متوسط الرضا: ${deptReportAggregatedData.avgSatisfaction} ⭐`],
+          []
+        ];
+
+        if (deptReportMode === 'team_breakdown' || deptReportMode === 'single_employee') {
+          dataRows.push(["اسم الموظف / المشرف", "الجهة الإدارية / الوحدة", "إجمالي الطلبات", "المعالج والمكتمل", "المعلق قيد المتابعة", "نسبة الإنجاز %", "متوسط تقييم الرضا ⭐"]);
+          deptReportAggregatedData.empList.forEach(emp => {
+            const pct = emp.total > 0 ? Math.round((emp.resolved / emp.total) * 100) : 0;
+            const avgSat = emp.total > 0 ? (emp.satSum / emp.total).toFixed(1) : '5.0';
+            dataRows.push([
+              emp.name,
+              emp.workField,
+              emp.total,
+              emp.resolved,
+              emp.pending,
+              `${pct}%`,
+              `${avgSat} ⭐`
+            ]);
+          });
+          dataRows.push([]);
+        }
+
+        dataRows.push(["تفاصيل الطلبات والمعاملات المسندة:"]);
+        dataRows.push(["رقم المعاملة / المستفيد", "الجهة الإدارية", "المرحلة الدراسية", "المدرسة", "نوع الطلب", "حالة الطلب", "الموظف المختص", "تقييم الرضا ⭐"]);
+
+        deptReportAggregatedData.matchingSurveys.forEach(s => {
+          dataRows.push([
+            s.beneficiaryName || s.id,
+            deptReportEntity !== 'all' ? deptReportEntity : 'وحدة القبول والتسجيل',
+            getStageName(s.stage),
+            s.schoolName || '-',
+            getRequestTypeInfo(s, isRtl).label,
+            s.isResolved ? 'معالج ومكتمل ✓' : 'معلق قيد المتابعة',
+            s.serviceEmployee || s.staffingConfirmedBy || 'سالم الترجمي',
+            `${s.staffSatisfaction || 5} ⭐`
+          ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(dataRows);
+        formatWorksheet(ws, dataRows);
+        XLSX.utils.book_append_sheet(wb, ws, "تقرير أداء الجهة والكوادر");
+        XLSX.writeFile(wb, `Dept_Performance_Report_${deptReportEntity}_${nowStr}.xlsx`);
+      } catch (err) {
+        console.error('Dept Excel export failed:', err);
+        alert(isRtl ? 'حدث خطأ أثناء تصدير ملف الإكسل' : 'Error exporting Excel file');
+      }
+    } else if (format === 'csv') {
+      try {
+        let csvContent = "\uFEFF"; // UTF-8 BOM
+        csvContent += `تقرير أداء وإنجاز الجهات والكوادر - ${entityTitle}\n`;
+        csvContent += `تاريخ التصدير: ${new Date().toLocaleDateString('ar-SA')}\n\n`;
+        csvContent += `اسم المستفيد / الطالب,الجهة الإدارية,المرحلة,المدرسة,نوع الطلب,حالة المعاملة,الموظف المسؤول,تقييم الرضا\n`;
+
+        deptReportAggregatedData.matchingSurveys.forEach(s => {
+          const row = [
+            `"${(s.beneficiaryName || '').replace(/"/g, '""')}"`,
+            `"${entityTitle}"`,
+            `"${getStageName(s.stage)}"`,
+            `"${(s.schoolName || '').replace(/"/g, '""')}"`,
+            `"${getRequestTypeInfo(s, isRtl).label}"`,
+            s.isResolved ? '"مكتمل ومعالج"' : '"قيد المتابعة"',
+            `"${s.serviceEmployee || s.staffingConfirmedBy || 'سالم الترجمي'}"`,
+            `"${s.staffSatisfaction || 5}"`
+          ];
+          csvContent += row.join(",") + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Dept_Report_${deptReportEntity}_${nowStr}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.error('Dept CSV export failed:', err);
+      }
+    } else if (format === 'pdf') {
+      try {
+        localStorage.setItem('temp_print_surveys', JSON.stringify(deptReportAggregatedData.matchingSurveys.slice(0, 500)));
+        localStorage.setItem('temp_print_officer', JSON.stringify(activeOfficer));
+      } catch {
+        /* ignore */
+      }
+      handlePrintClick();
+    }
+  };
+
+
 
   // Recharts: 1. Satisfaction Distribution data
   const chartSatisfactionData = useMemo(() => {
     const counts = [0, 0, 0, 0, 0]; // for 1, 2, 3, 4, 5 stars
     filteredSurveys.forEach((s) => {
-      const avg = Math.round((s.staffSatisfaction + s.receptionSatisfaction) / 2);
+      const avg = Math.round(((Number(s.staffSatisfaction) || 5) + (Number(s.receptionSatisfaction) || 5)) / 2);
       if (avg >= 1 && avg <= 5) {
         counts[avg - 1]++;
       }
@@ -3303,8 +3573,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       let staffSum = 0;
       let recepSum = 0;
       filtered.forEach((f) => {
-        staffSum += f.staffSatisfaction;
-        recepSum += f.receptionSatisfaction;
+        staffSum += (Number(f.staffSatisfaction) || 5);
+        recepSum += (Number(f.receptionSatisfaction) || 5);
       });
 
       return {
@@ -3621,8 +3891,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     const savedSurveysRaw = localStorage.getItem('temp_print_surveys');
     const savedOfficerRaw = localStorage.getItem('temp_print_officer');
     
-    const printSurveys: SurveyResponse[] = savedSurveysRaw ? JSON.parse(savedSurveysRaw) : filteredReportSurveys;
-    const printOfficer: OfficerUser = savedOfficerRaw ? JSON.parse(savedOfficerRaw) : activeOfficer;
+    let printSurveys: SurveyResponse[] = filteredReportSurveys;
+    let printOfficer: OfficerUser = activeOfficer;
+    try {
+      if (savedSurveysRaw) printSurveys = JSON.parse(savedSurveysRaw);
+      if (savedOfficerRaw) printOfficer = JSON.parse(savedOfficerRaw);
+    } catch {
+      /* ignore invalid json */
+    }
 
     // Report identification metrics
     const reportId = `REP-${Date.now().toString().slice(-6)}`;
@@ -3704,7 +3980,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'معرف الحالة' : 'Case ID'}</th>
                     <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'المستفيد' : 'Beneficiary'}</th>
                     <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'المدرسة والقطاع' : 'School / Sector'}</th>
-                    <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'نوع العائق' : 'Obstacle'}</th>
+                    <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'نوع الطلب' : 'Request Type'}</th>
                     <th className="px-4 py-3.5 text-start font-black text-white">{isRtl ? 'المسؤول' : 'Employee'}</th>
                     <th className="px-4 py-3.5 text-center font-black text-white">{isRtl ? 'الرضا' : 'Satisfaction'}</th>
                     <th className="px-4 py-3.5 text-center font-black text-white">{isRtl ? 'الحالة' : 'Status'}</th>
@@ -3741,10 +4017,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         </td>
                         <td className="px-4 py-3.5 text-center">
                           <span className="inline-flex items-center gap-0.5 text-amber-500 font-black">
-                            {Array.from({ length: row.staffSatisfaction }).map((_, i) => (
+                            {Array.from({ length: Math.max(0, Math.min(5, Math.floor(Number(row.staffSatisfaction) || 5))) }).map((_, i) => (
                               <span key={i}>★</span>
                             ))}
-                            <span className="text-[10px] text-teal-600 font-bold font-sans ml-1">({row.staffSatisfaction})</span>
+                            <span className="text-[10px] text-teal-600 font-bold font-sans ml-1">({row.staffSatisfaction || 5})</span>
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-center">
@@ -4123,106 +4399,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               )}
             </div>
 
-            {/* Form Toggle Link */}
-            <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-              <span className="text-xs font-bold text-slate-400">
-                {authMode === 'login'
-                  ? (isRtl ? 'هل تريد الانضمام كمسؤول جديد؟' : 'Not registered as an officer yet?')
-                  : (isRtl ? 'لديك حساب بالفعل في النظام؟' : 'Already have an approved account?')}
-              </span>
-              <button
-                type="button"
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                className="ms-1.5 text-xs font-black text-blue-600 hover:text-blue-700 underline cursor-pointer"
-              >
-                {authMode === 'login'
-                  ? (isRtl ? 'إنشاء حساب جديد' : 'Register New Account')
-                  : (isRtl ? 'تسجيل الدخول' : 'Sign In Now')}
-              </button>
-            </div>
-          </div>
-
-          {/* QUICK DEMO / TESTING ACCOUNTS DRAWER */}
-          <div className="bg-slate-50 border-s border-slate-100 p-8 sm:p-10 md:col-span-5 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Briefcase className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-extrabold text-slate-800 text-sm">
-                  {isRtl ? 'حسابات التجريب السريعة (اختبار النظام):' : 'Quick Demo Accounts (Evaluation):'}
-                </h3>
-              </div>
-              <p className="text-slate-400 text-xs font-semibold leading-relaxed mb-6">
-                {isRtl
-                  ? 'انقر على أي حساب أدناه لتعبئة بيانات السجل المدني والدخول والتحقق بشكل تلقائي وسلس:'
-                  : 'Click on any role to autofill National ID and test permissions easily:'}
-              </p>
-
-              <div className="space-y-3">
-                {officers.map((off) => {
-                  const label = off.role === 'admin'
-                    ? (isRtl ? 'أدمن - كامل الصلاحيات' : 'Admin (Full Rights)')
-                    : off.role === 'director'
-                    ? (isRtl ? 'مدير - إدارة وصلاحيات' : 'Director (Management)')
-                    : off.role === 'leadership_director'
-                    ? (isRtl ? 'مدير القيادة المدرسية' : 'School Leadership Director')
-                    : off.role === 'equivalency_supervisor'
-                    ? (isRtl ? 'مشرف القبول معادلات الشهادات' : 'Certificate Equivalency Supervisor')
-                    : off.role === 'school_planning'
-                    ? (isRtl ? 'مسؤول فتح الشواغر والفصول' : 'School Planning Officer')
-                    : off.role === 'school_leadership'
-                    ? (isRtl ? 'مسؤول متابعة التسكين' : 'School Leadership Officer')
-                    : (isRtl ? 'مشرف - يعالج الطلبات' : 'Supervisor (Assigned Only)');
-
-                  return (
-                    <button
-                      key={off.id}
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('login');
-                        setLoginMobile(off.nationalId || off.mobile);
-                        setLoginPassword(off.password || off.nationalId || '123456');
-                      }}
-                      className="w-full text-start p-3 bg-white hover:bg-indigo-50/40 border border-slate-200/60 rounded-2xl shadow-sm hover:border-indigo-200 transition-all cursor-pointer flex flex-col gap-1 hover:-translate-y-0.5 group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-black text-xs text-slate-800 group-hover:text-indigo-900">
-                          {off.fullNameQuad || (isRtl ? off.nameAr : off.nameEn)}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
-                          off.role === 'admin'
-                            ? 'bg-red-50 text-red-700'
-                            : off.role === 'director'
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {off.role.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-0.5">
-                        <span>🆔 {off.nationalId || off.mobile}</span>
-                        <span>🔑 {off.password || off.nationalId || '123456'}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-semibold mt-1 bg-slate-50 p-1 rounded-lg">
-                        {label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-8 bg-indigo-50/40 border border-indigo-100 p-4 rounded-2xl">
-              <h4 className="font-black text-indigo-900 text-xs flex items-center gap-1.5 mb-1">
-                <Shield className="w-3.5 h-3.5 text-indigo-600" />
-                {isRtl ? 'حماية مشفرة AES-256' : 'AES-256 Secured'}
-              </h4>
-              <p className="text-slate-400 text-[10px] font-medium leading-relaxed">
-                {isRtl
-                  ? 'جميع الصلاحيات في لوحة التحكم مبنية على نموذج التحقق ومصفوفة الأدوار RBAC الآمنة.'
-                  : 'All roles inside the admin environment are guarded by RBAC matrices.'}
-              </p>
-            </div>
-
+            {/* Form Toggle Link - Removed for security */}
           </div>
 
         </div>
@@ -4679,17 +4856,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-1">
                   {unresolvedWithReason.map((survey) => {
-                    const getProblemName = (pt: string) => {
-                      if (pt === 'vacancies_unavailable') return t.probVacancies;
-                      if (pt === 'student_density') return t.probDensity;
-                      if (pt === 'unjustified_rejection') return t.probRejection;
-                      if (pt === 'cert_primary_eq') return t.probPrimaryEq;
-                      if (pt === 'cert_intermediate_eq') return t.probIntermediateEq;
-                      if (pt === 'cert_secondary_eq') return t.probSecondaryEq;
-                      if (pt === 'distance_from_school') return t.probDistance;
-                      if (pt === 'unregistered_desire') return t.probUnregistered;
-                      return t.probOther;
-                    };
+                    const getItemProblemName = (pt: string) => getProblemName(pt);
 
                     const getStageName = (stg: string) => {
                       if (stg === 'EarlyChildhood') return t.stageEarlyChildhood;
@@ -4706,7 +4873,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         <div>
                           <div className="flex justify-between items-start gap-2 mb-2">
                             <span className={`font-bold text-xs ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>{survey.beneficiaryName}</span>
-                            <span className="text-[10px] font-mono text-slate-400">{survey.createdAt.split('T')[0]}</span>
+                            <span className="text-[10px] font-mono text-slate-400">{survey.createdAt ? String(survey.createdAt).split('T')[0] : ''}</span>
                           </div>
                           
                           <p className={`text-sm font-medium mb-3 italic ${isDark ? 'text-teal-100/80' : 'text-slate-700'}`}>
@@ -4798,7 +4965,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     </h4>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {onClearAllSurveys && activeOfficer?.role === 'admin' && (
+                    {onClearAllSurveys && (activeOfficer?.role === 'admin' || activeOfficer?.role === 'director') && (
                       <button
                         type="button"
                         onClick={() => setShowClearAllModal(true)}
@@ -4999,19 +5166,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         </td>
                       </tr>
                     ) : (
-                      filteredSurveys.map((survey) => {
+                      filteredSurveys.slice(0, visibleCount).map((survey) => {
                         // Translation maps for types
-                        const getProblemLabel = (pt: ProblemType) => {
-                          if (pt === 'vacancies_unavailable') return t.probVacancies;
-                          if (pt === 'student_density') return t.probDensity;
-                          if (pt === 'unjustified_rejection') return t.probRejection;
-                          if (pt === 'cert_primary_eq') return t.probPrimaryEq;
-                          if (pt === 'cert_intermediate_eq') return t.probIntermediateEq;
-                          if (pt === 'cert_secondary_eq') return t.probSecondaryEq;
-                          if (pt === 'distance_from_school') return t.probDistance;
-                          if (pt === 'unregistered_desire') return t.probUnregistered;
-                          return t.probOther;
-                        };
+                        const getProblemLabel = (pt: ProblemType) => getProblemName(pt);
 
                         const getStageLabel = (stg: string) => {
                           if (stg === 'Primary') return t.stagePrimary;
@@ -5152,7 +5309,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 </div>
 
                                 {/* ACTION 1: Receive Request Button */}
-                                {(!survey.assignedOfficerId || survey.assignedOfficerId !== activeOfficer.id || !survey.isReceived) && !survey.isResolved && (
+                                {(!survey.assignedOfficerId || survey.assignedOfficerId !== activeOfficer.id || !survey.isReceived) && !survey.isResolved && activeOfficer.role !== 'school_planning' && (
                                   <button
                                     onClick={() => {
                                       if (onUpdateSurvey) {
@@ -5173,8 +5330,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   </button>
                                 )}
 
-                                {/* WORKFLOW BUTTONS FOR ADMISSION & EQUIVALENCY SUPERVISOR */}
-                                {!survey.isResolved && (survey.assignedOfficerId === activeOfficer.id || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) && (
+                                {/* WORKFLOW BUTTONS FOR ADMISSION & EQUIVALENCY SUPERVISOR & SCHOOL PLANNING */}
+                                {!survey.isResolved && (survey.assignedOfficerId === activeOfficer.id || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'school_planning') && (
                                   (activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || (survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') ? (
                                     <div className="space-y-2 p-2.5 rounded-2xl bg-purple-50/50 dark:bg-slate-900/90 border border-purple-200 dark:border-purple-800/80 shadow-xs text-start mt-2">
                                       <div className="flex items-center justify-between pb-1.5 border-b border-purple-200/80 dark:border-purple-900/60">
@@ -5832,35 +5989,90 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                                       {/* Non-equivalency actions: Vacancy opening request */}
                                       {activeOfficer.role !== 'equivalency_supervisor' && !activeOfficer.canHandleEqualizations && !((survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (onUpdateSurvey) {
-                                              onUpdateSurvey({
-                                                ...survey,
-                                                isVacancyRequest: true,
-                                                vacancyRequestStatus: 'pending_vacancy',
-                                                referringOfficerId: activeOfficer.id,
-                                                referringOfficerName: activeOfficer.nameAr,
-                                                referralNotes: "طلب فتح شاغر بمدرسة (" + survey.schoolName + ") مرفوع بواسطة مشرف القبول (" + activeOfficer.nameAr + ")"
-                                              });
-                                              alert(isRtl ? "✓ تم إرسال طلب فتح الشاغر في مدرسة (" + survey.schoolName + ") لمسؤول فتح الشواغر بنجاح!" : "Vacancy opening request sent!");
-                                            }
-                                          }}
-                                          disabled={survey.vacancyRequestStatus === 'pending_vacancy'}
-                                          className={'w-full py-1.5 px-3 font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 border ' + (
-                                            survey.vacancyRequestStatus === 'pending_vacancy'
-                                              ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 opacity-80 cursor-not-allowed"
-                                              : "bg-amber-600 hover:bg-amber-700 text-white border-amber-700 shadow-xs"
-                                          )}
-                                        >
-                                          <Sparkles className="w-3.5 h-3.5" />
-                                          <span>
-                                            {survey.vacancyRequestStatus === 'pending_vacancy'
-                                              ? (isRtl ? "⏳ طلب فتح الشاغر قيد المراجعة" : "Vacancy Request Pending")
-                                              : (isRtl ? "طلب فتح الشاغر 🔓" : "Request Vacancy Opening 🔓")}
-                                          </span>
-                                        </button>
+                                        activeOfficer.role === 'school_planning' && survey.vacancyRequestStatus === 'pending_vacancy' ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  vacancyRequestStatus: 'approved',
+                                                  isResolved: false,
+                                                  assignedOfficerId: (survey as any).referringOfficerId || survey.assignedOfficerId,
+                                                  serviceEmployee: (survey as any).referringOfficerName || survey.serviceEmployee,
+                                                  notes: isRtl 
+                                                    ? `🔓 تم فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (${activeOfficer.nameAr}) وعاد الطلب لمسؤول القبول لمتابعة الإجراءات.` 
+                                                    : `Vacancy opened by planning officer (${activeOfficer.nameAr}) and returned to admissions officer.`
+                                                } as any);
+                                                alert(isRtl ? "✓ تم فتح الشاغر بنجاح! وعاد الطلب لمسؤول القبول لمتابعة التسكين والقيادة." : "Vacancy opened successfully!");
+                                              }
+                                            }}
+                                            className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-indigo-500"
+                                          >
+                                            <Building className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? "تم فتح الشاغر 🔓 (إعادة لمسؤول القبول)" : "Vacancy Opened 🔓 (Return to Admissions)"}</span>
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (onUpdateSurvey) {
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  isVacancyRequest: true,
+                                                  vacancyRequestStatus: 'pending_vacancy',
+                                                  referringOfficerId: activeOfficer.id,
+                                                  referringOfficerName: activeOfficer.nameAr,
+                                                  referralNotes: "طلب فتح شاغر بمدرسة (" + survey.schoolName + ") مرفوع بواسطة مشرف القبول (" + activeOfficer.nameAr + ")"
+                                                });
+                                                alert(isRtl ? "✓ تم إرسال طلب فتح الشاغر في مدرسة (" + survey.schoolName + ") لمسؤول فتح الشواغر بنجاح!" : "Vacancy opening request sent!");
+                                              }
+                                            }}
+                                            disabled={survey.vacancyRequestStatus === 'pending_vacancy'}
+                                            className={'w-full py-1.5 px-3 font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 border ' + (
+                                              survey.vacancyRequestStatus === 'pending_vacancy'
+                                                ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 opacity-80 cursor-not-allowed"
+                                                : "bg-amber-600 hover:bg-amber-700 text-white border-amber-700 shadow-xs"
+                                            )}
+                                          >
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            <span>
+                                              {survey.vacancyRequestStatus === 'pending_vacancy'
+                                                ? (isRtl ? "⏳ طلب فتح الشاغر قيد المراجعة" : "Vacancy Request Pending")
+                                                : (isRtl ? "طلب فتح الشاغر 🔓" : "Request Vacancy Opening 🔓")}
+                                            </span>
+                                          </button>
+                                        )
+                                      )}
+
+                                      {/* Route to School Principal for non-equivalency */}
+                                      {survey.vacancyRequestStatus === 'approved' && (
+                                        <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (onUpdateSurvey) {
+                                                const nowIso = new Date().toISOString();
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  vacancyRequestStatus: 'sent_to_school_principal',
+                                                  sentToSchoolPrincipal: true,
+                                                  sentToPrincipalAt: nowIso,
+                                                  referringOfficerId: activeOfficer.id,
+                                                  referringOfficerName: activeOfficer.nameAr,
+                                                  notes: isRtl 
+                                                    ? `🏫 تم إحالة الطلب لمدير مدرسة (${survey.schoolName || ''}) للتسكين المباشر.`
+                                                    : `Referred to school principal.`
+                                                } as any);
+                                                alert(isRtl ? `✓ تم إرسال الطلب لمدير مدرسة (${survey.schoolName || ''}) بنجاح!` : 'Sent to school principal successfully!');
+                                              }
+                                            }}
+                                            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer flex items-center justify-center gap-1"
+                                          >
+                                            <Building className="w-3 h-3" />
+                                            <span>{isRtl ? "إرسال لمدير المدرسة" : "Send to School"}</span>
+                                          </button>
+                                        </div>
                                       )}
 
                                       {/* Route to Leadership Officer for normal non-equivalency surveys */}
@@ -6061,12 +6273,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 </button>
                                 <button
                                   onClick={() => setSurveyToDeleteId(survey.id)}
-                                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                                    isDark ? 'text-red-400 hover:text-red-300 hover:bg-red-950/40' : 'text-red-500 hover:text-red-750 hover:bg-red-50'
+                                  className={`p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer shadow-sm border ${
+                                    isDark 
+                                      ? 'bg-rose-950/30 text-red-400 border-rose-800/40 hover:bg-rose-900/60 hover:text-red-200' 
+                                      : 'bg-rose-50 text-red-600 border-rose-200 hover:bg-rose-600 hover:text-white'
                                   }`}
-                                  title={currentLang === 'ar' ? 'حذف الرد' : 'Delete Response'}
+                                  title={currentLang === 'ar' ? 'حذف الرد نهائياً' : 'Delete Response Permanently'}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-5 h-5" />
                                 </button>
                               </div>
                             </td>
@@ -6077,6 +6291,27 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   </tbody>
                 </table>
               </div>
+
+              {filteredSurveys.length > visibleCount && (
+                <div className={`p-6 border-t flex flex-col items-center gap-3 ${isDark ? 'border-teal-800/20' : 'border-slate-100'}`}>
+                  <p className={`text-xs ${isDark ? 'text-teal-400' : 'text-slate-400'} font-medium`}>
+                    {isRtl 
+                      ? `يتم عرض ${visibleCount} من أصل ${filteredSurveys.length} طلب. استخدم الفلاتر أعلاه للبحث بدقة.`
+                      : `Showing ${visibleCount} of ${filteredSurveys.length} requests. Use filters to narrow down.`
+                    }
+                  </p>
+                  <button
+                    onClick={() => setVisibleCount(prev => prev + 100)}
+                    className={`px-8 py-2.5 rounded-xl text-sm font-bold shadow-lg transition-all active:scale-95 ${
+                      isDark 
+                        ? 'bg-teal-500 text-teal-950 hover:bg-teal-400 shadow-teal-900/20' 
+                        : 'bg-teal-600 text-white hover:bg-teal-700 shadow-teal-100'
+                    }`}
+                  >
+                    {isRtl ? 'تحميل المزيد من الطلبات' : 'Load More Requests'}
+                  </button>
+                </div>
+              )}
             </div>
 
           </div>
@@ -6109,7 +6344,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               </div>
               
               <div className="flex flex-wrap gap-2.5 shrink-0 w-full md:w-auto">
-                {onClearAllSurveys && activeOfficer?.role === 'admin' && (
+                {onClearAllSurveys && (activeOfficer?.role === 'admin' || activeOfficer?.role === 'director') && (
                   <button
                     type="button"
                     onClick={() => setShowClearAllModal(true)}
@@ -6167,7 +6402,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 </span>
                 <span className={`text-2xl sm:text-3xl font-black font-mono mt-1 block ${isDark ? 'text-teal-100' : 'text-slate-900'}`}>
                   {surveysScope.length > 0 
-                    ? (surveysScope.reduce((acc, curr) => acc + curr.staffSatisfaction, 0) / surveysScope.length).toFixed(1)
+                    ? (surveysScope.reduce((acc, curr) => acc + (Number(curr.staffSatisfaction) || 5), 0) / surveysScope.length).toFixed(1)
                     : '0.0'} <span className="text-xs text-amber-500 font-sans">★</span>
                 </span>
               </div>
@@ -6193,7 +6428,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 </span>
                 <span className={`text-2xl sm:text-3xl font-black font-mono mt-1 block ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                   {surveysScope.filter(s => {
-                    const isLow = s.staffSatisfaction < 3 || s.receptionSatisfaction < 3;
+                    const isLow = (s.staffSatisfaction && s.staffSatisfaction < 3) || (s.receptionSatisfaction && s.receptionSatisfaction < 3);
                     const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
                     const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
                     return isLow && isUnresolved && workingDays > 3;
@@ -6245,7 +6480,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       />
                     </label>
 
-                    {onClearAllSurveys && activeOfficer?.role === 'admin' && (
+                    {onClearAllSurveys && (activeOfficer?.role === 'admin' || activeOfficer?.role === 'director') && (
                       <button
                         type="button"
                         onClick={() => setShowClearAllModal(true)}
@@ -6708,7 +6943,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>D<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'المرحلة' : 'Stage'}</span></th>
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>E<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'القطاع' : 'Sector'}</span></th>
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>F<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'المدرسة' : 'School'}</span></th>
-                      <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>G<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'المشكلة' : 'Complaint'}</span></th>
+                      <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>G<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'نوع الطلب' : 'Request Type'}</span></th>
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>H<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'الموظف' : 'Employee'}</span></th>
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>I<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'الحل' : 'Resolved'}</span></th>
                       <th className={`px-4 py-2 border-r font-mono text-[11px] ${isDark ? 'border-teal-800 text-teal-200' : 'border-slate-250 text-slate-500'}`}>J<span className={`block text-[8px] font-sans font-bold ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'أداء' : 'Staff'}</span></th>
@@ -6870,13 +7105,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                               {renderCell('stage', getStageName(survey.stage), 'text')}
                               {renderCell('sector', survey.sector, 'text')}
                               {renderCell('schoolName', survey.schoolName, 'text')}
-                              {renderCell('problemType', getProblemName(survey.problemType), 'text')}
+                              {renderCell('problemType', getRequestTypeInfo(survey, isRtl).label, 'text')}
                               {renderCell('serviceEmployee', survey.serviceEmployee || (isRtl ? 'غير معين' : 'Unassigned'), 'text')}
                               {renderCell('isResolved', survey.isResolved, 'bool')}
                               {renderCell('staffSatisfaction', survey.staffSatisfaction, 'star')}
                               {renderCell('receptionSatisfaction', survey.receptionSatisfaction, 'star')}
                               {renderCell('notes', survey.notes || '-', 'text')}
-                              {renderCell('createdAt', survey.createdAt.split('T')[0], 'mono')}
+                              {renderCell('createdAt', survey.createdAt ? String(survey.createdAt).split('T')[0] : '', 'mono')}
                               {(() => {
                                 const elapsed = getElapsedUpdateInfo(survey.lastUpdatedAt, survey.createdAt, isRtl);
                                 const isCompleted = survey.isResolved;
@@ -7107,7 +7342,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   {/* Filter by Problem Type */}
                   <div>
                     <label className="block text-xs font-extrabold mb-1.5 text-slate-500 dark:text-slate-400">
-                      {isRtl ? '🏷️ تصنيف المشكلة' : 'Problem Type'}
+                      {isRtl ? '🏷️ نوع الطلب' : 'Request Type'}
                     </label>
                     <div className="flex gap-1">
                       {(['all', 'vacancies_closed', 'class_density'] as const).map((prob) => {
@@ -7162,7 +7397,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       }`}>
                         <th className="px-5 py-3 text-start">{currentLang === 'ar' ? 'رقم البلاغ' : 'Report ID'}</th>
                         <th className="px-5 py-3 text-start">{currentLang === 'ar' ? 'تفاصيل المدرسة والمدير' : 'School & Principal'}</th>
-                        <th className="px-5 py-3 text-start">{currentLang === 'ar' ? 'نوع المشكلة والحل المقترح' : 'Problem & Proposed Solution'}</th>
+                        <th className="px-5 py-3 text-start">{currentLang === 'ar' ? 'نوع الطلب والحل المقترح' : 'Request Type & Proposed Solution'}</th>
                         <th className="px-5 py-3 text-center">{currentLang === 'ar' ? 'حالة الاعتماد والقرار' : 'Approval Status'}</th>
                         <th className="px-5 py-3 text-center">{currentLang === 'ar' ? 'تاريخ الرفع' : 'Logged Date'}</th>
                         <th className="px-5 py-3 text-center">{currentLang === 'ar' ? 'الإجراءات والقرارات' : 'Actions'}</th>
@@ -7318,7 +7553,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                               {/* Created Date */}
                               <td className={`px-5 py-4 text-center font-mono text-xs ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
-                                {rep.createdAt.split('T')[0]}
+                                {rep.createdAt ? String(rep.createdAt).split('T')[0] : ''}
                               </td>
 
                               {/* Actions toggle */}
@@ -7448,6 +7683,18 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </button>
                                   )}
 
+                                  {(activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning') && (
+                                    <button
+                                      onClick={() => setReportToDeleteId(rep.id)}
+                                      className={`p-1.5 rounded-lg transition-all cursor-pointer mt-1 ${
+                                        isDark ? 'text-red-400 hover:text-red-300 hover:bg-red-950/40' : 'text-red-500 hover:text-red-750 hover:bg-red-50'
+                                      }`}
+                                      title={currentLang === 'ar' ? 'حذف البلاغ' : 'Delete Report'}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+
                                   {assigningReportId === rep.id && (
                                     <div className={`p-2.5 rounded-xl border space-y-2 mt-2 text-start z-10 relative w-full ${
                                       isDark ? 'bg-teal-900/60 border-teal-800 text-teal-100' : 'bg-slate-50 border-slate-200 text-slate-850'
@@ -7566,6 +7813,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       <th className="px-5 py-3 text-start">{t.alertRecipient}</th>
                       <th className="px-5 py-3 text-center">{t.alertStatus}</th>
                       <th className="px-5 py-3 text-center">{currentLang === 'ar' ? 'الوقت' : 'Time'}</th>
+                      <th className="px-5 py-3 text-center no-print">{currentLang === 'ar' ? 'إجراءات' : 'Actions'}</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y text-xs sm:text-sm font-medium ${
@@ -7573,7 +7821,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   }`}>
                     {emailLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className={`px-5 py-8 text-center ${isDark ? 'text-teal-500' : 'text-slate-400'}`}>
+                        <td colSpan={7} className={`px-5 py-8 text-center ${isDark ? 'text-teal-500' : 'text-slate-400'}`}>
                           {t.noAlerts}
                         </td>
                       </tr>
@@ -7594,6 +7842,21 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           </td>
                           <td className={`px-5 py-4 text-center font-mono text-xs ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
                             {new Date(log.sentAt).toLocaleTimeString(currentLang === 'ar' ? 'ar-SA' : 'en-US')}
+                          </td>
+                          <td className="px-5 py-4 text-center no-print">
+                            <button
+                              onClick={() => {
+                                if (confirm(isRtl ? '⚠️ هل أنت متأكد من حذف سجل الإنذار هذا نهائياً؟' : 'Are you sure you want to delete this alert log?')) {
+                                  if (onDeleteEmailLog) {
+                                    onDeleteEmailLog(log.id);
+                                  }
+                                }
+                              }}
+                              className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer shadow-sm border border-transparent hover:border-rose-200"
+                              title={isRtl ? 'حذف سجل الإنذار 🗑️' : 'Delete alert log 🗑️'}
+                            >
+                              <Trash2 className="w-4.5 h-4.5" />
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -7906,7 +8169,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         )}
 
         {/* SUB-TAB 6: USER ROLES & SYSTEM PERMISSIONS MATRIX */}
-        {(activeSubTab === 'user-roles' && (activeOfficer.role === 'admin' || activeOfficer.role === 'director')) && (
+        {activeSubTab === 'user-roles' && (
           <div className="space-y-6 animate-fade-in" id="panel-user-roles">
             
             {/* Header Description */}
@@ -9281,7 +9544,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         )}
 
         {/* SUB-TAB: SCHOOLS DIRECTORY & MINISTERIAL CODES MANAGEMENT */}
-        {(activeSubTab === 'schools-manager' && (activeOfficer.role === 'admin' || activeOfficer.role === 'director')) && (
+        {activeSubTab === 'schools-manager' && (
           <div className="space-y-8 animate-fade-in" id="panel-schools-manager">
             
             {/* Header Banner */}
@@ -9963,7 +10226,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         )}
 
         {/* SUB-TAB 7: CUSTOM ON-DEMAND REPORT GENERATOR (FOR ADMINS & DIRECTORS) */}
-        {(activeSubTab === 'custom-reports' && (activeOfficer.role === 'admin' || activeOfficer.role === 'director')) && (
+        {activeSubTab === 'custom-reports' && (
           <div className="space-y-8 animate-fade-in" id="panel-custom-reports">
             
             {/* Header Banner with Master Excel Export Button */}
@@ -10051,7 +10314,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 border-teal-800/20">
                 <h4 className={`text-sm font-black flex items-center gap-2 ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                   <Sliders className={`w-4.5 h-4.5 ${isDark ? 'text-teal-400' : 'text-teal-600'}`} />
-                  {isRtl ? 'لوحة تصفية وتخصيص معطيات الداشبورد الإقليمية:' : 'Regional & Governorate Filter Slicers:'}
+                  {isRtl ? 'لوحة تصفية وتخصيص معطيات الداشبورد:' : 'Governorate Filter Slicers:'}
                 </h4>
                 <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
                   isDark ? 'bg-teal-950/60 text-teal-300 border-teal-800' : 'bg-teal-50 text-teal-800 border-teal-100'
@@ -10133,10 +10396,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   </select>
                 </div>
 
-                {/* 4. Problem Filter */}
+                {/* 4. Request Type Filter */}
                 <div>
                   <label className={`block text-xs font-extrabold mb-1.5 ${isDark ? 'text-teal-300' : 'text-slate-700'}`}>
-                    {isRtl ? '⚠️ نوع العائق الرئيسية:' : 'Main Issue:'}
+                    {isRtl ? '📋 نوع الطلب:' : 'Request Type:'}
                   </label>
                   <select
                     value={reportProblemType}
@@ -10147,15 +10410,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-teal-600 text-slate-800'
                     }`}
                   >
-                    <option value="all">{isRtl ? 'الكل (جميع المشكلات)' : 'All Issues'}</option>
-                    <option value="vacancies_unavailable">{isRtl ? 'عجز الشواغر وتوزيع المعلمين' : 'Vacancies'}</option>
-                    <option value="student_density">{isRtl ? 'كثافة طلابية فائقة في الفصول' : 'Density'}</option>
-                    <option value="unjustified_rejection">{isRtl ? 'رفض غير مبرر للطلب' : 'Rejection'}</option>
-                    <option value="distance_from_school">{isRtl ? 'المدرسة بعيدة جداً عن السكن' : 'Distance'}</option>
-                    <option value="unregistered_desire">{isRtl ? 'رغبة غير مسجلة' : 'Unregistered'}</option>
-                    <option value="cert_primary_eq">{isRtl ? 'معادلة شهادة ابتدائي' : 'Eq Primary'}</option>
-                    <option value="cert_intermediate_eq">{isRtl ? 'معادلة شهادة متوسط' : 'Eq Intermediate'}</option>
-                    <option value="cert_secondary_eq">{isRtl ? 'معادلة شهادة ثانوي' : 'Eq Secondary'}</option>
+                    <option value="all">{isRtl ? 'الكل (جميع أنواع الطلبات)' : 'All Request Types'}</option>
+                    <option value="new">{isRtl ? 'مستجد' : 'New Registration'}</option>
+                    <option value="transfer">{isRtl ? 'نقل' : 'Student Transfer'}</option>
+                    <option value="equalization">{isRtl ? 'معادلة' : 'Certificate Equivalency'}</option>
                   </select>
                 </div>
 
@@ -10221,18 +10479,25 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         'by_problem_type', 'by_nationality', 'by_residency_type',
                         'by_beneficiary_pref', 'by_transport_carrier', 'by_channel', 'most_requested_schools'
                       ];
-                      if (selectedClassifications.length === allIds.length) {
-                        setSelectedClassifications(['by_region_stage']);
-                      } else {
-                        setSelectedClassifications(allIds);
-                      }
+                      setSelectedClassifications(allIds);
                     }}
-                    className="px-3 py-1.5 text-xs font-black rounded-xl bg-teal-600 text-white hover:bg-teal-700 transition-all cursor-pointer shadow-sm"
+                    className="px-3 py-1.5 text-xs font-black rounded-xl bg-teal-600 text-white hover:bg-teal-700 transition-all cursor-pointer shadow-sm flex items-center gap-1"
                   >
-                    {selectedClassifications.length === 10
-                      ? (isRtl ? 'إلغاء التحديد الكل' : 'Deselect All')
-                      : (isRtl ? '✓ تحديد الكل' : 'Select All')}
+                    <span>✓</span>
+                    <span>{isRtl ? 'تحديد الكل' : 'Select All'}</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedClassifications([]);
+                    }}
+                    className="px-3 py-1.5 text-xs font-black rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm flex items-center gap-1"
+                  >
+                    <span>✕</span>
+                    <span>{isRtl ? 'إلغاء التحديد' : 'Deselect All'}</span>
+                  </button>
+
                   <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/80 px-2.5 py-1 rounded-lg border border-teal-200/50">
                     {isRtl ? `محدد (${selectedClassifications.length})` : `Selected (${selectedClassifications.length})`}
                   </span>
@@ -10244,7 +10509,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   { id: 'by_region_stage', labelAr: '1. الطلبات حسب المنطقة والمحافظة والمرحلة', labelEn: '1. By Region, Gov & Stage' },
                   { id: 'by_resolution_days', labelAr: '2. المعالجة بناء على عدد أيام الإنجاز', labelEn: '2. Resolution Days' },
                   { id: 'by_returned_principals', labelAr: '3. المعادة من قبل مديري المدارس', labelEn: '3. Returned by Principals' },
-                  { id: 'by_problem_type', labelAr: '4. حسب نوع المشكلة الرئيسي والعوائق', labelEn: '4. By Main Issue Type' },
+                  { id: 'by_problem_type', labelAr: '4. حسب نوع الطلب (مستجد / نقل / معادلة)', labelEn: '4. By Request Type (Fresh / Transfer / Equivalency)' },
                   { id: 'by_nationality', labelAr: '5. حسب الجنسية (سعودي / غير سعودي)', labelEn: '5. By Nationality' },
                   { id: 'by_residency_type', labelAr: '6. حسب نوع الإقامة والوثيقة', labelEn: '6. By Residency Type' },
                   { id: 'by_beneficiary_pref', labelAr: '7. وتفضيل المستفيدين (نقل / قريبة)', labelEn: '7. By Beneficiary Prefs' },
@@ -10295,6 +10560,358 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   );
                 })}
               </div>
+            </div>
+
+            {/* Department / Section / Unit / Employee Reports Section */}
+            <div className={`p-6 rounded-3xl shadow-md space-y-6 border ${
+              isDark ? 'glass-card-dark border-teal-800/40 text-white' : 'bg-white border-slate-200/80'
+            }`}>
+              {/* Header & Controls */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-4 border-teal-800/20">
+                <div className="flex items-center gap-3">
+                  <div className={`p-3 rounded-2xl ${isDark ? 'bg-teal-900/60 text-teal-300' : 'bg-teal-50 text-teal-700'}`}>
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className={`text-base font-black ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>
+                      {isRtl ? '🏢 التقارير حسب الإدارة القسم الوحدة الموظف:' : 'Reports by Department, Unit & Employee:'}
+                    </h4>
+                    <p className={`text-xs mt-0.5 ${isDark ? 'text-teal-300/80' : 'text-slate-500'}`}>
+                      {isRtl ? 'تحديد الجهة الإدارية أو الموظف، مع إمكانية عرض التقرير كمجمع موحد أو تفصيل حسب الكوادر' : 'Select entity or employee to view unified aggregated report or detailed breakdown'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Entity Dropdown */}
+                  <div>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-teal-300' : 'text-slate-600'}`}>
+                      {isRtl ? 'الجهة / القسم / الوحدة:' : 'Entity / Dept:'}
+                    </label>
+                    <select
+                      value={deptReportEntity}
+                      onChange={(e) => setDeptReportEntity(e.target.value)}
+                      className={`px-3 py-2 rounded-xl text-xs font-extrabold outline-none border cursor-pointer ${
+                        isDark ? 'bg-teal-950 text-teal-100 border-teal-800 focus:border-teal-400' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-teal-600'
+                      }`}
+                    >
+                      <option value="all">{isRtl ? 'جميع الجهات والإدارات' : 'All Departments'}</option>
+                      <option value="وحدة القبول والتسجيل">{isRtl ? 'وحدة القبول والتسجيل' : 'Admission & Registration Unit'}</option>
+                      <option value="قسم التخطيط المدرسي">{isRtl ? 'قسم التخطيط المدرسي' : 'School Planning Dept'}</option>
+                      <option value="إدارة القيادة المدرسية">{isRtl ? 'إدارة القيادة المدرسية' : 'School Leadership Admin'}</option>
+                      <option value="إدارة رعاية المستفيدين">{isRtl ? 'إدارة رعاية المستفيدين' : 'Beneficiary Care Admin'}</option>
+                      <option value="إدارة الشؤون المدرسية">{isRtl ? 'إدارة الشؤون المدرسية' : 'School Affairs Admin'}</option>
+                      <option value="مكاتب التعليم بالقطاعات">{isRtl ? 'مكاتب التعليم بالقطاعات' : 'Regional Education Offices'}</option>
+                    </select>
+                  </div>
+
+                  {/* Mode Selector Buttons */}
+                  <div>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-teal-300' : 'text-slate-600'}`}>
+                      {isRtl ? 'نمط عرض التقرير:' : 'View Mode:'}
+                    </label>
+                    <div className={`p-1 rounded-xl border flex items-center gap-1 ${
+                      isDark ? 'bg-teal-950/80 border-teal-800' : 'bg-slate-100 border-slate-200'
+                    }`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeptReportMode('unified_entity');
+                          setDeptReportSelectedEmployee('all');
+                        }}
+                        className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                          deptReportMode === 'unified_entity'
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : isDark ? 'text-teal-300 hover:bg-teal-900/40' : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {isRtl ? '📊 تقرير مجمع موحد للجهة' : 'Unified Aggregated'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeptReportMode('team_breakdown');
+                          setDeptReportSelectedEmployee('all');
+                        }}
+                        className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                          deptReportMode === 'team_breakdown'
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : isDark ? 'text-teal-300 hover:bg-teal-900/40' : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {isRtl ? '👥 تفصيل حسب الموظفين' : 'Employee Breakdown'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeptReportMode('single_employee')}
+                        className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                          deptReportMode === 'single_employee'
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : isDark ? 'text-teal-300 hover:bg-teal-900/40' : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {isRtl ? '👤 موظف محدد' : 'Single Employee'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Employee Dropdown when in single_employee mode or for filtering */}
+                  {deptReportMode === 'single_employee' && (
+                    <div>
+                      <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-teal-300' : 'text-slate-600'}`}>
+                        {isRtl ? 'اختر الموظف / المشرف:' : 'Select Employee:'}
+                      </label>
+                      <select
+                        value={deptReportSelectedEmployee}
+                        onChange={(e) => setDeptReportSelectedEmployee(e.target.value)}
+                        className={`px-3 py-2 rounded-xl text-xs font-extrabold outline-none border cursor-pointer ${
+                          isDark ? 'bg-teal-950 text-teal-100 border-teal-800' : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}
+                      >
+                        <option value="all">{isRtl ? 'اختر موظفاً...' : 'Select Employee...'}</option>
+                        {filteredOfficersForDept.map(o => (
+                          <option key={o.id} value={o.nameAr}>
+                            {o.nameAr} - ({o.workField || 'وحدة القبول والتسجيل'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Export Options for Department/Unit Report */}
+                  <div>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-teal-300' : 'text-slate-600'}`}>
+                      {isRtl ? 'تصدير التقرير الحالي:' : 'Export Current Report:'}
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleExportDeptReport('excel')}
+                        title={isRtl ? 'تصدير إكسل (Excel)' : 'Export Excel'}
+                        className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer transform hover:-translate-y-0.5 border border-emerald-400/30"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-200" />
+                        <span>{isRtl ? '📊 إكسل Excel' : 'Excel'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExportDeptReport('pdf')}
+                        title={isRtl ? 'تصدير PDF / طباعة' : 'Export PDF / Print'}
+                        className="px-3 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer transform hover:-translate-y-0.5 border border-rose-400/30"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-rose-200" />
+                        <span>{isRtl ? '📄 PDF / طباعة' : 'PDF / Print'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExportDeptReport('csv')}
+                        title={isRtl ? 'تصدير CSV' : 'Export CSV'}
+                        className="px-3 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black text-xs rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer transform hover:-translate-y-0.5 border border-amber-400/30"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
+                        <span>{isRtl ? '📝 CSV' : 'CSV'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* View Output 1: UNIFIED AGGREGATED REPORT FOR THE ENTITY */}
+              {deptReportMode === 'unified_entity' && (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                    isDark ? 'bg-teal-950/40 border-teal-800' : 'bg-teal-50/60 border-teal-200'
+                  }`}>
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-teal-600 dark:text-teal-400">
+                        {isRtl ? 'الأداء المؤسسي التجميعي الموحد' : 'Aggregated Institutional Performance'}
+                      </span>
+                      <h5 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                        {deptReportEntity === 'all' 
+                          ? (isRtl ? 'إجمالي الأداء الموحد لكافة القطاعات والإدارات' : 'All Departments Aggregated Summary')
+                          : deptReportEntity}
+                      </h5>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-teal-600 text-white shadow-xs">
+                        {isRtl ? `نسبة الإنجاز الموحدة: ${deptReportAggregatedData.resolutionRate}%` : `Unified Rate: ${deptReportAggregatedData.resolutionRate}%`}
+                      </span>
+                      <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-amber-500 text-teal-950 shadow-xs">
+                        ⭐ {deptReportAggregatedData.avgSatisfaction}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-teal-950/30 border-teal-800' : 'bg-slate-50 border-slate-200'}`}>
+                      <span className="block text-[11px] font-bold text-slate-500 dark:text-teal-300">{isRtl ? 'إجمالي المعاملات والطلبات' : 'Total Requests'}</span>
+                      <span className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-1 block">{deptReportAggregatedData.total}</span>
+                    </div>
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-emerald-950/30 border-emerald-900/30' : 'bg-emerald-50 border-emerald-100'}`}>
+                      <span className="block text-[11px] font-bold text-emerald-700 dark:text-emerald-300">{isRtl ? 'المكتمل والمعالج بالكامل' : 'Resolved'}</span>
+                      <span className="text-2xl font-black font-mono text-emerald-600 mt-1 block">{deptReportAggregatedData.resolved}</span>
+                    </div>
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-rose-950/30 border-rose-900/30' : 'bg-rose-50 border-rose-100'}`}>
+                      <span className="block text-[11px] font-bold text-rose-700 dark:text-rose-300">{isRtl ? 'المعلق والمستمر قيد المتابعة' : 'Pending'}</span>
+                      <span className="text-2xl font-black font-mono text-rose-600 mt-1 block">{deptReportAggregatedData.pending}</span>
+                    </div>
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-amber-950/30 border-amber-900/30' : 'bg-amber-50 border-amber-100'}`}>
+                      <span className="block text-[11px] font-bold text-amber-700 dark:text-amber-300">{isRtl ? 'مؤشر رضا المستفيدين' : 'Avg Rating'}</span>
+                      <span className="text-2xl font-black font-mono text-amber-600 mt-1 block">{deptReportAggregatedData.avgSatisfaction} ⭐</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* View Output 2: DETAILED BREAKDOWN BY EMPLOYEES */}
+              {deptReportMode === 'team_breakdown' && (
+                <div className="overflow-x-auto rounded-2xl border border-teal-800/20">
+                  <table className="w-full text-xs text-right border-collapse">
+                    <thead>
+                      <tr className={isDark ? 'bg-teal-950/80 text-teal-200 border-b border-teal-850' : 'bg-slate-100 text-slate-700 border-b border-slate-200'}>
+                        <th className="p-3.5 font-black">{isRtl ? 'اسم الموظف / المشرف الإداري' : 'Employee Name'}</th>
+                        <th className="p-3.5 font-black">{isRtl ? 'الجهة الإدارية / الوحدة' : 'Department'}</th>
+                        <th className="p-3.5 font-black text-center">{isRtl ? 'إجمالي الطلبات' : 'Total'}</th>
+                        <th className="p-3.5 font-black text-center">{isRtl ? 'المعالج' : 'Resolved'}</th>
+                        <th className="p-3.5 font-black text-center">{isRtl ? 'المعلق' : 'Pending'}</th>
+                        <th className="p-3.5 font-black text-center">{isRtl ? 'نسبة الإنجاز %' : 'Achievement %'}</th>
+                        <th className="p-3.5 font-black text-center">{isRtl ? 'متوسط الرضا ⭐' : 'Rating ⭐'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-teal-800/10">
+                      {deptReportAggregatedData.empList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-6 text-center text-slate-400 font-bold">
+                            {isRtl ? 'لا يوجد موظفون مطبق عليهم الفلتر المحدد حالياً' : 'No employees matching filter'}
+                          </td>
+                        </tr>
+                      ) : (
+                        deptReportAggregatedData.empList.map((emp, idx) => {
+                          const pct = emp.total > 0 ? Math.round((emp.resolved / emp.total) * 100) : 0;
+                          const avgSat = emp.total > 0 ? (emp.satSum / emp.total).toFixed(1) : '5.0';
+                          return (
+                            <tr key={idx} className={`transition-colors ${isDark ? 'hover:bg-teal-950/40' : 'hover:bg-slate-50'}`}>
+                              <td className="p-3.5 font-extrabold flex items-center gap-2">
+                                <User className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                                <div>
+                                  <div className="font-black">{emp.name}</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">{emp.role}</div>
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-bold text-slate-600 dark:text-teal-300">{emp.workField}</td>
+                              <td className="p-3.5 font-mono font-bold text-center">{emp.total}</td>
+                              <td className="p-3.5 font-mono font-bold text-center text-emerald-600">{emp.resolved}</td>
+                              <td className="p-3.5 font-mono font-bold text-center text-rose-500">{emp.pending}</td>
+                              <td className="p-3.5 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <div className="w-16 bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-teal-600 h-full rounded-full transition-all" style={{ width: `${pct}%` }}></div>
+                                  </div>
+                                  <span className="font-mono font-bold">{pct}%</span>
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-mono font-bold text-center text-amber-500">{avgSat} ⭐</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* View Output 3: SINGLE SPECIFIC EMPLOYEE PERFORMANCE VIEW */}
+              {deptReportMode === 'single_employee' && (
+                <div>
+                  {deptReportSelectedEmployee === 'all' ? (
+                    <div className="p-8 text-center border-2 border-dashed rounded-2xl text-slate-400 font-extrabold text-xs">
+                      {isRtl ? '👈 يرجى اختيار موظف من القائمة بالأعلى لعرض تقرير أدائه وإنجازه بالتفصيل.' : 'Please select an employee from the dropdown above to view their details.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                        isDark ? 'bg-teal-950/60 border-teal-800' : 'bg-teal-50/80 border-teal-200'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-lg shadow-md">
+                            {deptReportSelectedEmployee.slice(0, 1)}
+                          </div>
+                          <div>
+                            <h5 className="text-base font-black text-slate-900 dark:text-white">
+                              {deptReportSelectedEmployee}
+                            </h5>
+                            <p className="text-xs text-teal-700 dark:text-teal-300 font-bold mt-0.5">
+                              {isRtl ? `الجهة والتبعية: ${deptReportEntity !== 'all' ? deptReportEntity : 'وحدة القبول والتسجيل'}` : `Department: ${deptReportEntity}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="text-center px-4 py-2 rounded-xl bg-white dark:bg-teal-900 border border-teal-200/50">
+                            <span className="block text-[10px] font-bold text-slate-400">{isRtl ? 'إجمالي الطلبات' : 'Total'}</span>
+                            <span className="font-mono font-black text-sm">{deptReportAggregatedData.total}</span>
+                          </div>
+                          <div className="text-center px-4 py-2 rounded-xl bg-white dark:bg-teal-900 border border-teal-200/50">
+                            <span className="block text-[10px] font-bold text-emerald-600">{isRtl ? 'المحاولة والإنجاز' : 'Resolved'}</span>
+                            <span className="font-mono font-black text-sm text-emerald-600">{deptReportAggregatedData.resolutionRate}%</span>
+                          </div>
+                          <div className="text-center px-4 py-2 rounded-xl bg-white dark:bg-teal-900 border border-teal-200/50">
+                            <span className="block text-[10px] font-bold text-amber-500">{isRtl ? 'الرضا' : 'Rating'}</span>
+                            <span className="font-mono font-black text-sm text-amber-500">{deptReportAggregatedData.avgSatisfaction} ⭐</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Request Table for Single Employee */}
+                      <div className="overflow-x-auto rounded-2xl border border-teal-800/20">
+                        <table className="w-full text-xs text-right border-collapse">
+                          <thead>
+                            <tr className={isDark ? 'bg-teal-950/80 text-teal-200 border-b border-teal-850' : 'bg-slate-100 text-slate-700 border-b border-slate-200'}>
+                              <th className="p-3 font-black">{isRtl ? 'رقم الطلب' : 'Request ID'}</th>
+                              <th className="p-3 font-black">{isRtl ? 'اسم المستفيد' : 'Beneficiary'}</th>
+                              <th className="p-3 font-black">{isRtl ? 'المدرسة والقطاع' : 'School'}</th>
+                              <th className="p-3 font-black">{isRtl ? 'نوع الطلب' : 'Type'}</th>
+                              <th className="p-3 font-black text-center">{isRtl ? 'حالة الإنجاز' : 'Status'}</th>
+                              <th className="p-3 font-black text-center">{isRtl ? 'التقييم' : 'Rating'}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-teal-800/10">
+                            {deptReportAggregatedData.matchingSurveys.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="p-4 text-center text-slate-400 font-bold">
+                                  {isRtl ? 'لا توجد طلبات مسندة لهذا الموظف بناءً على الفلاتر المحددة' : 'No requests assigned'}
+                                </td>
+                              </tr>
+                            ) : (
+                              deptReportAggregatedData.matchingSurveys.slice(0, 10).map((s) => (
+                                <tr key={s.id} className={isDark ? 'hover:bg-teal-950/40' : 'hover:bg-slate-50'}>
+                                  <td className="p-3 font-mono font-bold text-teal-600 dark:text-teal-300">{s.id}</td>
+                                  <td className="p-3 font-black">{s.beneficiaryName}</td>
+                                  <td className="p-3 font-bold text-slate-600 dark:text-teal-200">{s.schoolName} ({s.sector})</td>
+                                  <td className="p-3 font-semibold">{getRequestTypeInfo(s, isRtl).label}</td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                                      s.isResolved ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                    }`}>
+                                      {s.isResolved ? (isRtl ? 'مكتمل' : 'Resolved') : (isRtl ? 'معلق' : 'Pending')}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-center font-mono font-bold text-amber-500">{s.staffSatisfaction || 5} ⭐</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Dynamic Sliced Metrics Tiles */}
@@ -10349,7 +10966,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   <p className={`text-xs font-extrabold uppercase ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>{isRtl ? 'متوسط الرضا العام' : 'Satisfaction Index'}</p>
                   <h4 className={`text-2xl sm:text-3xl font-black font-mono mt-0.5 flex items-center gap-1 ${isDark ? 'text-teal-100' : 'text-slate-900'}`}>
                     {filteredReportSurveys.length > 0
-                      ? (filteredReportSurveys.reduce((acc, curr) => acc + curr.staffSatisfaction, 0) / filteredReportSurveys.length).toFixed(1)
+                      ? (filteredReportSurveys.reduce((acc, curr) => acc + (Number(curr.staffSatisfaction) || 5), 0) / filteredReportSurveys.length).toFixed(1)
                       : '0.0'}
                     <span className="text-xs font-medium text-slate-400">/ 5</span>
                   </h4>
@@ -10439,7 +11056,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
             }`}>
               <h4 className={`font-extrabold text-sm mb-6 flex items-center gap-2 ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>
                 <TrendingUp className={`w-4.5 h-4.5 ${isDark ? 'text-teal-400' : 'text-indigo-600'}`} />
-                {isRtl ? `توزيع الحالات الإحصائية للتقرير المختار (مجمعة حسب: ${reportGroupBy === 'school' ? 'المدرسة' : reportGroupBy === 'problemType' ? 'نوع العائق' : reportGroupBy === 'sector' ? 'القطاع' : 'الموظف المسؤول'}):` : `Cases count chart for active report filters:`}
+                {isRtl ? `توزيع الحالات الإحصائية للتقرير المختار (مجمعة حسب: ${reportGroupBy === 'school' ? 'المدرسة' : reportGroupBy === 'problemType' ? 'نوع الطلب (تسجيل / نقل / معادلة)' : reportGroupBy === 'sector' ? 'القطاع' : 'الموظف المسؤول'}):` : `Cases count chart for active report filters:`}
               </h4>
 
               <div className="h-80 w-full">
@@ -10541,7 +11158,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'معرف الحالة' : 'Case ID'}</th>
                         <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'المستفيد' : 'Beneficiary'}</th>
                         <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'المدرسة والقطاع' : 'School / Sector'}</th>
-                        <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'نوع العائق' : 'Obstacle'}</th>
+                        <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'نوع الطلب' : 'Request Type'}</th>
                         <th className="px-4 py-3.5 text-start font-black">{isRtl ? 'المسؤول' : 'Employee'}</th>
                         <th className="px-4 py-3.5 text-center font-black">{isRtl ? 'الرضا' : 'Satisfaction'}</th>
                         <th className="px-4 py-3.5 text-center font-black">{isRtl ? 'الحالة' : 'Status'}</th>
@@ -10584,10 +11201,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             </td>
                             <td className="px-4 py-3.5 text-center">
                               <span className="inline-flex items-center gap-0.5 text-amber-500 font-black">
-                                {Array.from({ length: row.staffSatisfaction }).map((_, i) => (
+                                {Array.from({ length: Math.max(0, Math.min(5, Math.floor(Number(row.staffSatisfaction) || 5))) }).map((_, i) => (
                                   <span key={i}>★</span>
                                 ))}
-                                <span className={`text-[10px] font-bold font-sans ml-1 ${isDark ? 'text-teal-400' : 'text-teal-600'}`}>({row.staffSatisfaction})</span>
+                                <span className={`text-[10px] font-bold font-sans ml-1 ${isDark ? 'text-teal-400' : 'text-teal-600'}`}>({row.staffSatisfaction || 5})</span>
                               </span>
                             </td>
                             <td className="px-4 py-3.5 text-center">
@@ -10661,7 +11278,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     ? 'تعرض هذه الصفحة كافة الطلبات المحالة من مشرفي القبول والتسجيل لطلب فتح فصول أو شواغر إضافية. يرجى مراجعة بيانات المدرسة والصف الدراسي لاتخاذ الإجراء المناسب.'
                     : 'This page shows all requests forwarded by admission supervisors to open additional classrooms or vacancies. Check school and class details to take actions.'}
                 </p>
-                {onClearAllSurveys && activeOfficer?.role === 'admin' && (
+                {onClearAllSurveys && (activeOfficer?.role === 'admin' || activeOfficer?.role === 'director') && (
                   <button
                     type="button"
                     onClick={() => setShowClearAllModal(true)}
@@ -12079,6 +12696,38 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </button>
                                   )}
 
+                                  {/* STEP 2C: Route to School Principal directly for non-equivalency */}
+                                  {!isArchived && survey.vacancyRequestStatus === 'approved' && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
+                                    <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40 text-start space-y-1.5">
+                                      <label className="block text-[10px] font-black text-emerald-900 dark:text-emerald-300">
+                                        {isRtl ? '3️⃣➡️ إرسال لمدير المدرسة للتسكين المباشر:' : '3️⃣➡️ Route to School Principal:'}
+                                      </label>
+                                      <button
+                                        onClick={() => {
+                                          if (onUpdateSurvey) {
+                                            const nowIso = new Date().toISOString();
+                                            onUpdateSurvey({
+                                              ...survey,
+                                              vacancyRequestStatus: 'sent_to_school_principal',
+                                              sentToSchoolPrincipal: true,
+                                              sentToPrincipalAt: nowIso,
+                                              referringOfficerId: activeOfficer.id,
+                                              referringOfficerName: activeOfficer.nameAr,
+                                              notes: isRtl 
+                                                ? `🏫 تم إحالة الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين بعد فتح الشاغر بواسطة التخطيط.`
+                                                : `Referred directly to school principal for staffing.`
+                                            } as any);
+                                            alert(isRtl ? `✓ تم إرسال الطلب لمدير مدرسة (${survey.schoolName || ''}) بنجاح!` : 'Sent to school principal successfully!');
+                                          }
+                                        }}
+                                        className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                                      >
+                                        <Building className="w-3.5 h-3.5" />
+                                        <span>{isRtl ? 'إرسال لمدير المدرسة' : 'Send to Principal'}</span>
+                                      </button>
+                                    </div>
+                                  )}
+
                                   {/* STEP 2B: Route to School Leadership Supervisor */}
                                   {!isArchived && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).referringOfficerId === activeOfficer.id || survey.assignedOfficerId === activeOfficer.id) && (
                                     <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 text-start space-y-1.5">
@@ -12314,6 +12963,20 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </span>
                                   </div>
 
+                                  {(activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning') && (
+                                    <div className="flex justify-center pt-1">
+                                      <button
+                                        onClick={() => setSurveyToDeleteId(survey.id)}
+                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                          isDark ? 'text-red-400 hover:text-red-300 hover:bg-red-950/40' : 'text-red-500 hover:text-red-750 hover:bg-red-50'
+                                        }`}
+                                        title={currentLang === 'ar' ? 'حذف الطلب' : 'Delete Request'}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  )}
+
                                 </div>
                               </td>
                             </tr>
@@ -12435,7 +13098,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         )}
 
         {/* SUB-TAB: Beneficiary Feedback & Messages (Admin Only) */}
-        {(activeSubTab === 'beneficiary-feedback' && activeOfficer.role === 'admin') && (
+        {activeSubTab === 'beneficiary-feedback' && (
           <BeneficiaryFeedbackView
             feedbacks={beneficiaryFeedbacks || []}
             onUpdateFeedbacks={onUpdateBeneficiaryFeedbacks}
@@ -12624,6 +13287,55 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 <button
                   type="button"
                   onClick={() => setSurveyToDeleteId(null)}
+                  className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  {isRtl ? 'إلغاء' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* React Modal for Deleting Single Report */}
+      {reportToDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl border transition-all ${
+            isDark ? 'bg-slate-900 border-rose-800 text-white' : 'bg-white border-rose-200 text-slate-900'
+          }`}>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  {isRtl ? 'تأكيد حذف بلاغ المدرسة' : 'Confirm Delete School Report'}
+                </h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
+                  {isRtl 
+                    ? `هل أنت متأكد من حذف البلاغ رقم (${reportToDeleteId}) نهائياً؟`
+                    : `Are you sure you want to delete school report #${reportToDeleteId}?`}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 w-full pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDeleteReport) {
+                      onDeleteReport(reportToDeleteId);
+                    }
+                    setReportToDeleteId(null);
+                  }}
+                  className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  {isRtl ? 'حذف البلاغ' : 'Delete Report'}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setReportToDeleteId(null)}
                   className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   {isRtl ? 'إلغاء' : 'Cancel'}

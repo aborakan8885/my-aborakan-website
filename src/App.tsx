@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import SurveyForm from './components/SurveyForm';
 import Dashboard from './components/Dashboard';
@@ -28,7 +28,7 @@ import {
   TRANSLATIONS
 } from './data/mockData';
 import { processSurveysInBatchAsync } from './utils/batchProcessor';
-import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity, MessageSquareHeart, Home } from 'lucide-react';
+import { ShieldCheck, Wifi, Info, CheckCircle2, ChevronRight, HelpCircle, Cpu, Zap, Activity, MessageSquareHeart, Home, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -57,15 +57,84 @@ export default function App() {
     }
     return 'portal';
   });
-  const [, startRoleTransition] = React.useTransition();
+
+  // Portal view state & Modal state
+  const [portalView, setPortalViewState] = useState<'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'>('selection');
+  const [showAgeModal, setShowAgeModalState] = useState<boolean>(false);
+
+  // Navigation History Stack
+  type NavState = {
+    userRole: 'portal' | 'parent' | 'admin';
+    portalView: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard';
+    showAgeModal: boolean;
+  };
+  const historyStackRef = useRef<NavState[]>([]);
+
+  const pushNavState = (
+    newRole: 'portal' | 'parent' | 'admin',
+    newPortalView: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard' = portalView,
+    newAgeModal: boolean = false
+  ) => {
+    const currentState: NavState = { userRole, portalView, showAgeModal };
+    if (
+      currentState.userRole !== newRole ||
+      currentState.portalView !== newPortalView ||
+      currentState.showAgeModal !== newAgeModal
+    ) {
+      historyStackRef.current.push(currentState);
+    }
+    setUserRoleState(newRole);
+    setPortalViewState(newPortalView);
+    setShowAgeModalState(newAgeModal);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  };
 
   const setUserRole = (role: 'portal' | 'parent' | 'admin') => {
-    startRoleTransition(() => {
-      setUserRoleState(role);
-      if (typeof window !== 'undefined') {
-        window.scrollTo({ top: 0, behavior: 'instant' });
+    pushNavState(role, role === 'portal' ? 'selection' : portalView, false);
+  };
+
+  const handlePortalViewChange = (newView: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard') => {
+    pushNavState('portal', newView, false);
+  };
+
+  const handleAgeModalChange = (show: boolean) => {
+    pushNavState('portal', portalView, show);
+  };
+
+  const handleGoBack = () => {
+    if (showAgeModal) {
+      setShowAgeModalState(false);
+      return;
+    }
+    if (historyStackRef.current.length > 0) {
+      const previous = historyStackRef.current.pop()!;
+      setUserRoleState(previous.userRole);
+      setPortalViewState(previous.portalView);
+      setShowAgeModalState(previous.showAgeModal);
+    } else {
+      // Fallback if stack is empty
+      if (userRole === 'parent' || userRole === 'admin') {
+        setUserRoleState('portal');
+        setPortalViewState('parent-choices');
+      } else if (portalView !== 'selection') {
+        setPortalViewState('selection');
       }
-    });
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  };
+
+  const handleReturnToMainGateway = () => {
+    historyStackRef.current = [];
+    setUserRoleState('portal');
+    setPortalViewState('selection');
+    setShowAgeModalState(false);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
   };
 
   // Compatibility helper for legacy references
@@ -187,9 +256,12 @@ export default function App() {
     });
   }, []);
 
-  // Save changes to local persistence via storageEngine
+  // Save changes to local persistence via storageEngine with debounce
   useEffect(() => {
-    saveSurveysToStorage(surveys);
+    const timer = setTimeout(() => {
+      saveSurveysToStorage(surveys);
+    }, 2000);
+    return () => clearTimeout(timer);
   }, [surveys]);
 
   useEffect(() => {
@@ -201,7 +273,10 @@ export default function App() {
   }, [emailLogs]);
 
   useEffect(() => {
-    savePrincipalReportsToStorage(principalReports);
+    const timer = setTimeout(() => {
+      savePrincipalReportsToStorage(principalReports);
+    }, 2500);
+    return () => clearTimeout(timer);
   }, [principalReports]);
 
   useEffect(() => {
@@ -235,7 +310,7 @@ export default function App() {
     if (isNegativeFeedback) {
       // Trigger instant email alert logs & send actual email via official account qabulmadinah@gmail.com
       const emailId = `EML-${Math.floor(200 + Math.random() * 800)}`;
-      const targetEmails = config.adminEmails.split(',').map((e) => e.trim());
+      const targetEmails = (config?.adminEmails || 'qabulmadinah@gmail.com').split(',').map((e) => e.trim()).filter(Boolean);
       
       const newEmailLogs: EmailLog[] = targetEmails.map((email, idx) => ({
         id: `${emailId}-${idx}`,
@@ -254,7 +329,19 @@ export default function App() {
       sendOfficialEmail({
         to: targetEmails,
         subject: `⚠️ تنبيه فوري: تقييم سلبي من مستفيد (${newResponse.beneficiaryName})`,
-        bodyText: `تم استلام تقييم سلبي جديد في نظام القبول والمعادلات:\n\nالمستفيد: ${newResponse.beneficiaryName}\nرقم الجوال: ${newResponse.phoneNumber}\nالمرحلة: ${newResponse.stage}\nنوع المشكلة: ${newResponse.problemType}\nتقييم الموظف: ${newResponse.staffSatisfaction || '-'}\nتقييم الاستقبال: ${newResponse.receptionSatisfaction || '-'}\nالملاحظات: ${newResponse.notes || 'لا يوجد'}\n\nتاريخ الطلب: ${nowStr}`,
+        bodyText: `تم استلام تقييم سلبي جديد في نظام القبول والمعادلات:\n\nالمستفيد: ${newResponse.beneficiaryName}\nرقم الجوال: ${newResponse.phoneNumber}\nالمرحلة: ${newResponse.stage}\nنوع الطلب: ${
+          newResponse.problemType === 'vacancies_unavailable' ? 'الشواغر غير متاحة' :
+          newResponse.problemType === 'student_density' ? 'كثافة طلابية بالفصول' :
+          newResponse.problemType === 'unjustified_rejection' ? 'رفض الطلب دون مبرر نظامي' :
+          newResponse.problemType === 'cert_primary_eq' ? 'معادلة الشهادة للمرحلة الابتدائية' :
+          newResponse.problemType === 'cert_intermediate_eq' ? 'معادلة الشهادة للمرحلة المتوسطة' :
+          newResponse.problemType === 'cert_secondary_eq' ? 'معادلة الشهادة للمرحلة الثانوية' :
+          newResponse.problemType === 'distance_from_school' ? 'نقل بسبب بعد السكن عن المدرسة' :
+          newResponse.problemType === 'unregistered_desire' ? 'طلب قبول ومعادلة شهادة' :
+          newResponse.problemType === 'new_registration_saudi' ? 'تسجيل مستجد سعودي' :
+          newResponse.problemType === 'new_registration_resident' ? 'تسجيل مستجد مقيم' :
+          newResponse.problemType || 'أخرى'
+        }\nتقييم الموظف: ${newResponse.staffSatisfaction || '-'}\nتقييم الاستقبال: ${newResponse.receptionSatisfaction || '-'}\nالملاحظات: ${newResponse.notes || 'لا يوجد'}\n\nتاريخ الطلب: ${nowStr}`,
         triggerReason: 'Negative Feedback Alert'
       });
 
@@ -306,6 +393,22 @@ export default function App() {
     setSurveys((prev) => prev.filter((s) => s.id !== id));
     triggerToast(
       currentLang === 'ar' ? 'تم حذف الرد تماماً من السجلات.' : 'Response deleted from logs.',
+      'info'
+    );
+  };
+
+  const handleDeleteReport = (id: string) => {
+    setPrincipalReports((prev) => prev.filter((r) => r.id !== id));
+    triggerToast(
+      currentLang === 'ar' ? 'تم حذف بلاغ المدرسة تماماً.' : 'School report deleted successfully.',
+      'info'
+    );
+  };
+
+  const handleDeleteEmailLog = (id: string) => {
+    setEmailLogs((prev) => prev.filter((log) => log.id !== id));
+    triggerToast(
+      currentLang === 'ar' ? 'تم حذف سجل التنبيه بنجاح.' : 'Alert log deleted successfully.',
       'info'
     );
   };
@@ -624,7 +727,7 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className="flex-1 pb-16">
+      <main className={`flex-1 ${userRole === 'portal' ? 'pb-4' : 'pb-16'}`}>
         
         {/* Offline Alert Strip */}
         {!isOnline && (
@@ -640,160 +743,146 @@ export default function App() {
 
         {/* Content Tabs */}
         <div className="relative">
-          <AnimatePresence mode="wait">
-            {userRole === 'portal' ? (
-              <motion.div
-                key="portal-view"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
-              >
-                <ErrorBoundary fallbackTitleAr="خطأ في تحميل البوابة الموحدة">
-                  <Portal
-                    currentLang={currentLang}
-                    surveys={surveys}
-                    schools={schoolsList}
-                    onToggleResolved={handleToggleResolved}
-                    onUpdateSurvey={(updatedSurvey) => {
-                      const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
-                      setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
-                    }}
-                    config={config}
-                    onSelectRole={setUserRole}
-                    principalReports={principalReports}
-                    onAddPrincipalReport={handleAddPrincipalReport}
-                    onToggleReportResolved={handleToggleReportResolved}
-                    theme={theme}
-                  />
-                </ErrorBoundary>
-              </motion.div>
-            ) : userRole === 'parent' ? (
-              <motion.div
-                key="survey-view"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
-              >
-                {/* Hero / Welcome Panel for Portal */}
-                <div className={`py-12 px-4 shadow-lg text-center border-b ${
-                  isDark
-                    ? 'bg-gradient-to-r from-teal-900/50 via-teal-800/40 to-emerald-950/50 text-white border-teal-800/30'
-                    : 'bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white border-blue-800/25'
-                }`}>
-                  <div className="max-w-3xl mx-auto">
-                    <span className={`inline-flex items-center gap-1 text-xs px-3.5 py-1 rounded-full font-bold mb-3 border ${
-                      isDark
-                        ? 'bg-teal-950/60 text-teal-300 border-teal-700/40'
-                        : 'bg-blue-800/40 text-blue-100 border-blue-500/25'
-                    }`}>
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      {currentLang === 'ar' ? 'بوابة آمنة وموثوقة' : 'Secure Beneficiary Portal'}
-                    </span>
-                    <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight font-sans mb-3">
-                      {currentLang === 'ar'
-                        ? 'تلتزم الإدارة بتقديم أرقى مستويات الخدمة والرعاية لمستفيديها'
-                        : 'Commitment to High Quality Service & Care'}
-                    </h1>
-                    <p className={`text-xs sm:text-sm max-w-xl mx-auto leading-relaxed ${
-                      isDark ? 'text-teal-200/90' : 'text-blue-100/90'
-                    }`}>
-                      {currentLang === 'ar'
-                        ? 'نرجو منك تقييم تجربتك بعد استكمال طلبك'
-                        : 'We kindly ask you to rate your experience after completing your request'}
-                    </p>
-                  </div>
+          {userRole === 'portal' ? (
+            <div key="portal-view" className="animate-fade-in">
+              <ErrorBoundary fallbackTitleAr="خطأ في تحميل البوابة الموحدة">
+                <Portal
+                  currentLang={currentLang}
+                  surveys={surveys}
+                  schools={schoolsList}
+                  onToggleResolved={handleToggleResolved}
+                  onUpdateSurvey={(updatedSurvey) => {
+                    const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
+                    setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
+                  }}
+                  config={config}
+                  onSelectRole={setUserRole}
+                  principalReports={principalReports}
+                  onAddPrincipalReport={handleAddPrincipalReport}
+                  onToggleReportResolved={handleToggleReportResolved}
+                  theme={theme}
+                  portalView={portalView}
+                  onPortalViewChange={handlePortalViewChange}
+                  showAgeModal={showAgeModal}
+                  onAgeModalChange={handleAgeModalChange}
+                />
+              </ErrorBoundary>
+            </div>
+          ) : userRole === 'parent' ? (
+            <div key="survey-view" className="animate-fade-in">
+              {/* Hero / Welcome Panel for Portal */}
+              <div className={`py-12 px-4 shadow-lg text-center border-b ${
+                isDark
+                  ? 'bg-gradient-to-r from-teal-900/50 via-teal-800/40 to-emerald-950/50 text-white border-teal-800/30'
+                  : 'bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white border-blue-800/25'
+              }`}>
+                <div className="max-w-3xl mx-auto">
+                  <span className={`inline-flex items-center gap-1 text-xs px-3.5 py-1 rounded-full font-bold mb-3 border ${
+                    isDark
+                      ? 'bg-teal-950/60 text-teal-300 border-teal-700/40'
+                      : 'bg-blue-800/40 text-blue-100 border-blue-500/25'
+                  }`}>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {currentLang === 'ar' ? 'بوابة آمنة وموثوقة' : 'Secure Beneficiary Portal'}
+                  </span>
+                  <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight font-sans mb-3">
+                    {currentLang === 'ar'
+                      ? 'تلتزم الإدارة بتقديم أرقى مستويات الخدمة والرعاية لمستفيديها'
+                      : 'Commitment to High Quality Service & Care'}
+                  </h1>
+                  <p className={`text-xs sm:text-sm max-w-xl mx-auto leading-relaxed ${
+                    isDark ? 'text-teal-200/90' : 'text-blue-100/90'
+                  }`}>
+                    {currentLang === 'ar'
+                      ? 'نرجو منك تقييم تجربتك بعد استكمال طلبك'
+                      : 'We kindly ask you to rate your experience after completing your request'}
+                  </p>
                 </div>
+              </div>
 
-                {/* Main Form */}
-                <ErrorBoundary fallbackTitleAr="خطأ في تحميل نموذج الطلب">
-                  <SurveyForm
-                    currentLang={currentLang}
-                    onSubmit={handleAddSurvey}
-                    schools={schoolsList}
-                    onUpdateSurvey={(updatedSurvey) => {
-                      const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
-                      setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
-                    }}
-                    config={config}
-                    isOnline={isOnline}
-                    onBackToPortal={() => setUserRole('portal')}
-                    theme={theme}
-                  />
-                </ErrorBoundary>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="dashboard-view"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
-              >
-                <ErrorBoundary fallbackTitleAr="خطأ في تحميل لوحة تحكم المسؤول">
-                  <Dashboard
-                    currentLang={currentLang}
-                    surveys={surveys}
-                    schools={schoolsList}
-                    onImportSchools={handleUpdateSchools}
-                    onDeleteSchool={(id) => handleUpdateSchools(schoolsList.filter(s => s.id !== id))}
-                    onDeleteSurvey={handleDeleteSurvey}
-                    onClearAllSurveys={handleClearAllSurveys}
-                    onToggleResolved={handleToggleResolved}
-                    onImportSurveys={handleImportSurveys}
-                    onAddSurvey={handleAddSurvey}
-                    onUpdateSurvey={(updatedSurvey) => {
-                      const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
-                      setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
-                    }}
-                    config={config}
-                    onUpdateConfig={setConfig}
-                    emailLogs={emailLogs}
-                    integrationLogs={integrationLogs}
-                    onTriggerManualBackup={handleTriggerManualBackup}
-                    onSyncNow={handleSyncNow}
-                    unsyncedCount={unsyncedCount}
-                    isOnline={isOnline}
-                    onBackToPortal={() => setUserRole('portal')}
-                    principalReports={principalReports}
-                    onToggleReportResolved={handleToggleReportResolved}
-                    onUpdateReportStatus={handleUpdateReportStatus}
-                    onAssignSurvey={(id, officerId, officerName, notes, role) => {
-                      setSurveys(prev => prev.map(s => {
-                        if (s.id === id) {
-                          return {
-                            ...s,
-                            assignedOfficerId: officerId,
-                            serviceEmployee: officerName,
-                            referredBy: role,
-                            referralNotes: notes
-                          };
-                        }
-                        return s;
-                      }));
-                    }}
-                    onAssignPrincipalReport={(id, officerId, notes, role) => {
-                      setPrincipalReports(prev => prev.map(rep => {
-                        if (rep.id === id) {
-                          return {
-                            ...rep,
-                            assignedOfficerId: officerId,
-                            referredBy: role,
-                            referralNotes: notes
-                          };
-                        }
-                        return rep;
-                      }));
-                    }}
-                    theme={theme}
-                    beneficiaryFeedbacks={beneficiaryFeedbacks}
-                    onUpdateBeneficiaryFeedbacks={setBeneficiaryFeedbacks}
-                  />
-                </ErrorBoundary>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              {/* Main Form */}
+              <ErrorBoundary fallbackTitleAr="خطأ في تحميل نموذج الطلب">
+                <SurveyForm
+                  currentLang={currentLang}
+                  onSubmit={handleAddSurvey}
+                  schools={schoolsList}
+                  onUpdateSurvey={(updatedSurvey) => {
+                    const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
+                    setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
+                  }}
+                  config={config}
+                  isOnline={isOnline}
+                  onBackToPortal={() => setUserRole('portal')}
+                  theme={theme}
+                />
+              </ErrorBoundary>
+            </div>
+          ) : (
+            <div key="dashboard-view" className="animate-fade-in">
+              <ErrorBoundary fallbackTitleAr="خطأ في تحميل لوحة تحكم المسؤول">
+                <Dashboard
+                  currentLang={currentLang}
+                  surveys={surveys}
+                  schools={schoolsList}
+                  onImportSchools={handleUpdateSchools}
+                  onDeleteSchool={(id) => handleUpdateSchools(schoolsList.filter(s => s.id !== id))}
+                  onDeleteSurvey={handleDeleteSurvey}
+                  onClearAllSurveys={handleClearAllSurveys}
+                  onToggleResolved={handleToggleResolved}
+                  onImportSurveys={handleImportSurveys}
+                  onAddSurvey={handleAddSurvey}
+                  onUpdateSurvey={(updatedSurvey) => {
+                    const withUpdate = { ...updatedSurvey, lastUpdatedAt: updatedSurvey.lastUpdatedAt || new Date().toISOString() };
+                    setSurveys(prev => prev.map(s => s.id === updatedSurvey.id ? withUpdate : s));
+                  }}
+                  config={config}
+                  onUpdateConfig={setConfig}
+                  emailLogs={emailLogs}
+                  integrationLogs={integrationLogs}
+                  onTriggerManualBackup={handleTriggerManualBackup}
+                  onSyncNow={handleSyncNow}
+                  unsyncedCount={unsyncedCount}
+                  isOnline={isOnline}
+                  onBackToPortal={() => setUserRole('portal')}
+                  principalReports={principalReports}
+                  onToggleReportResolved={handleToggleReportResolved}
+                  onUpdateReportStatus={handleUpdateReportStatus}
+                  onDeleteReport={handleDeleteReport}
+                  onDeleteEmailLog={handleDeleteEmailLog}
+                  onAssignSurvey={(id, officerId, officerName, notes, role) => {
+                    setSurveys(prev => prev.map(s => {
+                      if (s.id === id) {
+                        return {
+                          ...s,
+                          assignedOfficerId: officerId,
+                          serviceEmployee: officerName,
+                          referredBy: role,
+                          referralNotes: notes
+                        };
+                      }
+                      return s;
+                    }));
+                  }}
+                  onAssignPrincipalReport={(id, officerId, notes, role) => {
+                    setPrincipalReports(prev => prev.map(rep => {
+                      if (rep.id === id) {
+                        return {
+                          ...rep,
+                          assignedOfficerId: officerId,
+                          referredBy: role,
+                          referralNotes: notes
+                        };
+                      }
+                      return rep;
+                    }));
+                  }}
+                  theme={theme}
+                  beneficiaryFeedbacks={beneficiaryFeedbacks}
+                  onUpdateBeneficiaryFeedbacks={setBeneficiaryFeedbacks}
+                />
+              </ErrorBoundary>
+            </div>
+          )}
         </div>
 
       </main>
@@ -876,7 +965,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Bottom Footer - Only Compact Contact & Feedback Button on the Left */}
-      <footer className="w-full bg-transparent py-3 transition-colors duration-300">
+      <footer className="w-full bg-transparent py-1.5 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-start" style={{ direction: 'ltr' }}>
           <button
             onClick={() => setIsFeedbackModalOpen(true)}
@@ -902,19 +991,35 @@ export default function App() {
         isDark={isDark}
       />
 
-      {/* Floating Action Button (FAB) to return to Portal Gateway from any view */}
-      {userRole !== 'portal' && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <button
-            type="button"
-            onClick={() => setUserRole('portal')}
-            className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
-            id="fab-return-portal"
-          >
-            <Home className="w-5 h-5 text-amber-300 group-hover:scale-110 transition-transform" />
-            <span>{currentLang === 'ar' ? 'العودة لبوابة الدخول الرئيسية' : 'Return to Main Gateway'}</span>
-          </button>
-        </div>
+      {/* Floating Action Buttons (FAB) */}
+      {(userRole !== 'portal' || portalView !== 'selection' || showAgeModal) && (
+        <>
+          {/* FAB Right: Return to Main Gateway */}
+          <div className="fixed bottom-6 right-6 z-50">
+            <button
+              type="button"
+              onClick={handleReturnToMainGateway}
+              className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
+              id="fab-return-portal"
+            >
+              <Home className="w-5 h-5 text-amber-300 group-hover:scale-110 transition-transform" />
+              <span>{currentLang === 'ar' ? 'العودة لبوابة الدخول الرئيسية' : 'Return to Main Gateway'}</span>
+            </button>
+          </div>
+
+          {/* FAB Left: Back / Go Back */}
+          <div className="fixed bottom-6 left-6 z-50">
+            <button
+              type="button"
+              onClick={handleGoBack}
+              className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 hover:from-slate-800 hover:to-slate-950 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-slate-500/40 cursor-pointer group"
+              id="fab-go-back"
+            >
+              <RotateCcw className="w-5 h-5 text-teal-300 group-hover:-rotate-90 transition-transform" />
+              <span>{currentLang === 'ar' ? 'عودة للخلف' : 'Go Back'}</span>
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

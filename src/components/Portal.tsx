@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { verifyCivilIdMatch, extractCivilIdFromSchool, cleanDigitsString } from '../utils/civilId';
 import { AgeVerificationModal } from './AgeVerificationModal';
 import { 
+  Map,
   Users, 
   School, 
   ShieldCheck, 
@@ -52,6 +53,10 @@ interface PortalProps {
   onToggleReportResolved?: (id: string) => void;
   theme?: 'light' | 'dark';
   schools?: SchoolItem[];
+  portalView?: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard';
+  onPortalViewChange?: (view: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard') => void;
+  showAgeModal?: boolean;
+  onAgeModalChange?: (show: boolean) => void;
 }
 
 export default function Portal({
@@ -65,7 +70,11 @@ export default function Portal({
   onAddPrincipalReport,
   onToggleReportResolved,
   theme = 'light',
-  schools = INITIAL_SCHOOLS
+  schools = INITIAL_SCHOOLS,
+  portalView: portalViewProp,
+  onPortalViewChange,
+  showAgeModal: showAgeModalProp,
+  onAgeModalChange
 }: PortalProps) {
   const isRtl = currentLang === 'ar';
   const t = TRANSLATIONS[currentLang];
@@ -86,10 +95,32 @@ export default function Portal({
   }, [schools]);
 
   // Portal view state: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'
-  const [view, setView] = useState<'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'>('selection');
+  const [view, setViewInternal] = useState<'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard'>(portalViewProp || 'selection');
 
   // Age Verification Modal State for Student Grade 1 Admission
-  const [showAgeModal, setShowAgeModal] = useState<boolean>(false);
+  const [showAgeModal, setShowAgeModalInternal] = useState<boolean>(showAgeModalProp || false);
+
+  useEffect(() => {
+    if (portalViewProp !== undefined && portalViewProp !== view) {
+      setViewInternal(portalViewProp);
+    }
+  }, [portalViewProp]);
+
+  useEffect(() => {
+    if (showAgeModalProp !== undefined && showAgeModalProp !== showAgeModal) {
+      setShowAgeModalInternal(showAgeModalProp);
+    }
+  }, [showAgeModalProp]);
+
+  const setView = (v: 'selection' | 'parent-choices' | 'parent-track' | 'principal-login' | 'principal-dashboard') => {
+    setViewInternal(v);
+    if (onPortalViewChange) onPortalViewChange(v);
+  };
+
+  const setShowAgeModal = (s: boolean) => {
+    setShowAgeModalInternal(s);
+    if (onAgeModalChange) onAgeModalChange(s);
+  };
 
   // Parent Tracking & Evaluation States
   const [searchName, setSearchName] = useState('');
@@ -333,12 +364,15 @@ export default function Portal({
 
   // Filtered surveys for logged in principal's school
   const schoolSurveys = useMemo(() => {
-    if (!principalSession) return [];
-    const pName = principalSession.schoolName.toLowerCase().trim();
+    if (!principalSession || !surveys) return [];
+    const pCode = String(principalSession.schoolCode || '').trim();
+    if (!pCode) return [];
+    
     return surveys.filter(s => {
-      if (!s.schoolName) return false;
-      const sName = s.schoolName.toLowerCase().trim();
-      return sName.includes(pName) || pName.includes(sName) || (s as any).assignedLeadershipOfficerId === principalSession.schoolCode;
+      if (!s) return false;
+      const sCode = String(s.schoolCode || '').trim();
+      // Use exact code match for strict isolation
+      return sCode === pCode || (s as any).assignedLeadershipOfficerId === pCode;
     });
   }, [surveys, principalSession]);
 
@@ -381,14 +415,14 @@ export default function Portal({
 
   // Incoming placement requests sent to this principal's school
   const placementRequests = useMemo(() => {
-    if (!principalSession) return [];
-    const pCode = (principalSession.schoolCode || '').toLowerCase().trim();
-    const pName = (principalSession.schoolName || '').toLowerCase().trim();
+    if (!principalSession || !surveys) return [];
+    const pCode = String(principalSession.schoolCode || '').trim();
+    if (!pCode) return [];
 
     return surveys.filter((s) => {
-      const sName = (s.schoolName || '').toLowerCase().trim();
-      const sCode = (s.schoolCode || '').toLowerCase().trim();
-      const matchesSchool = (pCode && sCode === pCode) || sName.includes(pName) || pName.includes(sName) || (s as any).assignedLeadershipOfficerId === pCode;
+      if (!s) return false;
+      const sCode = String(s.schoolCode || '').trim();
+      const matchesSchool = sCode === pCode || (s as any).assignedLeadershipOfficerId === pCode;
 
       const isPlacement = (s as any).isVacancyRequest || 
         (s as any).sentToSchoolPrincipal || 
@@ -448,6 +482,22 @@ export default function Portal({
       return true;
     });
   }, [activePlacementSourceList, placementFilter]);
+
+  const getProblemName = (key: string) => {
+    if (key === 'new_registration_saudi') return t.probNewSaudi;
+    if (key === 'new_registration_resident') return t.probNewResident;
+    if (key === 'vacancies_unavailable') return t.probVacancies;
+    if (key === 'student_density') return t.probDensity;
+    if (key === 'unjustified_rejection') return t.probRejection;
+    if (key === 'cert_primary_eq') return t.probPrimaryEq;
+    if (key === 'cert_intermediate_eq') return t.probIntermediateEq;
+    if (key === 'cert_secondary_eq') return t.probSecondaryEq;
+    if (key === 'distance_from_school') return t.probDistance;
+    if (key === 'unregistered_desire') return t.probUnregistered;
+    if (key === 'vacancies_closed') return isRtl ? 'الشواغر مغلقة' : 'Closed Vacancies';
+    if (key === 'class_density') return isRtl ? 'كثافة بالفصول' : 'Classroom Density';
+    return t.probOther || (isRtl ? 'أخرى' : 'Other');
+  };
 
   // Handler for Principal clicking "اعتماد التسكين الميداني ✅" (Approve Staffing)
   const handleConfirmPlacement = (survey: SurveyResponse) => {
@@ -676,7 +726,7 @@ export default function Portal({
 
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" id="portal-root">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-4" id="portal-root">
       <AnimatePresence mode="wait">
         
         {/* VIEW 1: ROLE SELECTION LAUNCHPAD */}
@@ -687,10 +737,10 @@ export default function Portal({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.25 }}
-            className="py-2 sm:py-4 space-y-4 max-w-6xl mx-auto px-4"
+            className="py-1 sm:py-2 space-y-3 max-w-6xl mx-auto px-4"
           >
             {/* Header Title */}
-            <div className="text-center max-w-2xl mx-auto space-y-1">
+            <div className="text-center max-w-2xl mx-auto space-y-0.5">
               <h1 className={`text-2xl sm:text-3xl font-black tracking-tight leading-tight transition-colors ${
                 isDark ? 'text-white' : 'text-slate-800'
               }`}>
@@ -704,9 +754,56 @@ export default function Portal({
             </div>
 
             {/* Selection Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-5 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 max-w-6xl mx-auto">
               
-              {/* Card 1: Parent Beneficiary (ولي أمر) */}
+              {/* Card 1: Educational Schools Map (خارطة المدارس التعليمية) */}
+              <motion.div
+                whileHover={{ y: -4, scale: 1.005 }}
+                onClick={() => window.open('https://mapedumadinah.com/', '_blank')}
+                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                  isDark
+                    ? 'glass-card-dark hover:border-cyan-400 hover:shadow-cyan-500/5'
+                    : 'bg-white border-slate-200 hover:border-cyan-500 hover:shadow-xl'
+                }`}
+              >
+                {/* Decorative background glow */}
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
+                  isDark ? 'bg-cyan-500/5 group-hover:bg-cyan-500/10' : 'bg-cyan-500/5 group-hover:bg-cyan-500/10'
+                }`} />
+                
+                <div className="space-y-3">
+                  {/* Frosted Glass Icon Wrapper */}
+                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
+                    isDark ? 'glass-icon-dark-blue group-hover:bg-cyan-400 group-hover:text-[#061c24]' : 'glass-icon-light-cyan group-hover:bg-cyan-600 group-hover:text-white'
+                  }`}>
+                    <Map className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
+                      isDark ? 'text-white group-hover:text-cyan-300' : 'text-slate-800 group-hover:text-cyan-600'
+                    }`}>
+                      {(t as any).roleMap || (isRtl ? 'خارطة المدارس التعليمية' : 'Educational Schools Map')}
+                    </h3>
+                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                      {(t as any).roleMapIndependent || (isRtl ? 'رابط خارجي مستقل' : 'Independent External Link')}
+                    </p>
+                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                      {(t as any).roleMapDesc || (isRtl 
+                        ? 'بوابة مخصصة للمستفيدين لمعرفة المدارس القريبة من المدرسة المرغوبة او المستهدفة بالمسافة للتسجيل أو النقل'
+                        : 'A portal dedicated to beneficiaries to find schools near their desired or target school by distance for registration or transfer')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
+                  isDark ? 'text-cyan-300' : 'text-cyan-600'
+                }`}>
+                  <span>{(t as any).roleMapAction || (isRtl ? 'زيارة الخارطة الآن' : 'Visit Map Now')}</span>
+                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                </div>
+              </motion.div>
+
+              {/* Card 2: Parent Beneficiary (ولي أمر) */}
               <motion.div
                 whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => setView('parent-choices')}
@@ -751,7 +848,7 @@ export default function Portal({
                 </div>
               </motion.div>
 
-              {/* Card 2: School Principal Beneficiary (مدير مدرسة) */}
+              {/* Card 3: School Principal Beneficiary (مدير مدرسة) */}
               <motion.div
                 whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => {
@@ -800,7 +897,7 @@ export default function Portal({
                 </div>
               </motion.div>
 
-              {/* Card 3: Department Staff (منسوبي الإدارة) */}
+              {/* Card 4: Department Staff (منسوبي الإدارة) */}
               <motion.div
                 whileHover={{ y: -4, scale: 1.005 }}
                 onClick={() => onSelectRole('admin')}
@@ -1067,20 +1164,6 @@ export default function Portal({
             transition={{ duration: 0.2 }}
             className="max-w-4xl mx-auto space-y-8"
           >
-            {/* Back Button */}
-            <button
-              onClick={() => {
-                setView('parent-choices');
-                setSearchName('');
-              }}
-              className={`flex items-center gap-2 text-sm font-bold transition-all cursor-pointer ${
-                isDark ? 'text-teal-400 hover:text-teal-300' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-              <span>{isRtl ? 'الرجاء العودة للاختيارات' : 'Back to Options'}</span>
-            </button>
-
             {/* Tracking Search Card */}
             <div className={`border rounded-3xl p-8 shadow-xl space-y-6 relative overflow-hidden ${
               isDark ? 'glass-card-dark' : 'bg-white border-slate-200'
@@ -1205,20 +1288,9 @@ export default function Portal({
                               </span>
                             </div>
                             <div>
-                              <span className="block text-xs font-semibold text-slate-400">{isRtl ? 'نوع العائق الرئيسي:' : 'Main Issue Type:'}</span>
+                              <span className="block text-xs font-semibold text-slate-400">{isRtl ? 'نوع الطلب الرئيسي:' : 'Main Request Type:'}</span>
                               <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                {isRtl 
-                                  ? (survey.problemType === 'vacancies_unavailable' ? 'شواغر غير متاحة'
-                                    : survey.problemType === 'student_density' ? 'كثافة طلابية عالية في الفصول'
-                                    : survey.problemType === 'unjustified_rejection' ? 'رفض الطلب دون مبرر'
-                                    : survey.problemType === 'cert_primary_eq' ? 'معادلة شهادة ابتدائية'
-                                    : survey.problemType === 'cert_intermediate_eq' ? 'معادلة شهادة متوسطة'
-                                    : survey.problemType === 'cert_secondary_eq' ? 'معادلة شهادة ثانوية'
-                                    : survey.problemType === 'distance_from_school' ? 'بعد السكن عن المدرسة'
-                                    : survey.problemType === 'unregistered_desire' ? (isRtl ? 'طلب قبول ومعادلة شهادة' : 'Admission & Equivalency Request')
-                                    : 'أخرى / ملاحظات عامة')
-                                  : survey.problemType
-                                }
+                                {getProblemName(survey.problemType)}
                               </span>
                             </div>
                           </div>
@@ -3175,7 +3247,7 @@ export default function Portal({
                             }`}>
                               <span className={`text-[10px] font-mono flex items-center gap-1 ${isDark ? 'text-teal-400/50' : 'text-slate-400'}`}>
                                 <Calendar className="w-3.5 h-3.5" />
-                                {survey.createdAt.split('T')[0]}
+                                {survey.createdAt ? String(survey.createdAt).split('T')[0] : '2026-08-12'}
                               </span>
                               
                               <button
@@ -3436,7 +3508,7 @@ export default function Portal({
                                 }`}>
                                   <span className="flex items-center gap-1">
                                     <Calendar className="w-3.5 h-3.5" />
-                                    {rep.createdAt.split('T')[0]} {rep.createdAt.split('T')[1]?.substring(0, 5) || ''}
+                                    {rep.createdAt ? String(rep.createdAt).split('T')[0] : '2026-08-12'} {rep.createdAt && String(rep.createdAt).includes('T') ? String(rep.createdAt).split('T')[1]?.substring(0, 5) || '' : ''}
                                   </span>
                                   
                                   {onToggleReportResolved && (
@@ -3641,7 +3713,7 @@ export default function Portal({
                           {/* 6. Problem Type Dropdown */}
                           <div className="space-y-1.5">
                             <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-300' : 'text-slate-700'}`}>
-                              {isRtl ? 'نوع المشكلة' : 'Problem Type'} <span className="text-red-500">*</span>
+                              {isRtl ? 'نوع الطلب' : 'Request Type'} <span className="text-red-500">*</span>
                             </label>
                             <div className="relative">
                               <HelpCircle className="absolute top-3.5 right-3.5 w-4 h-4 text-slate-400" />

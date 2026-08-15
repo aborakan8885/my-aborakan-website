@@ -374,14 +374,6 @@ export default function SurveyForm({
         if (!schoolName.trim()) {
           newErrors.schoolName = isRtl ? 'يرجى إدخال اسم المدرسة المعنية' : 'Please enter school name';
         }
-
-        if (!problemType) {
-          newErrors.problemType = isRtl ? 'يرجى اختيار نوع المشكلة الرئيسي' : 'Please select main problem type';
-        }
-
-        if (problemType === 'other' && !otherProblemDetails.trim()) {
-          newErrors.otherProblemDetails = isRtl ? 'يرجى تحديد تفاصيل أخرى للمشكلة' : 'Please enter other problem details';
-        }
       }
     }
 
@@ -689,7 +681,7 @@ export default function SurveyForm({
                   <span className={`font-bold ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>{createdSurvey?.schoolName}</span>
                 </div>
                 <div className="md:col-span-2">
-                  <span className="text-slate-400 font-medium">{isRtl ? 'المشكلة الرئيسية: ' : 'Main Issue: '}</span>
+                  <span className="text-slate-400 font-medium">{isRtl ? 'نوع الطلب الرئيسي: ' : 'Main Request Type: '}</span>
                   <span className="font-bold text-teal-600 dark:text-teal-400">
                     {createdSurvey?.problemType === 'distance_from_school' ? (isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Transfer due to school distance') : t[`prob${createdSurvey?.problemType?.charAt(0).toUpperCase()}${createdSurvey?.problemType?.slice(1)}` as keyof typeof t] || createdSurvey?.problemType}
                   </span>
@@ -1015,25 +1007,6 @@ export default function SurveyForm({
   return (
     <div className="max-w-3xl mx-auto my-6 sm:my-10 px-4 sm:px-0">
       
-      {/* Back to Portal Top Bar Button */}
-      {onBackToPortal && (
-        <div className="mb-6 flex justify-start">
-          <button
-            onClick={onBackToPortal}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer border ${
-              isDark
-                ? 'text-teal-300 border-teal-800/40 hover:bg-teal-900/30'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 border-transparent hover:border-slate-200'
-            }`}
-            id="survey-form-back-home"
-          >
-            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-            <Home className="w-4.5 h-4.5" />
-            <span>{t.goBackPortal}</span>
-          </button>
-        </div>
-      )}
-      
       {/* Intro Header */}
       <div className="text-center mb-8">
         <h2 className={`text-xl sm:text-3xl font-black font-sans mb-2 ${isDark ? 'text-teal-200' : 'text-slate-900'}`}>
@@ -1206,31 +1179,6 @@ export default function SurveyForm({
             </div>
 
             {/* Student Age (Hidden in Transfer Mode) */}
-            {!isTransferMode && (
-              <div id="field-studentAge">
-                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
-                  {isRtl ? 'العمر' : 'Age'}
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                    <Clock className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    value={studentAge}
-                    onChange={(e) => setStudentAge(e.target.value)}
-                    placeholder={isRtl ? 'أدخل العمر (مثال: 7 سنوات)' : 'e.g. 7 years'}
-                    className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                      isDark ? 'bg-teal-950/60 text-white' : 'bg-slate-50 text-slate-900'
-                    } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
-                    dir={isRtl ? 'rtl' : 'ltr'}
-                  />
-                </div>
-              </div>
-            )}
-
-
-
             {/* Nationality (الجنسية مع قائمة منسدلة قابلة للبحث) */}
             <div id="field-nationality" className="relative">
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
@@ -1988,92 +1936,6 @@ export default function SurveyForm({
                 )}
               </div>
             </div>
-
-            {/* Section 3: Problem Nature */}
-            {!isTransferMode && (
-              <>
-                <div>
-              <div className={`flex items-center gap-2 mb-6 border-b pb-3 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>
-                <span className="p-2 bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                  <FileQuestion className="w-4.5 h-4.5" />
-                </span>
-                <h3 className="font-extrabold text-base sm:text-lg">
-                  {isRtl ? 'نوع العائق الرئيسي وتفاصيل المشكلة' : 'Request & Complaint Parameters'}
-                </h3>
-              </div>
-
-              <div className="space-y-6">
-                {/* Problem Type dropdown */}
-                <div id="field-problemType">
-                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 mb-2">
-                    {t.problemType} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                      <FileQuestion className="w-4 h-4" />
-                    </span>
-                    <select
-                      value={problemType}
-                      onChange={(e) => {
-                        setProblemType(e.target.value as ProblemType);
-                        setOtherProblemDetails(''); // Reset detail text if changed from other
-                      }}
-                      className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                        isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
-                      } ${
-                        errors.problemType
-                          ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
-                          : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
-                      }`}
-                      dir={isRtl ? 'rtl' : 'ltr'}
-                    >
-                      <option value="">{t.problemSelect}</option>
-                      <option value="new_registration_saudi">{isRtl ? 'تسجيل طالب سعودي مستجد' : 'New Registration (Saudi Student)'}</option>
-                      <option value="new_registration_resident">{isRtl ? 'تسجيل طالب مستجد مقيم' : 'New Registration (Resident Student)'}</option>
-                    </select>
-                  </div>
-                  {errors.problemType && (
-                    <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.problemType}</p>
-                  )}
-                </div>
-
-                {/* Other details text input if problemType is other */}
-                <AnimatePresence>
-                  {problemType === 'other' && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-2 overflow-hidden"
-                      id="field-otherProblemDetails"
-                    >
-                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200">
-                        {isRtl ? 'يرجى كتابة تفاصيل المشكلة المصادفة:' : 'Please explain the other issue details:'} <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        value={otherProblemDetails}
-                        onChange={(e) => setOtherProblemDetails(e.target.value)}
-                        placeholder={isRtl ? 'أدخل تفاصيل العائق أو الطلب هنا لمساعدتنا في تحليله...' : 'Describe the problem parameters here...'}
-                        rows={3}
-                        className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                          isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
-                        } ${
-                          errors.otherProblemDetails
-                            ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
-                            : 'border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100'
-                        }`}
-                        dir={isRtl ? 'rtl' : 'ltr'}
-                      />
-                      {errors.otherProblemDetails && (
-                        <p className="text-xs text-red-500 font-bold">{errors.otherProblemDetails}</p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </>
-        )}
 
             {/* Submit Bar with encryption details */}
             <div className={`pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${isDark ? 'border-teal-800/40' : 'border-slate-100'}`}>

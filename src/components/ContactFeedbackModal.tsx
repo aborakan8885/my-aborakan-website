@@ -119,7 +119,7 @@ export default function ContactFeedbackModal({
                 <div className="leading-relaxed">
                   <span className="font-extrabold text-slate-700 dark:text-cyan-200 block text-xs">فكرة وتطوير النظام:</span>
                   <span className="font-black text-sm sm:text-base text-[#1b6583] dark:text-cyan-100 bg-cyan-100/90 dark:bg-[#218caa]/40 px-3 py-1 rounded-xl border border-[#218caa]/30 inline-block mt-1 shadow-2xs">
-                    الأستاذ / سالم بن محمد الترجمي - وحدة القبول
+                    الأستاذ / سالم بن محمد الترجمي
                   </span>
                 </div>
               </div>

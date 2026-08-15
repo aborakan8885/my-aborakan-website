@@ -139,6 +139,12 @@
   color: #218caa;
 }
 
+.glass-icon-light-cyan {
+  background: rgba(105, 206, 227, 0.12);
+  border: 1px solid rgba(105, 206, 227, 0.25);
+  color: #218caa;
+}
+
 /* Glass icon color options for Dark Mode with brand glow */
 .glass-icon-dark-blue {
   background: rgba(105, 206, 227, 0.15);

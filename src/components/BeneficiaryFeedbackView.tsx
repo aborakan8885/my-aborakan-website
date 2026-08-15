@@ -110,6 +110,17 @@ export default function BeneficiaryFeedbackView({
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    worksheet['!views'] = [{ RTL: true }];
+    worksheet['!cols'] = [
+      { wch: 6 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 24 },
+      { wch: 14 },
+      { wch: 50 },
+      { wch: 40 }
+    ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'ملاحظات المستفيدين');
     XLSX.writeFile(workbook, `beneficiary_feedbacks_${new Date().toISOString().slice(0, 10)}.xlsx`);
