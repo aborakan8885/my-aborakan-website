@@ -23,6 +23,7 @@ import {
   Home,
   ArrowRight,
   ArrowLeft,
+  ArrowRightLeft,
   Users,
   MapPin,
   ClipboardList,
@@ -115,6 +116,13 @@ export default function SurveyForm({
 
   // Student Category Selection: 'fresh' (مستجد) or 'non_fresh' (غير مستجد)
   const [studentCategoryType, setStudentCategoryType] = useState<'fresh' | 'non_fresh'>(() => isTransferMode ? 'non_fresh' : 'fresh');
+  
+  // New state for request path selection (as requested by user)
+  const [requestPath, setRequestPath] = useState<'transfer' | 'equivalency' | ''>(() => {
+    if (isTransferMode) return 'transfer';
+    return '';
+  });
+
   const [equalizationStage, setEqualizationStage] = useState<'primary' | 'intermediate' | 'secondary' | ''>('');
   const [equalizationNotes, setEqualizationNotes] = useState('');
 
@@ -148,6 +156,27 @@ export default function SurveyForm({
   // Star hover feedback states
   const [staffHover, setStaffHover] = useState<number>(0);
   const [receptionHover, setReceptionHover] = useState<number>(0);
+
+  // Intro Header Hooks (Moved here to avoid React hook violation)
+  const currentFormTitle = useMemo(() => {
+    if (isTransferMode) {
+      if (requestPath === 'equivalency') {
+        return isRtl ? 'نموذج تقديم طلب معادلة المؤهلات' : 'Request for Equivalency of Credentials';
+      }
+      return isRtl ? 'نموذج تقديم طلب نقل طالب إلى مدرسة أخرى' : 'Student Transfer Request Form';
+    }
+    return t.formTitle;
+  }, [isTransferMode, requestPath, isRtl, t.formTitle]);
+
+  const currentFormSubtitle = useMemo(() => {
+    if (isTransferMode) {
+      if (requestPath === 'equivalency') {
+        return isRtl ? 'بوابة معادلة الشهادات والمؤهلات الدراسية - إدارة التعليم بالمدينة المنورة' : 'Qualifications and credentials equivalency portal';
+      }
+      return isRtl ? 'نظام نقل الطلاب وتوزيع الرغبات وإرفاق الإثباتات المستندية - إدارة التعليم بالمدينة المنورة' : 'Student transfer & placement portal';
+    }
+    return isRtl ? 'فضلاً يرجى تعبئة بيانات الطلب أو الشكوى الخاصة بنجلك وتحديد المعوقات المصادفة لتيسير الإجراء والتوجيه السليم.' : 'Please specify the educational request details below to resolve constraints immediately.';
+  }, [isTransferMode, requestPath, isRtl]);
 
   // -----------------------------------------------------------------
   // Flow and Validation States
@@ -304,47 +333,48 @@ export default function SurveyForm({
       newErrors.gender = isRtl ? 'يرجى اختيار جنس الطالب / الطالبة' : 'Please select gender';
     }
 
-    if (isTransferMode) {
-      // Transfer Mode Validation
-      if (studentCategoryType === 'non_fresh' && equalizationStage !== '') {
-        // Equalization branch in transfer mode
-        if (!equalizationStage) {
-          newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
-        }
-      } else {
-        // School Transfer branch
-        if (!stage) {
-          newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
-        }
-        if (!grade) {
-          newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
-        }
-        if (!sector) {
-          newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
-        }
-        if (!neighborhood.trim()) {
-          newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
-        }
-        if (!schoolName.trim()) {
-          newErrors.schoolName = isRtl ? 'يرجى إدخال/اختيار المدرسة المطلوب النقل لها' : 'Please select target transfer school';
-        }
-        if (!transferReason) {
-          newErrors.transferReason = isRtl ? 'يرجى اختيار سبب النقل' : 'Please select reason for transfer';
-        }
-        if (transferReason === 'other' && !transferReasonCustom.trim()) {
-          newErrors.transferReasonCustom = isRtl ? 'يرجى تحديد سبب النقل بالتفصيل' : 'Please specify custom transfer reason';
-        }
-        if (!contactedSchool) {
-          newErrors.contactedSchool = isRtl ? 'يرجى تحديد ما إذا تم التواصل مع المدرسة' : 'Please state if you contacted school';
-        }
-        if (contactedSchool === 'yes' && !schoolFeedback.trim()) {
-          newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
-        }
-        if (!guardianTransferPledge) {
-          newErrors.guardianTransferPledge = isRtl ? 'يرجى الموافقة والتأكيد على التعهد والإقرار' : 'Please accept the guardian pledge';
-        }
+    if (isTransferMode && !requestPath) {
+      newErrors.requestPath = isRtl ? 'يرجى تحديد صفة ومسار الطلب' : 'Please select request path';
+    }
+
+    if (isTransferMode && requestPath === 'transfer') {
+      // School Transfer branch
+      if (!stage) {
+        newErrors.stage = isRtl ? 'يرجى اختيار المرحلة الدراسية' : 'Please select educational stage';
       }
-    } else {
+      if (!grade) {
+        newErrors.grade = isRtl ? 'يرجى اختيار الصف الدراسي' : 'Please select classroom grade';
+      }
+      if (!sector) {
+        newErrors.sector = isRtl ? 'يرجى اختيار القطاع الإداري' : 'Please select administrative sector';
+      }
+      if (!neighborhood.trim()) {
+        newErrors.neighborhood = isRtl ? 'يرجى كتابة اسم الحي السكني' : 'Please enter neighborhood name';
+      }
+      if (!schoolName.trim()) {
+        newErrors.schoolName = isRtl ? 'يرجى إدخال/اختيار المدرسة المطلوب النقل لها' : 'Please select target transfer school';
+      }
+      if (!transferReason) {
+        newErrors.transferReason = isRtl ? 'يرجى اختيار سبب النقل' : 'Please select reason for transfer';
+      }
+      if (transferReason === 'other' && !transferReasonCustom.trim()) {
+        newErrors.transferReasonCustom = isRtl ? 'يرجى تحديد سبب النقل بالتفصيل' : 'Please specify custom transfer reason';
+      }
+      if (!contactedSchool) {
+        newErrors.contactedSchool = isRtl ? 'يرجى تحديد ما إذا تم التواصل مع المدرسة' : 'Please state if you contacted school';
+      }
+      if (contactedSchool === 'yes' && !schoolFeedback.trim()) {
+        newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
+      }
+      if (!guardianTransferPledge) {
+        newErrors.guardianTransferPledge = isRtl ? 'يرجى الموافقة والتأكيد على التعهد والإقرار' : 'Please accept the guardian pledge';
+      }
+    } else if (isTransferMode && requestPath === 'equivalency') {
+      // Equivalency branch
+      if (!equalizationStage) {
+        newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+      }
+    } else if (!isTransferMode) {
       // Standard Request Validation
       if (studentCategoryType === 'non_fresh') {
         if (!equalizationStage) {
@@ -406,6 +436,10 @@ export default function SurveyForm({
           'other': transferReasonCustom ? `أخرى: ${transferReasonCustom.trim()}` : 'سبب آخر'
         };
 
+        const isEq = requestPath === 'equivalency';
+        const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
+        const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
+
         const response = onSubmit({
           beneficiaryName: beneficiaryName.trim(),
           parentName: parentName.trim() || undefined,
@@ -413,42 +447,47 @@ export default function SurveyForm({
           nationality: nationality.trim(),
           residencyType: residencyType || undefined,
           customResidencyType: residencyType === 'other' ? customResidencyType.trim() : undefined,
-          studentCategoryType: 'fresh',
-          isNonFreshStudent: false,
-          isEqualizationRequest: false,
-          equalizationStage: undefined,
+          studentCategoryType: 'non_fresh',
+          isNonFreshStudent: true,
+          isEqualizationRequest: isEq,
+          equalizationStage: isEq ? equalizationStage : undefined,
 
-          serviceType: 'transfer',
-          transferReason: (transferReasonLabelMap[transferReason] || transferReason),
-          transferReasonCustom: (transferReason === 'other' ? transferReasonCustom.trim() : undefined),
+          serviceType: isEq ? 'registration' : 'transfer',
+          transferReason: isEq ? undefined : (transferReasonLabelMap[transferReason] || transferReason),
+          transferReasonCustom: isEq ? undefined : (transferReason === 'other' ? transferReasonCustom.trim() : undefined),
           transferAttachmentName: (transferAttachmentName || undefined),
           transferAttachmentData: (transferAttachmentData || undefined),
           transferAttachmentType: (transferAttachmentType || undefined),
           transferAttachmentSize: (transferAttachmentSize || undefined),
-          guardianTransferPledge: guardianTransferPledge,
+          guardianTransferPledge: isEq ? undefined : guardianTransferPledge,
 
-          stage: stage,
-          sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-          schoolName: schoolName.trim(),
+          stage: isEq ? eqStageMapped : stage,
+          sector: isEq ? 'منطقة المدينة المنورة (المقر الرئيسي)' : (sector || 'منطقة المدينة المنورة (المقر الرئيسي)'),
+          schoolName: isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim(),
+          firstSchoolName: schoolName.trim(),
+          firstSchoolCode: schoolCode.trim() || undefined,
           schoolCode: (schoolCode.trim() || undefined),
           secondSchoolName: (secondSchoolName.trim() || undefined),
           thirdSchoolName: (thirdSchoolName.trim() || undefined),
-          agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
-          problemType: 'unregistered_desire',
+          agreedToAlternativeSchoolPlacement: isEq ? true : agreedToAlternativeSchoolPlacement,
+          problemType: isEq ? 'other' : 'unregistered_desire',
+          requestType: isEq ? 'equivalency' : 'transfer',
           serviceEmployee: '',
           isResolved: false,
           staffSatisfaction: 0,
           receptionSatisfaction: 0,
-          notes: `🔄 طلب نقل طالب إلى مدرسة (${schoolName.trim()}). السبب: ${transferReasonLabelMap[transferReason] || transferReason}`,
+          notes: isEq 
+            ? `🎓 طلب معادلة شهادة ومؤهل لـ (${eqStageLabelAr}). ${equalizationNotes ? 'تفاصيل المؤهل: ' + equalizationNotes.trim() : ''}`
+            : `🔄 طلب نقل طالب إلى مدرسة (${schoolName.trim()}). السبب: ${transferReasonLabelMap[transferReason] || transferReason}`,
           isOfflineCreated: !isOnline,
 
           gender: gender ? (gender as 'boys' | 'girls') : 'boys',
-          grade: grade,
+          grade: isEq ? `معادلة ${eqStageLabelAr}` : grade,
           neighborhood: neighborhood.trim() || undefined,
-          contactedSchool: ((contactedSchool as 'yes' | 'no') || 'no'),
-          schoolFeedback: (contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
-          isVacancyRequest: true,
-          vacancyRequestStatus: 'pending_vacancy'
+          contactedSchool: isEq ? 'no' : ((contactedSchool as 'yes' | 'no') || 'no'),
+          schoolFeedback: (!isEq && contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
+          isVacancyRequest: false,
+          vacancyRequestStatus: undefined
         });
 
         setCreatedSurvey(response);
@@ -479,7 +518,9 @@ export default function SurveyForm({
 
         stage: isEq ? eqStageMapped : stage,
         sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-        schoolName: (isEq && schoolName.trim()) ? schoolName.trim() : (isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim()),
+        schoolName: (schoolName.trim()) ? schoolName.trim() : (isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim()),
+        firstSchoolName: schoolName.trim() || undefined,
+        firstSchoolCode: schoolCode.trim() || undefined,
         schoolCode: (schoolCode.trim() || undefined),
         problemType: isEq ? 'other' : (problemType as ProblemType),
         serviceEmployee: '',
@@ -503,8 +544,9 @@ export default function SurveyForm({
         secondSchoolName: (secondSchoolName.trim() || undefined),
         thirdSchoolName: (thirdSchoolName.trim() || undefined),
         agreedToAlternativeSchoolPlacement: agreedToAlternativeSchoolPlacement,
-        isVacancyRequest: isVac ? true : undefined,
-        vacancyRequestStatus: isVac ? 'pending_vacancy' : undefined
+        isVacancyRequest: false,
+        vacancyRequestStatus: undefined,
+        requestType: isEq ? 'equivalency' : 'registration'
       });
 
       setCreatedSurvey(response);
@@ -1004,14 +1046,10 @@ export default function SurveyForm({
       {/* Intro Header */}
       <div className="text-center mb-8">
         <h2 className={`text-xl sm:text-3xl font-black font-sans mb-2 ${isDark ? 'text-teal-200' : 'text-slate-900'}`}>
-          {isTransferMode
-            ? (isRtl ? 'نموذج تقديم طلب نقل طالب إلى مدرسة أخرى' : 'Student Transfer Request Form')
-            : t.formTitle}
+          {currentFormTitle}
         </h2>
         <p className={`text-xs sm:text-base max-w-xl mx-auto leading-relaxed ${isDark ? 'text-teal-300/80' : 'text-slate-500'}`}>
-          {isTransferMode
-            ? (isRtl ? 'نظام نقل الطلاب وتوزيع الرغبات وإرفاق الإثباتات المستندية - إدارة التعليم بالمدينة المنورة' : 'Student transfer & placement portal')
-            : (isRtl ? 'فضلاً يرجى تعبئة بيانات الطلب أو الشكوى الخاصة بنجلك وتحديد المعوقات المصادفة لتيسير الإجراء والتوجيه السليم.' : 'Please specify the educational request details below to resolve constraints immediately.')}
+          {currentFormSubtitle}
         </p>
       </div>
 
@@ -1083,6 +1121,67 @@ export default function SurveyForm({
               {isRtl ? 'بيانات الطالب وولي الأمر' : 'Student & Parent Information'}
             </h3>
           </div>
+
+          {/* Request Path Selection (Visible in Transfer Mode) */}
+          {isTransferMode && (
+            <div className="grid grid-cols-1 gap-6 mb-8 pt-6 border-t dark:border-teal-800/20">
+              <div id="field-requestPath">
+                <label className="block text-xs sm:text-sm font-black text-emerald-700 dark:text-emerald-400 mb-4 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
+                  {isRtl ? '📌 يرجى تحديد صفة ومسار الطلب المقدم:' : '📌 Please select request path/category:'} <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestPath('transfer');
+                      setStudentCategoryType('non_fresh');
+                    }}
+                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all text-center group ${
+                      requestPath === 'transfer'
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg scale-102'
+                        : 'bg-white dark:bg-teal-900/10 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:border-emerald-500'
+                    }`}
+                  >
+                    <ArrowRightLeft className={`w-8 h-8 ${requestPath === 'transfer' ? 'text-white' : 'text-emerald-600'}`} />
+                    <div className="space-y-1">
+                      <span className="block text-sm font-black">
+                        {isRtl ? 'طلب نقل الى مدرسة أخرى' : 'Transfer to another school'}
+                      </span>
+                      <span className={`block text-[10px] font-bold ${requestPath === 'transfer' ? 'text-emerald-100' : 'text-slate-400'}`}>
+                        {isRtl ? 'طالب غير مستجد' : 'Existing student'}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestPath('equivalency');
+                      setStudentCategoryType('non_fresh');
+                    }}
+                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all text-center group ${
+                      requestPath === 'equivalency'
+                        ? 'bg-amber-600 border-amber-600 text-white shadow-lg scale-102'
+                        : 'bg-white dark:bg-teal-900/10 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:border-amber-500'
+                    }`}
+                  >
+                    <GraduationCap className={`w-8 h-8 ${requestPath === 'equivalency' ? 'text-white' : 'text-amber-600'}`} />
+                    <div className="space-y-1">
+                      <span className="block text-sm font-black">
+                        {isRtl ? 'طلب معادلة المؤهلات' : 'Equivalency of Credentials'}
+                      </span>
+                      <span className={`block text-[10px] font-bold ${requestPath === 'equivalency' ? 'text-amber-100' : 'text-slate-400'}`}>
+                        {isRtl ? 'الشهادات الخارجية / الدولية' : 'Foreign / International Certificates'}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+                {errors.requestPath && (
+                  <p className="mt-2 text-xs text-red-500 font-bold">{errors.requestPath}</p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Student Name */}

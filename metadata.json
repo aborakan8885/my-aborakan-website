@@ -1,5 +1,5 @@
 {
-  "name": "منصة الخدمات الموحدة للقبول",
+  "name": "منصة خدمات المستفيد للقبول",
   "description": "A comprehensive offline-first survey and dashboard system for measuring beneficiary satisfaction, featuring interactive charts, multi-language support (AR/EN), security encryption simulation, CSV export, automatic backup, and negative feedback email notification system.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

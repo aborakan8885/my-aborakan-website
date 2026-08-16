@@ -531,6 +531,9 @@ export default function Portal({
       staffingConfirmedAt: now,
       archivedAt: now,
       staffingConfirmedBy: principalSession?.principalName || 'مدير المدرسة',
+      staffingConfirmedSchoolName: principalSession?.schoolName || survey.schoolName,
+      staffingConfirmedStage: survey.stage,
+      staffingConfirmedGrade: survey.grade,
       staffingNote: customNote,
       unresolvedReason: customNote,
       transferAttachmentData: undefined,
@@ -1301,7 +1304,14 @@ export default function Portal({
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-sm">
                             <div>
                               <span className="block text-xs font-semibold text-slate-400">{isRtl ? 'المدرسة المعنية:' : 'School:'}</span>
-                              <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{survey.schoolName}</span>
+                              <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                {survey.schoolName}
+                                {survey.firstSchoolName && survey.firstSchoolName !== survey.schoolName && (
+                                  <span className="block text-[10px] text-slate-400 mt-0.5 font-medium italic">
+                                    {isRtl ? 'الرغبة الأصلية: ' : 'Original Desire: '} {survey.firstSchoolName}
+                                  </span>
+                                )}
+                              </span>
                             </div>
                             <div>
                               <span className="block text-xs font-semibold text-slate-400">{isRtl ? 'المرحلة والصف:' : 'Stage & Grade:'}</span>
@@ -1420,8 +1430,10 @@ export default function Portal({
 
                             // 1. FINAL PLACEMENT APPROVED (Congratulation & Mandatory Evaluation first)
                             if (isDone) {
-                              const placedSchoolName = (survey as any).vacancyOpenedSchoolName || survey.schoolName;
-                              const stageFormatted = isRtl ? (survey.stage === 'EarlyChildhood' ? 'طفولة مبكرة' : survey.stage === 'Kindergarten' ? 'رياض أطفال' : survey.stage === 'Primary' ? 'ابتدائي' : survey.stage === 'Intermediate' ? 'متوسط' : 'ثانوي') : survey.stage;
+                              const placedSchoolName = (survey as any).staffingConfirmedSchoolName || (survey as any).vacancyOpenedSchoolName || survey.schoolName;
+                              const confirmedStage = (survey as any).staffingConfirmedStage || survey.stage;
+                              const confirmedGrade = (survey as any).staffingConfirmedGrade || survey.grade;
+                              const stageFormatted = isRtl ? (confirmedStage === 'EarlyChildhood' ? 'طفولة مبكرة' : confirmedStage === 'Kindergarten' ? 'رياض أطفال' : confirmedStage === 'Primary' ? 'ابتدائي' : confirmedStage === 'Intermediate' ? 'متوسط' : 'ثانوي') : confirmedStage;
                               const hasSubmittedRating = Boolean(
                                 local.success || 
                                 evals[survey.id]?.submitted ||
@@ -1620,11 +1632,10 @@ export default function Portal({
                                     </div>
                                   </div>
 
-                                  {/* Step 3: School Placement Details (Revealed ONLY upon clicking Save & Send or if already evaluated) */}
-                                  {hasSubmittedRating ? (
-                                    <div className={`p-5 sm:p-6 rounded-3xl border space-y-4 shadow-sm animate-in fade-in duration-300 ${
-                                      isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
-                                    }`}>
+                                  {/* Step 3: School Placement Details (Visible once staffing is confirmed) */}
+                                  <div className={`p-5 sm:p-6 rounded-3xl border space-y-4 shadow-sm animate-in fade-in duration-300 ${
+                                    isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
+                                  }`}>
                                       <div className="flex items-center gap-2 border-b pb-3 border-emerald-200 dark:border-teal-800/60 font-black text-sm text-emerald-800 dark:text-emerald-300">
                                         <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                         <span>{isRtl ? '🏫 بيانات المدرسة المسكن بها الطالب والمرحلة والصف:' : '🏫 Placed School & Grade Details:'}</span>
@@ -1641,7 +1652,7 @@ export default function Portal({
                                         </div>
                                         <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
                                           <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'الصف المسكن به:' : 'Assigned Grade:'}</span>
-                                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">{survey.grade || 'غير محدد'}</span>
+                                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">{confirmedGrade || 'غير محدد'}</span>
                                         </div>
                                       </div>
 
@@ -1710,24 +1721,9 @@ export default function Portal({
                                         </div>
                                       )}
                                     </div>
-                                  ) : (
-                                    <div className={`p-5 rounded-3xl border border-dashed text-center space-y-2 shadow-xs ${
-                                      isDark ? 'border-amber-700/60 bg-amber-950/20 text-amber-300' : 'border-amber-300 bg-amber-50/70 text-amber-900'
-                                    }`}>
-                                      <div className="flex items-center justify-center gap-2 text-sm sm:text-base font-black text-amber-800 dark:text-amber-300">
-                                        <Lock className="w-4 h-4 sm:w-5 sm:h-5" />
-                                        <span>{isRtl ? '🔒 بيانات التسكين والمدرسة المعتمدة محجوبة حالياً' : '🔒 Placement Details Currently Locked'}</span>
-                                      </div>
-                                      <p className="text-xs font-bold leading-relaxed max-w-xl mx-auto opacity-90">
-                                        {isRtl 
-                                          ? '📌 لا تظهر بيانات التسكين والمدرسة المعتمدة إلا بعد تقييم الخدمة والضغط على أيقونة (حفظ وإرسال التقييم وعرض بيانات التسكين) أعلاه.' 
-                                          : '📌 Placement and assigned school details will only appear after submitting the evaluation above.'}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }
+                                  </div>
+                                );
+                              }
 
                             // 2 & 3. Sent to school principal or returned by principal for vacancy study
                             if (st === 'sent_to_school_principal' || (survey as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || (survey as any).sentToLeadership || st === 'returned_to_eq_officer' || st === 'returned_from_principal') {
@@ -3086,7 +3082,21 @@ export default function Portal({
                                       📌 {isRtl ? `ملاحظة التسكين: ${(req as any).staffingNote}` : `Note: ${(req as any).staffingNote}`}
                                     </p>
                                   )}
-                                  <div className="text-[10px] opacity-80 flex flex-wrap gap-3 font-mono pt-0.5">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-emerald-500/20 mt-1">
+                                    <div className="text-[10px] font-bold">
+                                      <span className="opacity-70 block">{isRtl ? 'المدرسة:' : 'School:'}</span>
+                                      <span>{(req as any).staffingConfirmedSchoolName || req.schoolName}</span>
+                                    </div>
+                                    <div className="text-[10px] font-bold">
+                                      <span className="opacity-70 block">{isRtl ? 'المرحلة:' : 'Stage:'}</span>
+                                      <span>{(req as any).staffingConfirmedStage || req.stage}</span>
+                                    </div>
+                                    <div className="text-[10px] font-bold">
+                                      <span className="opacity-70 block">{isRtl ? 'الصف:' : 'Grade:'}</span>
+                                      <span>{(req as any).staffingConfirmedGrade || req.grade || '---'}</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-[10px] opacity-80 flex flex-wrap gap-3 font-mono pt-1.5 border-t border-emerald-500/10">
                                     {(req as any).staffingConfirmedBy && <span>{isRtl ? `المدير المعتمِد: ${(req as any).staffingConfirmedBy}` : `By: ${(req as any).staffingConfirmedBy}`}</span>}
                                     {(req as any).staffingConfirmedAt && <span>{new Date((req as any).staffingConfirmedAt).toLocaleString('ar-SA')}</span>}
                                   </div>
@@ -3252,7 +3262,7 @@ export default function Portal({
                               {/* School choices and pledge */}
                               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-teal-950/40 border border-slate-200 dark:border-teal-900/50 space-y-1 text-[11px] font-bold text-start">
                                 <div className="text-slate-800 dark:text-teal-100">
-                                  🏫 <span className="text-slate-500 font-medium">{isRtl ? 'الرغبة الأولى:' : '1st Choice:'}</span> {survey.schoolName}
+                                  🏫 <span className="text-slate-500 font-medium">{isRtl ? 'الرغبة الأولى:' : '1st Choice:'}</span> {survey.firstSchoolName || survey.schoolName}
                                 </div>
                                 {survey.secondSchoolName && (
                                   <div className="text-slate-700 dark:text-teal-200">

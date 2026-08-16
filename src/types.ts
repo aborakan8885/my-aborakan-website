@@ -5,6 +5,8 @@
 
 export type ProblemType = 'new_registration_saudi' | 'new_registration_resident' | 'vacancies_unavailable' | 'student_density' | 'unjustified_rejection' | 'distance_from_school' | 'unregistered_desire' | 'other' | 'cert_primary_eq' | 'cert_intermediate_eq' | 'cert_secondary_eq';
 
+export type RequestType = 'registration' | 'transfer' | 'equivalency';
+
 export interface SurveyResponse {
   id: string;
   beneficiaryName: string;
@@ -13,8 +15,11 @@ export interface SurveyResponse {
   stage: string; // e.g. "Primary", "Intermediate", "Secondary"
   sector: string; // e.g. "North", "South", "East", "West"
   schoolName: string;
+  firstSchoolName?: string;
+  firstSchoolCode?: string;
   schoolCode?: string; // الرقم الوزاري للمدرسة
   problemType: ProblemType;
+  requestType?: RequestType;
   serviceEmployee?: string;
   isResolved: boolean;
   unresolvedReason?: string;
@@ -127,6 +132,9 @@ export interface SurveyResponse {
   staffingNote?: string;
   staffingConfirmedAt?: string;
   staffingConfirmedBy?: string;
+  staffingConfirmedSchoolName?: string;
+  staffingConfirmedStage?: string;
+  staffingConfirmedGrade?: string;
   archivedAt?: string;
   archivedBy?: string;
   vacancyReplyNote?: string;

@@ -75,105 +75,30 @@ import {
   Calendar,
   MapPin,
   FileUp,
+  Target,
   Building,
   Award,
-  Star
+  Star,
+  ShieldCheck,
+  Archive
 } from 'lucide-react';
-import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
+import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, RequestType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
 import { sendOfficialEmail, OFFICIAL_SENDER_EMAIL } from '../utils/emailService';
 import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
 import BeneficiarySatisfactionView from './BeneficiarySatisfactionView';
 import DateBackupModal from './DateBackupModal';
-import { clearSchoolsFromStorage, clearAllSurveysFromStorage, saveSchoolsToStorage, loadSchoolsFromStorage, isSurveyEqualizationRequest, isSurveyTransferRequest } from '../utils/storageEngine';
-export { isSurveyEqualizationRequest, isSurveyTransferRequest };
+import { 
+  clearSchoolsFromStorage, 
+  clearAllSurveysFromStorage, 
+  saveSchoolsToStorage, 
+  loadSchoolsFromStorage, 
+  isSurveyEqualizationRequest, 
+  isSurveyTransferRequest,
+  getRequestTypeInfo
+} from '../utils/storageEngine';
+export { isSurveyEqualizationRequest, isSurveyTransferRequest, getRequestTypeInfo };
 
-export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, isRtl: boolean = true): {
-  label: string;
-  subLabel: string;
-  badgeClass: string;
-  icon: string;
-  category: 'registration' | 'transfer' | 'equalization' | 'admission';
-} {
-  if (!survey) {
-    return {
-      label: isRtl ? 'تسجيل جديد' : 'New Registration',
-      subLabel: isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration',
-      badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
-      icon: '🎒',
-      category: 'registration'
-    };
-  }
-
-  // 1. TRANSFER (طلب نقل طالب من مدرسة إلى مدرسة) -> وحدة القبول والتسجيل
-  if (isSurveyTransferRequest(survey)) {
-    let sub = isRtl ? 'طلب نقل بين المدارس' : 'Transfer Request';
-    if (survey.problemType === 'distance_from_school') {
-      sub = isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Distance from School Transfer';
-    } else if (survey.problemType === 'vacancies_unavailable' || (survey.problemType as string) === 'vacancies_closed') {
-      sub = isRtl ? 'طلب شاغر ونقل مدرسي' : 'School Vacancy & Transfer';
-    } else if (survey.problemType === 'student_density') {
-      sub = isRtl ? 'نقل لمعالجة كثافة الفصول' : 'Classroom Density Transfer';
-    } else if (survey.transferReason) {
-      sub = survey.transferReason;
-    }
-    return {
-      label: isRtl ? 'نقل طالب' : 'Student Transfer',
-      subLabel: sub,
-      badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/40',
-      icon: '🔄',
-      category: 'transfer'
-    };
-  }
-
-  // 2. EQUALIZATION (معادلة مؤهلات وشهادات) -> مسؤول معادلة الشهادات
-  if (isSurveyEqualizationRequest(survey)) {
-    let sub = isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency';
-    if (survey.problemType === 'cert_primary_eq' || survey.equalizationStage === 'primary') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة الابتدائية' : 'Primary Cert. Equivalency';
-    } else if (survey.problemType === 'cert_intermediate_eq' || survey.equalizationStage === 'intermediate') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة المتوسطة' : 'Intermediate Cert. Equivalency';
-    } else if (survey.problemType === 'cert_secondary_eq' || survey.equalizationStage === 'secondary') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة الثانوية' : 'Secondary Cert. Equivalency';
-    }
-    return {
-      label: isRtl ? 'معادلة مؤهلات' : 'Qualifications Equivalency',
-      subLabel: sub,
-      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
-      icon: '🎓',
-      category: 'equalization'
-    };
-  }
-
-  // 3. ADMISSION CASE (معاملة قبول)
-  if (survey.problemType === 'unjustified_rejection') {
-    return {
-      label: isRtl ? 'معاملة قبول' : 'Admission Case',
-      subLabel: isRtl ? 'معالجة رفض قبول دون مبرر نظامي' : 'Unjustified Rejection Case',
-      badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40',
-      icon: '📋',
-      category: 'admission'
-    };
-  }
-
-  // 4. NEW REGISTRATION (تسجيل جديد)
-  let subReg = isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration';
-  if (survey.problemType === 'new_registration_saudi') {
-    subReg = isRtl ? 'تسجيل مستجد - سعودي' : 'New Saudi Registration';
-  } else if (survey.problemType === 'new_registration_resident') {
-    subReg = isRtl ? 'تسجيل مستجد - مقيم' : 'New Resident Registration';
-  } else if (survey.problemType === 'unregistered_desire') {
-    subReg = isRtl ? 'تسجيل وقبول بالرغبة الأولى' : 'Desired Registration';
-  }
-
-  return {
-    label: isRtl ? 'تسجيل جديد' : 'New Registration',
-    subLabel: subReg,
-    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
-    icon: '🎒',
-    category: 'registration'
-  };
-}
 
 export function normalizeArabicText(str: string | number | undefined | null): string {
   if (str === null || str === undefined) return '';
@@ -860,18 +785,24 @@ function Dashboard({
       return `${info.label} (${info.subLabel})`;
     }
     switch (key) {
-      case 'vacancies_unavailable': return isRtl ? 'نقل طالب (طلب شاغر)' : 'Student Transfer (Vacancy)';
-      case 'vacancies_closed': return isRtl ? 'نقل طالب (شواغر مغلقة)' : 'Student Transfer (Closed)';
-      case 'student_density': return isRtl ? 'نقل طالب (كثافة بالفصول)' : 'Student Transfer (Density)';
-      case 'unjustified_rejection': return isRtl ? 'معاملة قبول (رفض دون مبرر)' : 'Admission Case (Rejection)';
-      case 'cert_primary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الابتدائية)' : 'Equivalency (Primary)';
-      case 'cert_intermediate_eq': return isRtl ? 'معادلة مؤهلات (المرحلة المتوسطة)' : 'Equivalency (Intermediate)';
-      case 'cert_secondary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الثانوية)' : 'Equivalency (Secondary)';
-      case 'distance_from_school': return isRtl ? 'نقل طالب (بعد السكن)' : 'Student Transfer (Distance)';
-      case 'unregistered_desire': return isRtl ? 'تسجيل جديد (قبول بالرغبة)' : 'New Registration (Desired)';
-      case 'new_registration_saudi': return isRtl ? 'تسجيل جديد (سعودي)' : 'New Registration (Saudi)';
-      case 'new_registration_resident': return isRtl ? 'تسجيل جديد (مقيم)' : 'New Registration (Resident)';
-      default: return isRtl ? 'معاملة قبول / أخرى' : 'Admission Case / Other';
+      case 'vacancies_unavailable':
+      case 'vacancies_closed':
+      case 'student_density':
+      case 'distance_from_school':
+        return isRtl ? 'نقل' : 'Transfer';
+      case 'unjustified_rejection':
+        return isRtl ? 'معاملة قبول' : 'Admission Case';
+      case 'cert_primary_eq':
+      case 'cert_intermediate_eq':
+      case 'cert_secondary_eq':
+        return isRtl ? 'معادلة' : 'Equivalency';
+      case 'unregistered_desire':
+      case 'new_registration_saudi':
+      case 'new_registration_resident':
+        return isRtl ? 'تسجيل جديد' : 'New Registration';
+      case 'other':
+        return isRtl ? 'أخرى' : 'Other';
+      default: return isRtl ? 'أخرى / غير محدد' : 'Other / Unspecified';
     }
   };
 
@@ -2065,39 +1996,80 @@ Direct Strategic Recommendations:
     event.target.value = '';
   };
 
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [stageFilter, setStageFilter] = useState('');
+  const [problemFilter, setProblemFilter] = useState('');
+  const [resolvedFilter, setResolvedFilter] = useState('');
+  const [employeeFilter, setEmployeeFilter] = useState('');
+
+  // Vacancy pipeline states
+  const [supervisorFilterTab, setSupervisorFilterTab] = useState<'all' | 'new_unreceived' | 'my_received' | 'vacancy_approved' | 'sent_leadership' | 'sent_principal' | 'staffing_confirmed' | 'archived'>('all');
+  const [requestTypeFilter, setRequestTypeFilter] = useState<'all' | RequestType>('all');
+  const [selectedCategoryMap, setSelectedCategoryMap] = useState<Record<string, string>>({});
+  const [vacancyFilterStatus, setVacancyFilterStatus] = useState<'all' | 'pending' | 'from_admissions' | 'approved' | 'sent_to_leadership' | 'delayed' | 'staffing_confirmed' | 'archived'>('all');
+  const [vacancyPage, setVacancyPage] = useState<number>(1);
+  const VACANCY_PAGE_SIZE = 50;
+
+  useEffect(() => {
+    setVacancyPage(1);
+  }, [vacancyFilterStatus, searchQuery]);
+  const [selectedPlanningOfficerMap, setSelectedPlanningOfficerMap] = useState<Record<string, string>>({});
+  const [selectedLeadershipOfficerMap, setSelectedLeadershipOfficerMap] = useState<Record<string, string>>({});
+  const [selectedAltSchoolMap, setSelectedAltSchoolMap] = useState<Record<string, string>>({});
+  const [altSchoolSearchMap, setAltSchoolSearchMap] = useState<Record<string, string>>({});
+  const [rerouteReasonMap, setRerouteReasonMap] = useState<Record<string, string>>({});
+  const [vacancyReopenedMap, setVacancyReopenedMap] = useState<Record<string, boolean>>({});
+  const [vacancyOpenedReasonMap, setVacancyOpenedReasonMap] = useState<Record<string, string>>({});
+  const [planningActionTypeMap, setPlanningActionTypeMap] = useState<Record<string, 'reopen' | 'alt_school'>>({});
+  const [staffingNotesMap, setStaffingNotesMap] = useState<Record<string, string>>({});
+  const [openVacancyChoiceMap, setOpenVacancyChoiceMap] = useState<Record<string, '1st' | '2nd' | '3rd' | 'alternative'>>({});
+  const [openVacancyReasonMap, setOpenVacancyReasonMap] = useState<Record<string, string>>({});
+  const [planningNearestTrackSchoolMap, setPlanningNearestTrackSchoolMap] = useState<Record<string, string>>({});
+  const [activeStaffingSurveyId, setActiveStaffingSurveyId] = useState<string | null>(null);
+
+  // Equivalency procedure states
+  const [eqTargetSchoolMap, setEqTargetSchoolMap] = useState<Record<string, string>>({});
+  const [eqGradeMap, setEqGradeMap] = useState<Record<string, string>>({});
+  const [eqNotesMap, setEqNotesMap] = useState<Record<string, string>>({});
+
   // Filter based on Supervisor role scope or showOnlyMySurveys toggle first
   const surveysScope = useMemo(() => {
     const isEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
-    // Role 0: Equivalency Supervisor (مسؤول معادلة الشهادات)
+    let result = surveys;
+
+    // 1. Role-based base filtering
     if (activeOfficer.role === 'equivalency_supervisor') {
-      return surveys.filter((s) => {
+      result = surveys.filter((s) => {
         if (!s) return false;
         return isSurveyEqualizationRequest(s);
       });
-    }
-
-    if (activeOfficer.role === 'school_planning') {
-      return surveys.filter((s) => {
+    } else if (activeOfficer.role === 'school_planning') {
+      result = surveys.filter((s) => {
         if (!s) return false;
         const isEqItem = isSurveyEqualizationRequest(s);
-        if (isEqItem && !isEqAuthUser) return false;
+        const isVacancyRelated = (s as any).referredToPlanning === true || 
+          (s as any).sentToPlanning === true || 
+          (s as any).sentToPlanningOfficer === true ||
+          (s.vacancyRequestStatus === 'pending_vacancy') ||
+          (s as any).returnedByPrincipal === true || 
+          s.vacancyRequestStatus === 'returned_no_vacancy' || 
+          (s as any).sentToPlanningFromPrincipal === true;
+
+        if (isEqItem && !isEqAuthUser && !isVacancyRelated) return false;
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id) return true;
         
-        const isVacancyRelated = (s as any).isVacancyRequest ||
-          (s as any).vacancyRequestStatus === 'pending_vacancy' ||
-          (s as any).vacancyRequestStatus === 'approved' ||
-          (s as any).vacancyRequestStatus === 'sent_to_leadership' ||
-          (s as any).vacancyRequestStatus === 'sent_to_school_principal' ||
-          (s as any).vacancyRequestStatus === 'staffing_confirmed' ||
-          (s as any).vacancyRequestStatus === 'executed' ||
-          (s as any).vacancyRequestStatus === 'returned_no_vacancy' ||
-          (s as any).principalDecision === 'rejected' ||
-          s.problemType === 'vacancies_unavailable' ||
-          (s.problemType as string) === 'vacancies_closed';
+        const isReferredByOfficer = (s as any).referredToPlanning === true || 
+          (s as any).sentToPlanning === true || 
+          (s as any).sentToPlanningOfficer === true ||
+          (s.vacancyRequestStatus === 'pending_vacancy');
+        
+        const isReturnedByPrincipal = (s as any).returnedByPrincipal === true || 
+          s.vacancyRequestStatus === 'returned_no_vacancy' || 
+          (s as any).sentToPlanningFromPrincipal === true;
 
         if (isVacancyRelated) {
-          // Filter by scope if not admin/director
           if (activeOfficer.role === 'admin' || activeOfficer.role === 'director') return true;
 
           const studentStageCat = getSurveyStageCategory(s);
@@ -2113,72 +2085,45 @@ Direct Strategic Recommendations:
         }
         return false;
       });
-    }
-
-    if (activeOfficer.role === 'school_leadership') {
-      return surveys.filter((s) => {
+    } else if (activeOfficer.role === 'school_leadership') {
+      result = surveys.filter((s) => {
         if (!s) return false;
-        const isEqItem = isSurveyEqualizationRequest(s);
-        
-        if (isEqItem && !isEqAuthUser) {
-          const isSentToLead = (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || (s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
-          if (!isSentToLead) return false;
-        }
+        // USER REQ: Leadership ONLY sees it AFTER it is sent to the principal
+        const isSentToPrincipal = (s as any).sentToSchoolPrincipal === true || 
+          (s as any).vacancyRequestStatus === 'sent_to_school_principal' || 
+          (s as any).vacancyRequestStatus === 'staffing_confirmed' ||
+          (s as any).vacancyRequestStatus === 'executed' ||
+          (s as any).vacancyRequestStatus === 'returned_no_vacancy';
+
+        if (!isSentToPrincipal && (s as any).assignedLeadershipOfficerId !== activeOfficer.id) return false;
 
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
         
-        const st = (s as any).vacancyRequestStatus;
-        const isVacancyOrPlacement = (s as any).isVacancyRequest ||
-          st === 'sent_to_leadership' ||
-          st === 'sent_to_school_principal' ||
-          st === 'staffing_confirmed' ||
-          st === 'executed' ||
-          st === 'archived' ||
-          st === 'approved' ||
-          st === 'pending_vacancy' ||
-          st === 'pending' ||
-          st === 'returned_no_vacancy' ||
-          (s as any).sentToLeadership ||
-          (s as any).sentToSchoolPrincipal ||
-          (s as any).principalConfirmedStaffing ||
-          s.problemType === 'vacancies_unavailable' ||
-          (s.problemType as string) === 'vacancies_closed' ||
-          isEqItem;
-
-        if (isVacancyOrPlacement) {
-          if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
-            if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
-          }
-          const studentStageCat = getSurveyStageCategory(s);
-          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
-          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
-          const studentGender = isGirls ? 'girls' : 'boys';
-
-          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
-          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
-          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
-
-          if (genderOk && stageOk && sectorOk) return true;
+        if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
+          if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
         }
-        return false;
-      });
-    }
+        const studentStageCat = getSurveyStageCategory(s);
+        const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+        const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+        const studentGender = isGirls ? 'girls' : 'boys';
 
-    if (activeOfficer.role === 'supervisor' || showOnlyMySurveys || activeOfficer.role === 'stage_supervisor') {
-      return surveys.filter((s) => {
+        const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+        const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+        const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+        return genderOk && stageOk && sectorOk;
+      });
+    } else if (activeOfficer.role === 'supervisor' || showOnlyMySurveys || activeOfficer.role === 'stage_supervisor') {
+      result = surveys.filter((s) => {
         if (!s) return false;
-        // STRICT ISOLATION: Equivalency requests MUST NOT appear in normal admission officers' lists!
         const isEqItem = isSurveyEqualizationRequest(s);
         if (isEqItem && !isEqAuthUser) return false;
 
-        // If explicitly assigned or referred
         if (s.assignedOfficerId === activeOfficer.id || (s as any).referringOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
 
-        // Unreceived / unassigned requests appear for supervisors IF within their scope
         if (!s.assignedOfficerId || !s.isReceived) {
           if (activeOfficer.role === 'admin' || activeOfficer.role === 'director') return true;
           
-          // Filter unassigned by scope
           const studentStageCat = getSurveyStageCategory(s);
           const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
           const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
@@ -2204,7 +2149,6 @@ Direct Strategic Recommendations:
           return true;
         }
 
-        // Keep requests routed through vacancy/leadership pipeline in scope for supervisors ONLY if in their scope
         if ((s as any).isVacancyRequest || (s as any).vacancyRequestStatus) {
           const studentStageCat = getSurveyStageCategory(s);
           const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
@@ -2220,14 +2164,27 @@ Direct Strategic Recommendations:
         
         return false;
       });
+    } else {
+      if (!isEqAuthUser) {
+        result = surveys.filter((s) => !isSurveyEqualizationRequest(s));
+      }
     }
 
-    if (!isEqAuthUser) {
-      return surveys.filter((s) => !isSurveyEqualizationRequest(s));
+    // 2. Apply requestTypeFilter if set
+    if (requestTypeFilter !== 'all') {
+      result = result.filter(s => {
+        if (!s) return false;
+        if (s.requestType === requestTypeFilter) return true;
+        // Fallback for legacy items without requestType field
+        if (requestTypeFilter === 'equivalency' && isSurveyEqualizationRequest(s)) return true;
+        if (requestTypeFilter === 'transfer' && isSurveyTransferRequest(s)) return true;
+        if (requestTypeFilter === 'registration' && !isSurveyEqualizationRequest(s) && !isSurveyTransferRequest(s)) return true;
+        return false;
+      });
     }
 
-    return surveys;
-  }, [surveys, activeOfficer, showOnlyMySurveys]);
+    return result;
+  }, [surveys, activeOfficer, showOnlyMySurveys, requestTypeFilter]);
 
   const visiblePrincipalReports = useMemo(() => {
     if (activeOfficer.role === 'supervisor' || activeOfficer.role === 'school_planning' || activeOfficer.role === 'school_leadership') {
@@ -2322,8 +2279,19 @@ Direct Strategic Recommendations:
       // Role Leadership Supervisor (مشرف القيادة المدرسية)
       if (activeOfficer.role === 'school_leadership') {
         if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) return false;
-        if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) return true;
-        if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || isReturned) {
+        
+        // USER REQ: Leadership ONLY sees it AFTER it is sent to the principal
+        const isSentToPrincipal = (s as any).sentToSchoolPrincipal === true || 
+          st === 'sent_to_school_principal' || 
+          st === 'staffing_confirmed' ||
+          isReturned ||
+          (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+
+        if (!isSentToPrincipal) return false;
+
+        if ((s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
+        
+        if (isSentToPrincipal) {
           if (activeOfficer.schoolNames) {
             if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
           }
@@ -2359,41 +2327,7 @@ Direct Strategic Recommendations:
     });
   }, [surveys, activeOfficer]);
 
-  // Search & Filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [stageFilter, setStageFilter] = useState('');
-  const [problemFilter, setProblemFilter] = useState('');
-  const [resolvedFilter, setResolvedFilter] = useState('');
-  const [employeeFilter, setEmployeeFilter] = useState('');
-
-  // Vacancy pipeline states
-  const [supervisorFilterTab, setSupervisorFilterTab] = useState<'all' | 'new_unreceived' | 'my_received' | 'vacancy_approved' | 'sent_leadership' | 'sent_principal' | 'staffing_confirmed' | 'archived'>('all');
-  const [selectedCategoryMap, setSelectedCategoryMap] = useState<Record<string, string>>({});
-  const [vacancyFilterStatus, setVacancyFilterStatus] = useState<'all' | 'pending' | 'from_admissions' | 'approved' | 'sent_to_leadership' | 'delayed' | 'staffing_confirmed' | 'archived'>('all');
-  const [vacancyPage, setVacancyPage] = useState<number>(1);
-  const VACANCY_PAGE_SIZE = 50;
-
-  useEffect(() => {
-    setVacancyPage(1);
-  }, [vacancyFilterStatus, searchQuery]);
-  const [selectedPlanningOfficerMap, setSelectedPlanningOfficerMap] = useState<Record<string, string>>({});
-  const [selectedLeadershipOfficerMap, setSelectedLeadershipOfficerMap] = useState<Record<string, string>>({});
-  const [selectedAltSchoolMap, setSelectedAltSchoolMap] = useState<Record<string, string>>({});
-  const [altSchoolSearchMap, setAltSchoolSearchMap] = useState<Record<string, string>>({});
-  const [rerouteReasonMap, setRerouteReasonMap] = useState<Record<string, string>>({});
-  const [vacancyReopenedMap, setVacancyReopenedMap] = useState<Record<string, boolean>>({});
-  const [vacancyOpenedReasonMap, setVacancyOpenedReasonMap] = useState<Record<string, string>>({});
-  const [planningActionTypeMap, setPlanningActionTypeMap] = useState<Record<string, 'reopen' | 'alt_school'>>({});
-  const [staffingNotesMap, setStaffingNotesMap] = useState<Record<string, string>>({});
-  const [openVacancyChoiceMap, setOpenVacancyChoiceMap] = useState<Record<string, '1st' | '2nd' | '3rd' | 'alternative'>>({});
-  const [openVacancyReasonMap, setOpenVacancyReasonMap] = useState<Record<string, string>>({});
-  const [planningNearestTrackSchoolMap, setPlanningNearestTrackSchoolMap] = useState<Record<string, string>>({});
-  const [activeStaffingSurveyId, setActiveStaffingSurveyId] = useState<string | null>(null);
-
-  // Equivalency procedure states
-  const [eqTargetSchoolMap, setEqTargetSchoolMap] = useState<Record<string, string>>({});
-  const [eqGradeMap, setEqGradeMap] = useState<Record<string, string>>({});
-  const [eqNotesMap, setEqNotesMap] = useState<Record<string, string>>({});
+  // Equivalency procedure states continuation
   const [eqApptDateMap, setEqApptDateMap] = useState<Record<string, string>>({});
   const [eqApptTimeMap, setEqApptTimeMap] = useState<Record<string, string>>({});
   const [eqApptNotesMap, setEqApptNotesMap] = useState<Record<string, string>>({});
@@ -3082,7 +3016,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       .replace(/"/g, '""');
     
     const stageStr = getStageName(row.stage);
-    const probStr = getProblemName(row.problemType);
+    const probStr = getProblemName(row.problemType, row);
     
     return `
       <tr>
@@ -4148,8 +4082,20 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             <span className="block text-[10px] text-teal-600 font-bold">{getStageName(row.stage)} - {row.sector || ''}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-teal-800 font-semibold">
-                          {getProblemName(row.problemType)}
+                        <td className="px-4 py-3.5">
+                          {(() => {
+                            const info = getRequestTypeInfo(row, isRtl);
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black border ${info.badgeClass}`}>
+                                  {info.label}
+                                </span>
+                                <span className="text-[9px] text-teal-600/70 font-bold truncate max-w-[120px]" title={info.subLabel}>
+                                  {info.subLabel}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3.5 text-teal-800">
                           {row.serviceEmployee || (isRtl ? 'لم يحدد' : 'Unassigned')}
@@ -5034,7 +4980,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           <span className={`px-2 py-0.5 rounded-md font-semibold border ${
                             isDark ? 'bg-teal-950/50 text-teal-300 border-teal-800/30' : 'bg-slate-100/80 text-slate-500 border-transparent'
                           }`}>
-                            {getProblemName(survey.problemType)}
+                            {getProblemName(survey.problemType, survey)}
                           </span>
                           <span className={`px-2 py-0.5 rounded-md font-semibold border ${
                             isDark ? 'bg-teal-950/50 text-teal-300 border-teal-800/30' : 'bg-slate-100/80 text-slate-500 border-transparent'
@@ -5167,6 +5113,38 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       </span>
                     </button>
                   ))}
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-teal-800/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Filter className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                      {isRtl ? 'تصفية حسب نوع الطلب:' : 'Filter by Request Type:'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'all', label: isRtl ? 'جميع أنواع الطلبات' : 'All Types', icon: '📋' },
+                      { key: 'registration', label: isRtl ? 'تسجيل جديد' : 'New Registration', icon: '🎒' },
+                      { key: 'transfer', label: isRtl ? 'نقل طالب' : 'Transfer Request', icon: '🔄' },
+                      { key: 'equivalency', label: isRtl ? 'معادلة شهادات' : 'Equivalency', icon: '🎓' },
+                    ].map(type => (
+                      <button
+                        key={type.key}
+                        onClick={() => setRequestTypeFilter(type.key as any)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border ${
+                          requestTypeFilter === type.key
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-500/20'
+                            : isDark
+                              ? 'bg-blue-950/20 text-blue-300 border-blue-900/40 hover:bg-blue-900/30'
+                              : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                        }`}
+                      >
+                        <span className="text-base">{type.icon}</span>
+                        <span>{type.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -5374,6 +5352,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             {/* School Details */}
                             <td className="px-5 py-4 text-xs">
                               <span className={`block font-bold ${isDark ? 'text-teal-200' : 'text-slate-800'}`}>{survey.schoolName}</span>
+                              {survey.firstSchoolName && survey.firstSchoolName !== survey.schoolName && (
+                                <span className="block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 italic">
+                                  {isRtl ? 'الرغبة الأصلية: ' : 'Original Desire: '} {survey.firstSchoolName}
+                                </span>
+                              )}
                               <span className={`block mt-1 ${isDark ? 'text-teal-400/70' : 'text-slate-400'}`}>
                                 {getStageLabel(survey.stage)} • {survey.sector}
                               </span>
@@ -5519,9 +5502,16 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             <span className="font-bold opacity-75">{isRtl ? 'المشرف المرسل للطلب:' : 'Sending Supervisor:'}</span>
                                             <span className="font-black text-indigo-700 dark:text-indigo-300">👤 {sendingSupervisor}</span>
                                           </div>
-                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
-                                            <span className="font-bold opacity-75">{isRtl ? 'اسم المدرسة:' : 'School Name:'}</span>
-                                            <span className="font-extrabold text-slate-900 dark:text-white">🏫 {survey.schoolName}</span>
+                                          <div className="flex flex-col items-end bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg w-full">
+                                            <div className="flex items-center justify-between w-full">
+                                              <span className="font-bold opacity-75">{isRtl ? 'اسم المدرسة:' : 'School Name:'}</span>
+                                              <span className="font-extrabold text-slate-900 dark:text-white">🏫 {survey.schoolName}</span>
+                                            </div>
+                                            {survey.firstSchoolName && survey.firstSchoolName !== survey.schoolName && (
+                                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-1">
+                                                {isRtl ? 'الرغبة المسجلة: ' : 'Registered Desire: '} {survey.firstSchoolName}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
                                             <span className="font-bold opacity-75">{isRtl ? 'اسم مدير المدرسة:' : 'Principal Name:'}</span>
@@ -5564,11 +5554,171 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     <div className="space-y-2 p-2.5 rounded-2xl bg-purple-50/50 dark:bg-slate-900/90 border border-purple-200 dark:border-purple-800/80 shadow-xs text-start mt-2">
                                       <div className="flex items-center justify-between pb-1.5 border-b border-purple-200/80 dark:border-purple-900/60">
                                         <span className="text-[11px] font-black text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
-                                          📜 {isRtl ? "إجراءات مسؤول معادلات الشهادات:" : "Equivalency Actions:"}
+                                          {activeOfficer.role === 'school_planning' 
+                                            ? (isRtl ? "🏢 إجراءات مسؤول التخطيط (فتح الشواغر):" : "Planning Officer Actions (Vacancies):")
+                                            : (isRtl ? "📜 إجراءات مسؤول معادلات الشهادات:" : "Equivalency Actions:")
+                                          }
                                         </span>
                                       </div>
 
-                                      {/* 1. أيقونة استلام الطلب */}
+                                      {activeOfficer.role === 'school_planning' ? (
+                                        /* 🏢 PLANNING OFFICER ONLY VIEW FOR EQUIVALENCY */
+                                        <div className="space-y-3 pt-1">
+                                          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-emerald-100 dark:border-emerald-900/30 space-y-4 shadow-sm">
+                                            <div className="flex items-center gap-2.5 border-b border-emerald-50 dark:border-emerald-900/20 pb-2.5">
+                                              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 shadow-sm shrink-0">
+                                                <Target className="w-5 h-5" />
+                                              </div>
+                                              <div className="min-w-0">
+                                                <span className="text-xs font-black text-slate-900 dark:text-white block truncate">
+                                                  {isRtl ? 'رغبات المستفيد المسجلة (فتح الشواغر):' : 'Beneficiary Desires (Open Vacancy):'}
+                                                </span>
+                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block truncate">
+                                                  {isRtl ? 'يرجى تحديد المدرسة المتاح بها شاغر للاعتماد' : 'Select a school with available vacancy to confirm'}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                              {[
+                                                { name: survey.firstSchoolName || survey.schoolName, label: isRtl ? 'الرغبة الأولى' : '1st Desire' },
+                                                { name: survey.secondSchoolName, label: isRtl ? 'الرغبة الثانية' : '2nd Desire' },
+                                                { name: survey.thirdSchoolName, label: isRtl ? 'الرغبة الثالثة' : '3rd Desire' }
+                                              ].map((choice, idx) => (
+                                                <button
+                                                  key={idx}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: choice.name });
+                                                    setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: "" });
+                                                  }}
+                                                  className={`py-3 px-2 rounded-xl text-[11px] font-black transition-all border-2 flex flex-col items-center gap-1.5 min-h-[60px] justify-center ${
+                                                    (eqTargetSchoolMap[survey.id] || (!eqTargetSchoolSearchMap[survey.id] && idx === 0)) && (eqTargetSchoolMap[survey.id] === choice.name || (!eqTargetSchoolMap[survey.id] && idx === 0))
+                                                      ? 'bg-emerald-600 text-white border-emerald-400 shadow-md ring-2 ring-emerald-500/20 transform scale-[1.02]'
+                                                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300 hover:bg-white dark:hover:bg-slate-700 shadow-xs'
+                                                  }`}
+                                                >
+                                                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${(eqTargetSchoolMap[survey.id] || (!eqTargetSchoolSearchMap[survey.id] && idx === 0)) && (eqTargetSchoolMap[survey.id] === choice.name || (!eqTargetSchoolMap[survey.id] && idx === 0)) ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
+                                                    {choice.label}
+                                                  </span>
+                                                  <span className="truncate w-full text-center leading-tight px-1 font-sans">
+                                                    {choice.name || (isRtl ? 'غير محدد' : 'Not specified')}
+                                                  </span>
+                                                </button>
+                                              ))}
+                                            </div>
+
+                                            <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                                              <div className="flex items-center gap-1.5 mb-2 px-1">
+                                                <Building className="w-3.5 h-3.5 text-slate-400" />
+                                                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-tight">
+                                                  {isRtl ? 'أو اختر مدرسة بديلة غير المسجلة أعلاه:' : 'Or choose an alternative school:'}
+                                                </span>
+                                              </div>
+                                              <div className="relative group">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                                  <Search className="w-3.5 h-3.5" />
+                                                </div>
+                                                <input
+                                                  type="text"
+                                                  placeholder={isRtl ? "ابحث عن مدرسة بديلة بالاسم أو الكود الوزاري..." : "Search alternative school by name or code..."}
+                                                  className={`w-full py-2.5 pl-10 pr-10 rounded-xl border-2 bg-slate-50 dark:bg-slate-800 text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all placeholder:text-slate-400 ${
+                                                    eqTargetSchoolSearchMap[survey.id] ? 'border-emerald-500 shadow-sm bg-emerald-50/10' : 'border-slate-200 dark:border-slate-700'
+                                                  }`}
+                                                  value={eqTargetSchoolSearchMap[survey.id] || ""}
+                                                  onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: val });
+                                                  }}
+                                                />
+                                                {(eqTargetSchoolMap[survey.id] || eqTargetSchoolSearchMap[survey.id]) && (
+                                                  <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: "" });
+                                                      setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: "" });
+                                                    }}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors p-1"
+                                                  >
+                                                    <X className="w-4 h-4" />
+                                                  </button>
+                                                )}
+                                                
+                                                {/* Custom Search Results */}
+                                                {(eqTargetSchoolSearchMap[survey.id]?.length >= 2) && (
+                                                  <div className="absolute z-50 left-0 right-0 top-full mt-2 max-h-52 overflow-y-auto bg-white dark:bg-slate-800 border-2 border-emerald-500/30 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    {schools
+                                                      .filter(sch => 
+                                                        sch.nameAr.includes(eqTargetSchoolSearchMap[survey.id]) || 
+                                                        sch.code.includes(eqTargetSchoolSearchMap[survey.id])
+                                                      )
+                                                      .slice(0, 10)
+                                                      .map((sch, sIdx) => (
+                                                        <button
+                                                          key={sIdx}
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: sch.nameAr });
+                                                            setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: sch.nameAr });
+                                                          }}
+                                                          className="w-full px-4 py-3 text-left text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-b border-slate-100 dark:border-slate-700 last:border-0 flex items-center justify-between gap-3 transition-colors"
+                                                        >
+                                                          <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                            <span className="font-black text-slate-700 dark:text-slate-200">{sch.nameAr}</span>
+                                                          </div>
+                                                          <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg text-slate-500 font-black font-mono border border-slate-200/50 dark:border-slate-600">
+                                                            {sch.code}
+                                                          </span>
+                                                        </button>
+                                                      ))
+                                                    }
+                                                    {schools.filter(sch => sch.nameAr.includes(eqTargetSchoolSearchMap[survey.id]) || sch.code.includes(eqTargetSchoolSearchMap[survey.id])).length === 0 && (
+                                                      <div className="p-4 text-center text-slate-400 text-[10px] font-bold">
+                                                        {isRtl ? '❌ لم يتم العثور على مدرسة بهذا الاسم' : 'No school found'}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (onUpdateSurvey) {
+                                                const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
+                                                const referringOfficer = officers.find(o => o.id === referringId);
+                                                const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
+                                                const selectedSchool = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
+                                                
+                                                onUpdateSurvey({
+                                                  ...survey,
+                                                  isVacancyRequest: true,
+                                                  vacancyRequestStatus: 'approved',
+                                                  targetSchoolName: selectedSchool,
+                                                  schoolName: selectedSchool, // USER REQ: Update schoolName to the one planning selected
+                                                  isResolved: false,
+                                                  returnedByPrincipal: false,
+                                                  assignedOfficerId: referringId,
+                                                  serviceEmployee: referringName,
+                                                  notes: isRtl 
+                                                    ? ("🔓 تم تأكيد فتح الشاغر بنجاح في مدرسة (" + selectedSchool + ") بواسطة مسؤول التخطيط المدرسي (" + activeOfficer.nameAr + ") وعادت المعاملة فوراً للجهة المرسلة (" + referringName + ") لمتابعة التوجيه والتسكين.")
+                                                    : ("Vacancy opened and confirmed in school (" + selectedSchool + ") by planning officer (" + activeOfficer.nameAr + ") and returned to (" + referringName + ").")
+                                                } as any);
+                                              }
+                                            }}
+                                            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none cursor-pointer flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] border-b-4 border-emerald-800 hover:border-b-2 hover:translate-y-[2px]"
+                                          >
+                                            <Building className="w-5 h-5" />
+                                            <span>{isRtl ? "🔓 تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)" : "Confirm Vacancy (Return to Sender) 🔓"}</span>
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          {/* 📜 ADMISSION/EQUIVALENCY OFFICER VIEW */}
+                                          {/* 1. أيقونة استلام الطلب */}
                                       <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 space-y-1">
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
@@ -5981,12 +6131,67 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                         </label>
                                       </div>
 
-                                      {/* 4. أيقونة إحالة الطلب للمدرسة بعد التسكين مرفق به المعادلة */}
-                                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 space-y-1.5">
+                                      {/* 4. طلب فتح شاغر من مسؤول التخطيط - إلزامي للمعادلات إذا لم يتم الفتح مسبقاً */}
+                                      {survey.equalizationCompleted && survey.vacancyRequestStatus !== 'approved' && 
+                                       survey.vacancyRequestStatus !== 'sent_to_leadership' && 
+                                       survey.vacancyRequestStatus !== 'sent_to_school_principal' && 
+                                       survey.vacancyRequestStatus !== 'staffing_confirmed' && 
+                                       !survey.sentToLeadership && !survey.sentToSchoolPrincipal && (
+                                        <div className="p-2 rounded-xl bg-amber-500/10 dark:bg-amber-900/20 border-2 border-amber-500/50 space-y-2 mb-2">
+                                          <div className="flex items-center justify-between gap-1.5">
+                                            <div className="flex items-center gap-1.5">
+                                              <Building2 className="w-4 h-4 text-amber-600" />
+                                              <span className="text-[10px] font-black text-amber-950 dark:text-amber-100">
+                                                {isRtl ? "4. إجراء مطلوب: طلب فتح شاغر من التخطيط:" : "4. Required Action: Request Vacancy Opening:"}
+                                              </span>
+                                            </div>
+                                            {survey.vacancyRequestStatus === 'pending_vacancy' && (
+                                              <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-lg animate-pulse">
+                                                ⏳ {isRtl ? "قيد المراجعة بالتخطيط" : "Pending Planning"}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {survey.vacancyRequestStatus !== 'pending_vacancy' ? (
+                                            <button
+                                              onClick={() => {
+                                                if (onUpdateSurvey) {
+                                                  onUpdateSurvey({
+                                                    ...survey,
+                                                    vacancyRequestStatus: 'pending_vacancy',
+                                                    referredToPlanning: true,
+                                                    referringOfficerId: activeOfficer.id,
+                                                    referringOfficerName: activeOfficer.nameAr,
+                                                    notes: isRtl 
+                                                      ? `🚩 تم طلب فتح شاغر من مسؤول التخطيط بواسطة (${activeOfficer.nameAr}) بعد إكمال المعادلة.`
+                                                      : `Vacancy opening requested from planning by (${activeOfficer.nameAr}) after equalization.`
+                                                  } as any);
+                                                }
+                                              }}
+                                              className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                            >
+                                              <Building2 className="w-3.5 h-3.5" />
+                                              <span>{isRtl ? "إرسال طلب فتح شاغر لمسؤول التخطيط" : "Send Vacancy Request to Planning"}</span>
+                                            </button>
+                                          ) : (
+                                            <div className="p-2 bg-amber-100/50 dark:bg-amber-900/40 rounded-lg text-center">
+                                              <p className="text-[10px] font-bold text-amber-800 dark:text-amber-200">
+                                                {isRtl 
+                                                  ? "⏳ تم إرسال الطلب لمسؤول التخطيط. يرجى انتظار فتح الشاغر لتفعيل خيارات التوجيه للمدرسة أو القيادة."
+                                                  : "Request sent to Planning. Please wait for vacancy approval to enable routing options."}
+                                              </p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* 5. أيقونة إحالة الطلب للمدرسة بعد التسكين مرفق به المعادلة */}
+                                      {survey.vacancyRequestStatus === 'approved' && (
+                                         <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 space-y-1.5">
                                         <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center justify-between gap-1">
                                           <span className="flex items-center gap-1">
                                             <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                                            <span>{isRtl ? "4. إحالة الطلب للمدرسة (البحث والفلترة):" : "4. Refer to School:"}</span>
+                                            <span>{isRtl ? "5. إحالة الطلب للمدرسة (البحث والفلترة):" : "5. Refer to School:"}</span>
                                           </span>
                                           {survey.sentToSchoolPrincipal && (
                                             <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
@@ -5996,6 +6201,42 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                         </span>
 
                                         <div className="space-y-1">
+                                          {/* Staffing Choices (Desires) */}
+                                          <div className="p-2 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 mb-2">
+                                            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                              🎯 {isRtl ? 'رغبات المستفيد المسجلة (اختر رغبة للتسكين):' : 'Beneficiary Desires (Select for placement):'}
+                                            </span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                                              {[
+                                                { name: survey.firstSchoolName || survey.schoolName, label: isRtl ? 'الرغبة الأولى' : '1st Desire' },
+                                                { name: survey.secondSchoolName, label: isRtl ? 'الرغبة الثانية' : '2nd Desire' },
+                                                { name: survey.thirdSchoolName, label: isRtl ? 'الرغبة الثالثة' : '3rd Desire' }
+                                              ].map((choice, idx) => (
+                                                choice.name ? (
+                                                  <button
+                                                    key={idx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: choice.name });
+                                                      setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: choice.name });
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center p-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                                                      (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName) === choice.name
+                                                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40'
+                                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300'
+                                                    }`}
+                                                  >
+                                                    <span className="text-[8px] font-bold opacity-70 mb-0.5">{choice.label}</span>
+                                                    <span className="text-[10px] font-black text-center line-clamp-1">{choice.name}</span>
+                                                  </button>
+                                                ) : null
+                                              ))}
+                                            </div>
+                                            <span className="text-[9px] font-bold text-slate-500 block">
+                                              📍 {isRtl ? 'أو اختر مدرسة بديلة أخرى من القائمة:' : 'Or choose another alternative school:'}
+                                            </span>
+                                          </div>
+
                                           {/* Searchable Combobox for Schools */}
                                           {(() => {
                                             const searchTerm = (eqTargetSchoolSearchMap[survey.id] !== undefined 
@@ -6096,7 +6337,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                           <button
                                             type="button"
                                             onClick={() => {
-                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
                                               if (!targetSch) {
                                                 alert(isRtl ? "⚠️ يرجى تحديد المدرسة الموجه لها الطالب للتسكين." : "Please select target school.");
                                                 return;
@@ -6110,6 +6351,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   ...survey,
                                                   schoolName: targetSch,
                                                   grade: calibratedGrade,
+                                                  staffingConfirmedSchoolName: targetSch,
+                                                  staffingConfirmedGrade: calibratedGrade,
+                                                  staffingConfirmedStage: survey.stage,
                                                   sentToSchoolPrincipal: true,
                                                   sentToPrincipalAt: new Date().toISOString(),
                                                   vacancyRequestStatus: "sent_to_school_principal",
@@ -6128,13 +6372,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                                           >
                                             <Send className="w-3.5 h-3.5" />
-                                            <span>{isRtl ? "🏫 4. إحالة الطلب للمدرسة بعد التسكين" : "4. Route to School with Doc"}</span>
+                                            <span>{isRtl ? "🏫 5. إحالة الطلب للمدرسة بعد التسكين" : "5. Route to School with Doc"}</span>
                                           </button>
                                         </div>
                                       </div>
+                                      )}
 
-                                      {/* 5. أيقونة إرسال الطلب لمشرف القيادة لمتابعة التسكين وفق المرحلة والجنس تلقائياً */}
-                                      {(() => {
+                                      {/* 6. أيقونة إرسال الطلب لمشرف القيادة لمتابعة التسكين وفق المرحلة والجنس تلقائياً */}
+                                      {survey.vacancyRequestStatus === 'approved' && (() => {
                                         const autoMatchedLead = getMatchedLeadershipSupervisor(survey, officers);
                                         const currentLeadId = eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId || autoMatchedLead?.id || "";
 
@@ -6143,7 +6388,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             <div className="flex items-center justify-between gap-1">
                                               <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 flex items-center gap-1">
                                                 <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                                                <span>{isRtl ? "5. إرسال لمشرف القيادة المدرسية:" : "5. Send to Leadership:"}</span>
+                                                <span>{isRtl ? "6. إرسال لمشرف القيادة المدرسية:" : "6. Send to Leadership:"}</span>
                                               </span>
                                               {autoMatchedLead && (
                                                 <span className="text-[8px] font-extrabold bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-200">
@@ -6173,7 +6418,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                 type="button"
                                                 onClick={() => {
                                                   const selectedLeadId = currentLeadId;
-                                                  const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                                  const targetSch = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
                                                   const leadOfficer = officers.find(o => o.id === selectedLeadId) || autoMatchedLead || officers.find(o => o.isActive && o.role === 'school_leadership');
                                                   const leadName = leadOfficer?.nameAr || 'مشرف القيادة المدرسية';
 
@@ -6199,44 +6444,135 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                 className="w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                                               >
                                                 <UserCheck className="w-3.5 h-3.5" />
-                                                <span>{isRtl ? "👔 5. إرسال لمسؤول قسم القيادة المختص" : "5. Send to Matched Officer"}</span>
+                                                <span>{isRtl ? "👔 6. إرسال لمسؤول قسم القيادة المختص" : "6. Send to Matched Officer"}</span>
                                               </button>
                                             </div>
                                           </div>
                                         );
                                       })()}
+                                        </>
+                                      )}
                                     </div>
                                   ) : (
                                     <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                                       {/* Non-equivalency actions: Vacancy opening request */}
-                                      {!isSurveyEqualizationRequest(survey) && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
+                                      {survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
                                         activeOfficer.role === 'school_planning' && (survey.vacancyRequestStatus === 'pending_vacancy' || (survey as any).returnedByPrincipal) ? (
-                                           <button
-                                             type="button"
-                                             onClick={() => {
-                                               if (onUpdateSurvey) {
-                                                 const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
-                                                 const referringOfficer = officers.find(o => o.id === referringId);
-                                                 const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
-                                                 onUpdateSurvey({
-                                                   ...survey,
-                                                   isVacancyRequest: true,
-                                                   vacancyRequestStatus: 'approved',
-                                                   isResolved: false,
-                                                   returnedByPrincipal: false,
-                                                   assignedOfficerId: referringId,
-                                                   serviceEmployee: referringName,
-                                                   notes: isRtl 
-                                                     ? ("🔓 تم تأكيد فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (" + activeOfficer.nameAr + ") وعادت المعاملة فوراً للجهة المرسلة (" + referringName + ") لمتابعة التوجيه والتسكين.")
-                                                     : ("Vacancy opened and confirmed by planning officer (" + activeOfficer.nameAr + ") and returned to (" + referringName + ").")
-                                                 } as any);
-                                               }
-                                             }}
-                                             className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-emerald-500"
-                                           >
-                                             <Building className="w-3.5 h-3.5" />
-                                             <span>{isRtl ? "🔓 تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)" : "Confirm Vacancy (Return to Sender) 🔓"}</span>
-                                           </button>
+                                           <div className="space-y-3">
+                                             {/* School Selection UI for Planning Officer */}
+                                             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-2">
+                                               <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                                 <Search className="w-3 h-3" />
+                                                 {isRtl ? 'تحديد المدرسة المراد تأكيد الشاغر بها:' : 'Select School to Confirm Vacancy:'}
+                                               </span>
+                                               
+                                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                                                 {[
+                                                   { name: survey.firstSchoolName || survey.schoolName, label: isRtl ? 'الرغبة الأولى' : '1st Desire' },
+                                                   { name: survey.secondSchoolName, label: isRtl ? 'الرغبة الثانية' : '2nd Desire' },
+                                                   { name: survey.thirdSchoolName, label: isRtl ? 'الرغبة الثالثة' : '3rd Desire' }
+                                                 ].map((choice, idx) => (
+                                                   <button
+                                                     key={idx}
+                                                     type="button"
+                                                     onClick={() => setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: choice.name })}
+                                                     className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all border flex flex-col items-center gap-0.5 ${
+                                                       (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName) === choice.name
+                                                         ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm'
+                                                         : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
+                                                     }`}
+                                                   >
+                                                     <span className="opacity-70 text-[8px]">{choice.label}</span>
+                                                     <span className="truncate w-full text-center">{choice.name || '-'}</span>
+                                                   </button>
+                                                 ))}
+                                               </div>
+
+                                               <div className="relative group">
+                                                 <input
+                                                   type="text"
+                                                   placeholder={isRtl ? "🔍 ابحث عن مدرسة أخرى بالاسم أو الكود..." : "🔍 Search other school..."}
+                                                   className="w-full py-1.5 px-3 pr-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] focus:ring-1 focus:ring-emerald-500 outline-none"
+                                                   value={eqTargetSchoolSearchMap[survey.id] !== undefined ? eqTargetSchoolSearchMap[survey.id] : (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName || "")}
+                                                   onChange={(e) => {
+                                                     const val = e.target.value;
+                                                     setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: val });
+                                                     setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: val });
+                                                   }}
+                                                 />
+                                                 {(eqTargetSchoolMap[survey.id] || eqTargetSchoolSearchMap[survey.id]) && (
+                                                   <button 
+                                                     type="button"
+                                                     onClick={() => {
+                                                       setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: "" });
+                                                       setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: "" });
+                                                     }}
+                                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors"
+                                                   >
+                                                     <X className="w-3 h-3" />
+                                                   </button>
+                                                 )}
+                                                 
+                                                 {/* Custom Search Results */}
+                                                 {(eqTargetSchoolSearchMap[survey.id]?.length >= 2) && (
+                                                   <div className="absolute z-50 left-0 right-0 top-full mt-1 max-h-40 overflow-y-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl">
+                                                     {schools
+                                                       .filter(sch => 
+                                                         sch.nameAr.includes(eqTargetSchoolSearchMap[survey.id]) || 
+                                                         sch.code.includes(eqTargetSchoolSearchMap[survey.id])
+                                                       )
+                                                       .slice(0, 10)
+                                                       .map((sch, sIdx) => (
+                                                         <button
+                                                           key={sIdx}
+                                                           type="button"
+                                                           onClick={() => {
+                                                             setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: sch.nameAr });
+                                                             setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: sch.nameAr });
+                                                           }}
+                                                           className="w-full px-3 py-2 text-left text-[10px] hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-b border-slate-100 dark:border-slate-700 last:border-0 flex items-center justify-between gap-2"
+                                                         >
+                                                           <span className="font-bold text-slate-700 dark:text-slate-200">{sch.nameAr}</span>
+                                                           <span className="text-[8px] bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 font-mono">{sch.code}</span>
+                                                         </button>
+                                                       ))
+                                                     }
+                                                   </div>
+                                                 )}
+                                               </div>
+                                             </div>
+
+                                             <button
+                                               type="button"
+                                               onClick={() => {
+                                                 if (onUpdateSurvey) {
+                                                   const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
+                                                   const referringOfficer = officers.find(o => o.id === referringId);
+                                                   const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
+                                                   const selectedSchool = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
+                                                   
+                                                   onUpdateSurvey({
+                                                     ...survey,
+                                                     isVacancyRequest: true,
+                                                     vacancyRequestStatus: 'approved',
+                                                     targetSchoolName: selectedSchool,
+                                                     schoolName: selectedSchool,
+                                                     isResolved: false,
+                                                     returnedByPrincipal: false,
+                                                     assignedOfficerId: referringId,
+                                                     serviceEmployee: referringName,
+                                                     notes: isRtl 
+                                                       ? ("🔓 تم تأكيد فتح الشاغر بنجاح في مدرسة (" + selectedSchool + ") بواسطة مسؤول التخطيط المدرسي (" + activeOfficer.nameAr + ") وعادت المعاملة فوراً للجهة المرسلة (" + referringName + ") لمتابعة التوجيه والتسكين.")
+                                                       : ("Vacancy opened and confirmed in school (" + selectedSchool + ") by planning officer (" + activeOfficer.nameAr + ") and returned to (" + referringName + ").")
+                                                   } as any);
+                                                 }
+                                               }}
+                                               className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-emerald-500"
+                                             >
+                                               <Building className="w-3.5 h-3.5" />
+                                               <span>{isRtl ? "🔓 تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)" : "Confirm Vacancy (Return to Sender) 🔓"}</span>
+                                             </button>
+                                           </div>
                                          ) : (
                                           <button
                                             type="button"
@@ -6248,7 +6584,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   vacancyRequestStatus: 'pending_vacancy',
                                                   referringOfficerId: activeOfficer.id,
                                                   referringOfficerName: activeOfficer.nameAr,
-                                                  referralNotes: "طلب فتح شاغر بمدرسة (" + survey.schoolName + ") مرفوع بواسطة مشرف القبول (" + activeOfficer.nameAr + ")"
+                                                  referralNotes: "طلب فتح شاغر بمدرسة (" + (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName) + ") مرفوع بواسطة (" + activeOfficer.nameAr + ")"
                                                 });
                                               }
                                             }}
@@ -6263,7 +6599,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             <span>
                                               {survey.vacancyRequestStatus === 'pending_vacancy'
                                                 ? (isRtl ? "⏳ طلب فتح الشاغر قيد المراجعة" : "Vacancy Request Pending")
-                                                : (isRtl ? "طلب فتح الشاغر 🔓" : "Request Vacancy Opening 🔓")}
+                                                : (isRtl ? "طلب فتح الشاغر من التخطيط 🔓" : "Request Vacancy Opening 🔓")}
                                             </span>
                                           </button>
                                         )
@@ -6271,29 +6607,129 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                                       {/* Route to School Principal for non-equivalency */}
                                       {survey.vacancyRequestStatus === 'approved' && activeOfficer.role !== 'school_planning' && (
-                                        <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 space-y-2 shadow-xs">
+                                          <div className="flex items-center gap-1.5 mb-1">
+                                            <Building2 className="w-4 h-4 text-emerald-600" />
+                                            <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                              {isRtl ? 'إحالة الطلب للمدرسة للتسكين الميداني:' : 'Refer to School for Staffing:'}
+                                            </span>
+                                          </div>
+
+                                          {/* Staffing Choices (Desires) */}
+                                          <div className="p-2 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                                            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                              🎯 {isRtl ? 'رغبات المستفيد المسجلة (اختر رغبة للتسكين):' : 'Beneficiary Desires (Select for placement):'}
+                                            </span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                                              {[
+                                                { name: survey.firstSchoolName || survey.schoolName, label: isRtl ? 'الرغبة الأولى' : '1st Desire' },
+                                                { name: survey.secondSchoolName, label: isRtl ? 'الرغبة الثانية' : '2nd Desire' },
+                                                { name: survey.thirdSchoolName, label: isRtl ? 'الرغبة الثالثة' : '3rd Desire' }
+                                              ].map((choice, idx) => (
+                                                choice.name ? (
+                                                  <button
+                                                    key={idx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: choice.name });
+                                                      setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: choice.name });
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center p-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                                                      (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName) === choice.name
+                                                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40'
+                                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300'
+                                                    }`}
+                                                  >
+                                                    <span className="text-[8px] font-bold opacity-70 mb-0.5">{choice.label}</span>
+                                                    <span className="text-[10px] font-black text-center line-clamp-1">{choice.name}</span>
+                                                  </button>
+                                                ) : null
+                                              ))}
+                                            </div>
+                                            <span className="text-[9px] font-bold text-slate-500 block">
+                                              📍 {isRtl ? 'أو اختر مدرسة بديلة أخرى من القائمة:' : 'Or choose another alternative school:'}
+                                            </span>
+
+                                            {/* Searchable Combobox for Alternative Schools */}
+                                            {(() => {
+                                              const searchTerm = (eqTargetSchoolSearchMap[survey.id] !== undefined 
+                                                ? eqTargetSchoolSearchMap[survey.id] 
+                                                : (eqTargetSchoolMap[survey.id] || survey.schoolName || "")).toLowerCase().trim();
+                                              
+                                              const matchedSchools = localSchools.filter(sch => 
+                                                !searchTerm || 
+                                                sch.nameAr.toLowerCase().includes(searchTerm) || 
+                                                (sch.code && sch.code.toString().includes(searchTerm))
+                                              );
+
+                                              return (
+                                                <div className="relative">
+                                                  <div className="flex items-center gap-1">
+                                                    <input
+                                                      type="text"
+                                                      placeholder={isRtl ? "🔍 ابحث باسم المدرسة أو الرقم الوزاري..." : "Search school name or code..."}
+                                                      value={eqTargetSchoolSearchMap[survey.id] !== undefined ? eqTargetSchoolSearchMap[survey.id] : (eqTargetSchoolMap[survey.id] || survey.schoolName || "")}
+                                                      onFocus={() => setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: true })}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: val });
+                                                        setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: val });
+                                                        setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: true });
+                                                      }}
+                                                      className="w-full p-1.5 text-[10px] font-extrabold rounded-lg border border-emerald-400 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                                                    />
+                                                  </div>
+
+                                                  {eqSchoolDropdownOpenMap[survey.id] && (
+                                                    <div className="absolute z-50 right-0 left-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-xl shadow-xl divide-y divide-slate-100 dark:divide-slate-800 text-[10px]">
+                                                      {matchedSchools.slice(0, 20).map(sch => (
+                                                        <div
+                                                          key={sch.id}
+                                                          onClick={() => {
+                                                            setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: sch.nameAr });
+                                                            setEqTargetSchoolSearchMap({ ...eqTargetSchoolSearchMap, [survey.id]: sch.nameAr });
+                                                            setEqSchoolDropdownOpenMap({ ...eqSchoolDropdownOpenMap, [survey.id]: false });
+                                                          }}
+                                                          className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 cursor-pointer flex items-center justify-between gap-1"
+                                                        >
+                                                          <span className="font-extrabold text-slate-900 dark:text-white truncate">🏫 {sch.nameAr}</span>
+                                                          <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 shrink-0">{sch.stage || 'عام'}</span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+
                                           <button
                                             type="button"
                                             onClick={() => {
                                               if (onUpdateSurvey) {
+                                                const targetSch = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
                                                 const nowIso = new Date().toISOString();
                                                 onUpdateSurvey({
                                                   ...survey,
+                                                  schoolName: targetSch,
+                                                  staffingConfirmedSchoolName: targetSch,
+                                                  staffingConfirmedStage: survey.stage,
+                                                  staffingConfirmedGrade: survey.grade,
                                                   vacancyRequestStatus: 'sent_to_school_principal',
                                                   sentToSchoolPrincipal: true,
                                                   sentToPrincipalAt: nowIso,
                                                   referringOfficerId: activeOfficer.id,
                                                   referringOfficerName: activeOfficer.nameAr,
                                                   notes: isRtl 
-                                                    ? `🏫 تم إحالة الطلب لمدير مدرسة (${survey.schoolName || ''}) للتسكين المباشر.`
-                                                    : `Referred to school principal.`
+                                                    ? `🏫 تم إحالة الطلب لمدير مدرسة (${targetSch}) للتسكين المباشر.`
+                                                    : `Referred to school principal (${targetSch}).`
                                                 } as any);
                                               }
                                             }}
-                                            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer flex items-center justify-center gap-1"
+                                            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md"
                                           >
-                                            <Building className="w-3 h-3" />
-                                            <span>{isRtl ? "إرسال لمدير المدرسة" : "Send to School"}</span>
+                                            <Send className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? "إرسال لمدير المدرسة للتسكين" : "Send to School for Placement"}</span>
                                           </button>
                                         </div>
                                       )}
@@ -11449,8 +11885,20 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 <span className={`block text-[10px] font-bold ${isDark ? 'text-teal-300' : 'text-teal-600'}`}>{getStageName(row.stage)} - {row.sector || ''}</span>
                               </div>
                             </td>
-                            <td className={`px-4 py-3.5 font-semibold ${isDark ? 'text-teal-200' : 'text-teal-800'}`}>
-                              {getProblemName(row.problemType)}
+                            <td className="px-4 py-3.5">
+                              {(() => {
+                                const info = getRequestTypeInfo(row, isRtl);
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-black border shadow-sm ${info.badgeClass}`}>
+                                      {info.icon} {info.label}
+                                    </span>
+                                    <span className={`text-[9px] font-bold truncate max-w-[120px] ${isDark ? 'text-teal-400/70' : 'text-teal-600/70'}`} title={info.subLabel}>
+                                      {info.subLabel}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className={`px-4 py-3.5 ${isDark ? 'text-teal-200' : 'text-teal-800'}`}>
                               {row.serviceEmployee || (isRtl ? 'لم يحدد' : 'Unassigned')}
@@ -11659,9 +12107,16 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         if (!isEqDoneItem) return false;
                       }
 
-                      // RULE 1.2: For non-Equivalency Officers, equivalency requests MUST NOT appear unless referred to leadership/principal!
+                      // RULE 1.2: For non-Equivalency Officers, equivalency requests MUST NOT appear unless referred to leadership/principal/planning!
                       if (isEqItem && !canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
-                        const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+                        const isSentToLead = isEqDoneItem || 
+                          (s as any).sentToLeadership || 
+                          (s as any).sentToSchoolPrincipal || 
+                          st === 'sent_to_leadership' || 
+                          st === 'sent_to_school_principal' || 
+                          st === 'pending_vacancy' || 
+                          (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+                        
                         if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
                           return false;
                         }
@@ -11698,19 +12153,39 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
                         if (isAssignedToMe) return true;
                         if (isVacancyDirected) {
-                          if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
+                          // Allow seeing it if it's not assigned to ANOTHER planning officer
                           if ((s as any).assignedPlanningOfficerId && (s as any).assignedPlanningOfficerId !== activeOfficer.id) return false;
-                          return true;
+                          
+                          // Match by stage/gender/sector
+                          const studentStageCat = getSurveyStageCategory(s);
+                          const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
+                          const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
+                          const studentGender = isGirls ? 'girls' : 'boys';
+
+                          const genderOk = !activeOfficer.assignedGender || activeOfficer.assignedGender === 'both' || activeOfficer.assignedGender === 'الكل' || activeOfficer.assignedGender === studentGender;
+                          const stageOk = !activeOfficer.assignedStage || activeOfficer.assignedStage === 'الكل' || activeOfficer.assignedStage.includes(stageAr) || activeOfficer.assignedStage.includes(studentStageCat) || (s.stage && activeOfficer.assignedStage.includes(s.stage));
+                          const sectorOk = !activeOfficer.assignedSector || activeOfficer.assignedSector === 'الكل' || (s.district && s.district.includes(activeOfficer.assignedSector)) || (s.sector && s.sector.includes(activeOfficer.assignedSector));
+
+                          return genderOk && stageOk && sectorOk;
                         }
                         return false;
                       }
 
                       // Role 2: Leadership Supervisor (مشرف القيادة المدرسية)
                       if (activeOfficer.role === 'school_leadership') {
+                        const isSentToSchool = (s as any).sentToLeadership === true || 
+                          (s as any).sentToSchoolPrincipal === true || 
+                          st === 'sent_to_leadership' || 
+                          st === 'sent_to_school_principal' || 
+                          st === 'staffing_confirmed' ||
+                          (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+
+                        if (!isSentToSchool) return false;
+
                         if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) {
                           return true;
                         }
-                        if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal') {
+                        if (isSentToSchool) {
                           if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
                             if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
                           }
@@ -11725,7 +12200,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                           if (genderOk && stageOk && sectorOk) return true;
                         }
-                        return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
+                        return false;
                       }
 
                       return true;
@@ -11898,13 +12373,24 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) {
                             return false;
                           }
+                          
+                          const isSentToSchool = (s as any).sentToLeadership === true || 
+                            (s as any).sentToSchoolPrincipal === true || 
+                            st === 'sent_to_leadership' || 
+                            st === 'sent_to_school_principal' || 
+                            st === 'staffing_confirmed' ||
+                            isReturned ||
+                            (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+
+                          if (!isSentToSchool) return false;
+
                           if (isReturned) {
                             return true; // Returned requests show in Leadership Officer account for monitoring!
                           }
                           if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) {
                             return true;
                           }
-                          if ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal') {
+                          if (isSentToSchool) {
                             if (activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0) {
                               if (matchSchoolNames(activeOfficer.schoolNames, s.schoolName)) return true;
                             }
@@ -11921,7 +12407,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             // Fallback for equivalency requests sent to leadership stage
                             if (isEqItem) return true;
                           }
-                          return matchSchoolNames(activeOfficer.schoolNames, s.schoolName);
+                          return false;
                         }
 
                         // Role 3: Admission Supervisor (مسؤول القبول)
@@ -12165,6 +12651,18 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   <div className="mt-2 p-1.5 bg-sky-50 dark:bg-sky-950/30 text-[10px] text-sky-800 dark:text-sky-300 rounded-lg border border-sky-200 dark:border-sky-900/40 text-start font-medium">
                                     <span className="font-bold block text-sky-600 dark:text-sky-400 me-1">📝 ملاحظات التسكين:</span>
                                     {(survey as any).staffingNote}
+                                    <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-sky-200/50">
+                                      <div>
+                                        <span className="opacity-70 block font-bold">{isRtl ? 'المدرسة المعتمدة:' : 'Approved School:'}</span>
+                                        <span className="font-black text-sky-950 dark:text-sky-100">{(survey as any).staffingConfirmedSchoolName || survey.schoolName}</span>
+                                      </div>
+                                      <div>
+                                        <span className="opacity-70 block font-bold">{isRtl ? 'المرحلة والصف:' : 'Stage & Grade:'}</span>
+                                        <span className="font-black text-sky-950 dark:text-sky-100">
+                                          {(survey as any).staffingConfirmedStage || survey.stage} {(survey as any).staffingConfirmedGrade || survey.grade ? `(${(survey as any).staffingConfirmedGrade || survey.grade})` : ''}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </td>
@@ -12663,6 +13161,38 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                               <label className="block text-[10px] font-black text-slate-800 dark:text-slate-200 mb-1">
                                                 🏫 {isRtl ? 'تحديد المدرسة الموجه لها الطالب:' : 'Target Placement School:'}
                                               </label>
+
+                                              {/* Staffing Choices (Desires) */}
+                                              <div className="p-2 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 mb-2">
+                                                <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                                  🎯 {isRtl ? 'رغبات المستفيد المسجلة (اختر رغبة للتسكين):' : 'Beneficiary Desires (Select for placement):'}
+                                                </span>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                                                  {[
+                                                    { name: survey.schoolName, label: isRtl ? 'الرغبة الأولى' : '1st Desire' },
+                                                    { name: survey.secondSchoolName, label: isRtl ? 'الرغبة الثانية' : '2nd Desire' },
+                                                    { name: survey.thirdSchoolName, label: isRtl ? 'الرغبة الثالثة' : '3rd Desire' }
+                                                  ].map((choice, idx) => (
+                                                    choice.name ? (
+                                                      <button
+                                                        key={idx}
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: choice.name });
+                                                        }}
+                                                        className={`flex flex-col items-center justify-center p-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                                                          (eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName) === choice.name
+                                                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40'
+                                                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300'
+                                                        }`}
+                                                      >
+                                                        <span className="text-[8px] font-bold opacity-70 mb-0.5">{choice.label}</span>
+                                                        <span className="text-[10px] font-black text-center line-clamp-1">{choice.name}</span>
+                                                      </button>
+                                                    ) : null
+                                                  ))}
+                                                </div>
+                                              </div>
                                               <select
                                                 value={eqTargetSchoolMap[survey.id] || survey.schoolName || ''}
                                                 onChange={(e) => setEqTargetSchoolMap({ ...eqTargetSchoolMap, [survey.id]: e.target.value })}
@@ -12719,7 +13249,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                           <button
                                             type="button"
                                             onClick={() => {
-                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
                                               if (!targetSch) {
                                                 alert(isRtl ? '⚠️ يرجى تحديد المدرسة الموجه لها الطالب للتسكين.' : 'Please select target school.');
                                                 return;
@@ -12736,6 +13266,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   ...survey,
                                                   schoolName: targetSch,
                                                   grade: calibratedGrade,
+                                                  staffingConfirmedSchoolName: targetSch,
+                                                  staffingConfirmedGrade: calibratedGrade,
+                                                  staffingConfirmedStage: survey.stage,
                                                   equalizationCompleted: true,
                                                   equalizationStage: 'completed',
                                                   equalizationDocAttached: true,
@@ -12816,7 +13349,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                             type="button"
                                             onClick={() => {
                                               const selectedLeadId = eqSelectedLeadershipOfficerMap[survey.id] || (survey as any).assignedLeadershipOfficerId;
-                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.schoolName;
+                                              const targetSch = eqTargetSchoolMap[survey.id] || survey.firstSchoolName || survey.schoolName;
                                               const leadOfficer = officers.find(o => o.id === selectedLeadId) || officers.find(o => o.isActive && o.role === 'school_leadership') || leadershipOfficers[0];
                                               const leadName = leadOfficer?.nameAr || 'مشرف القيادة المدرسية';
                                               const leadNotes = (eqLeadershipNotesMap[survey.id] || '').trim();
@@ -13226,7 +13759,102 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </div>
                                   )}
 
-                                  {/* Finalize Transaction Rule Notice */}
+                                   {/* Principal & Leadership Actions */}
+                                   {!isArchived && !isStaffingConfirmed && (
+                                     <div className="space-y-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                       {/* 1. Principal Action: Confirm and send to Leadership */}
+                                       {status === 'sent_to_school_principal' && activeOfficer.schoolNames && activeOfficer.schoolNames.length > 0 && matchSchoolNames(activeOfficer.schoolNames, survey.schoolName) && (
+                                         <div className="p-3 bg-blue-500/10 dark:bg-blue-900/20 border-2 border-blue-500 rounded-2xl space-y-3 text-start">
+                                           <div className="flex items-center gap-2 border-b border-blue-200 dark:border-blue-800 pb-2">
+                                             <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                             <span className="font-black text-[11px] text-blue-950 dark:text-blue-100">
+                                               {isRtl ? 'إجراء مدير المدرسة (تسكين ميداني):' : 'Principal Action (Field Placement):'}
+                                             </span>
+                                           </div>
+                                           <div className="flex flex-col gap-2">
+                                             <button
+                                               onClick={() => {
+                                                 if (onUpdateSurvey) {
+                                                   onUpdateSurvey({
+                                                     ...survey,
+                                                     vacancyRequestStatus: 'sent_to_leadership',
+                                                     principalConfirmedStaffing: true,
+                                                     staffingConfirmedAt: new Date().toISOString(),
+                                                     staffingConfirmedBy: activeOfficer.nameAr,
+                                                     staffingConfirmedSchoolName: survey.schoolName,
+                                                     staffingConfirmedStage: survey.stage,
+                                                     staffingConfirmedGrade: survey.grade,
+                                                     notes: isRtl 
+                                                       ? `✅ تم التسكين الميداني بواسطة مدير المدرسة (${activeOfficer.nameAr}) وإحالة الطلب للقيادة المدرسية للاعتماد النهائي.`
+                                                       : `Field placement confirmed by principal (${activeOfficer.nameAr}) and routed to Leadership for final approval.`
+                                                   } as any);
+                                                 }
+                                               }}
+                                               className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                             >
+                                               <CheckCircle2 className="w-3.5 h-3.5" />
+                                               <span>{isRtl ? '✅ تأكيد التسكين والإحالة للقيادة' : 'Confirm & Send to Leadership'}</span>
+                                             </button>
+                                             <button
+                                               onClick={() => {
+                                                 const reason = prompt(isRtl ? 'سبب إعادة الطلب للتخطيط:' : 'Reason for return:');
+                                                 if (reason && onUpdateSurvey) {
+                                                   onUpdateSurvey({
+                                                     ...survey,
+                                                     vacancyRequestStatus: 'approved',
+                                                     returnedByPrincipal: true,
+                                                     principalReturnReason: reason,
+                                                     notes: isRtl 
+                                                       ? `🚨 تم إعادة الطلب للتخطيط بواسطة مدير المدرسة بسبب: ${reason}`
+                                                       : `Returned to planning by principal. Reason: ${reason}`
+                                                   } as any);
+                                                 }
+                                               }}
+                                               className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                             >
+                                               <XCircle className="w-3.5 h-3.5" />
+                                               <span>{isRtl ? '🚨 اعتذار (لا يوجد شاغر)' : 'Reject (No Vacancy)'}</span>
+                                             </button>
+                                           </div>
+                                         </div>
+                                       )}
+
+                                       {/* 2. Leadership Action: Final Approval & Archiving */}
+                                       {status === 'sent_to_leadership' && (activeOfficer.role === 'school_leadership' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).assignedLeadershipOfficerId === activeOfficer.id) && (
+                                         <div className="p-3 bg-indigo-500/10 dark:bg-indigo-900/20 border-2 border-indigo-500 rounded-2xl space-y-3 text-start">
+                                           <div className="flex items-center gap-2 border-b border-indigo-200 dark:border-indigo-800 pb-2">
+                                             <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                             <span className="font-black text-[11px] text-indigo-950 dark:text-indigo-100">
+                                               {isRtl ? 'إجراء مسؤول القيادة (الاعتماد النهائي):' : 'Leadership Action (Final Approval):'}
+                                             </span>
+                                           </div>
+                                           <button
+                                             onClick={() => {
+                                               if (onUpdateSurvey) {
+                                                 onUpdateSurvey({
+                                                   ...survey,
+                                                   vacancyRequestStatus: 'staffing_confirmed',
+                                                   isResolved: true,
+                                                   archivedAt: new Date().toISOString(),
+                                                   archivedBy: activeOfficer.nameAr,
+                                                   notes: isRtl 
+                                                     ? `🏁 تم الاعتماد النهائي للتسكين وأرشفة المعاملة بواسطة مشرف القيادة المدرسية (${activeOfficer.nameAr}).`
+                                                     : `Final approval and archiving completed by leadership supervisor (${activeOfficer.nameAr}).`
+                                                 } as any);
+                                               }
+                                             }}
+                                             className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                           >
+                                             <Archive className="w-3.5 h-3.5" />
+                                             <span>{isRtl ? '🏁 الاعتماد النهائي وأرشفة الطلب' : 'Final Approval & Archive'}</span>
+                                           </button>
+                                         </div>
+                                       )}
+                                     </div>
+                                   )}
+
+                                   {/* Finalize Transaction Rule Notice */}
+
                                   <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-center space-y-1">
                                     <span className="block text-[10px] font-black text-slate-700 dark:text-slate-300">
                                       🏁 {isRtl ? 'المرحلة الأخيرة في المعاملة:' : 'Final Pipeline Stage:'}

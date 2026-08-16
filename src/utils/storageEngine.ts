@@ -482,6 +482,7 @@ export function isMatchingPrincipalSchool(
   // 4. Match against referral / target / assigned school name (when referred by supervisor or admissions)
   const targetSchool = String(
     (survey as any).targetSchoolName || 
+    (survey as any).staffingConfirmedSchoolName || 
     (survey as any).assignedSchoolName || 
     (survey as any).referredSchoolName || 
     (survey as any).directedSchoolName || 
@@ -541,7 +542,12 @@ export function isMatchingPrincipalSchool(
 
 export function isSurveyEqualizationRequest(survey: SurveyResponse | undefined | null): boolean {
   if (!survey) return false;
-  // Transfer requests take precedence and are NEVER equivalency requests
+  
+  // Prioritize explicit requestType field
+  if (survey.requestType === 'equivalency') return true;
+  if (survey.requestType === 'transfer' || survey.requestType === 'registration') return false;
+
+  // Fallback for legacy data or inferred logic
   if (survey.serviceType === 'transfer' || Boolean(survey.transferReason) || Boolean(survey.guardianTransferPledge)) {
     return false;
   }
@@ -559,6 +565,11 @@ export function isSurveyEqualizationRequest(survey: SurveyResponse | undefined |
 
 export function isSurveyTransferRequest(survey: SurveyResponse | undefined | null): boolean {
   if (!survey) return false;
+
+  // Prioritize explicit requestType field
+  if (survey.requestType === 'transfer') return true;
+  if (survey.requestType === 'equivalency' || survey.requestType === 'registration') return false;
+
   return Boolean(
     survey.serviceType === 'transfer' ||
     Boolean(survey.transferReason) ||
@@ -593,8 +604,27 @@ export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, is
     };
   }
 
-  // 1. TRANSFER (طلب نقل طالب من مدرسة إلى مدرسة) -> وحدة القبول والتسجيل
-  if (isSurveyTransferRequest(survey)) {
+  // 1. EQUALIZATION (معادلة مؤهلات وشهادات) -> مسؤول معادلة الشهادات
+  if (survey.requestType === 'equivalency' || isSurveyEqualizationRequest(survey)) {
+    let sub = isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency';
+    if (survey.problemType === 'cert_primary_eq' || survey.equalizationStage === 'primary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الابتدائية' : 'Primary Cert. Equivalency';
+    } else if (survey.problemType === 'cert_intermediate_eq' || survey.equalizationStage === 'intermediate') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة المتوسطة' : 'Intermediate Cert. Equivalency';
+    } else if (survey.problemType === 'cert_secondary_eq' || survey.equalizationStage === 'secondary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الثانوية' : 'Secondary Cert. Equivalency';
+    }
+    return {
+      label: isRtl ? 'معادلة' : 'Equivalency',
+      subLabel: sub,
+      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
+      icon: '🎓',
+      category: 'equalization'
+    };
+  }
+
+  // 2. TRANSFER (طلب نقل طالب من مدرسة إلى مدرسة) -> وحدة القبول والتسجيل
+  if (survey.requestType === 'transfer' || isSurveyTransferRequest(survey)) {
     let sub = isRtl ? 'طلب نقل بين المدارس' : 'Transfer Request';
     if (survey.problemType === 'distance_from_school') {
       sub = isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Distance from School Transfer';
@@ -606,30 +636,11 @@ export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, is
       sub = survey.transferReason;
     }
     return {
-      label: isRtl ? 'نقل طالب' : 'Student Transfer',
+      label: isRtl ? 'نقل' : 'Transfer',
       subLabel: sub,
       badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/40',
       icon: '🔄',
       category: 'transfer'
-    };
-  }
-
-  // 2. EQUALIZATION (معادلة مؤهلات وشهادات) -> مسؤول معادلة الشهادات
-  if (isSurveyEqualizationRequest(survey)) {
-    let sub = isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency';
-    if (survey.problemType === 'cert_primary_eq' || survey.equalizationStage === 'primary') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة الابتدائية' : 'Primary Cert. Equivalency';
-    } else if (survey.problemType === 'cert_intermediate_eq' || survey.equalizationStage === 'intermediate') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة المتوسطة' : 'Intermediate Cert. Equivalency';
-    } else if (survey.problemType === 'cert_secondary_eq' || survey.equalizationStage === 'secondary') {
-      sub = isRtl ? 'معادلة شهادة - المرحلة الثانوية' : 'Secondary Cert. Equivalency';
-    }
-    return {
-      label: isRtl ? 'معادلة مؤهلات' : 'Qualifications Equivalency',
-      subLabel: sub,
-      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
-      icon: '🎓',
-      category: 'equalization'
     };
   }
 
@@ -667,28 +678,22 @@ export function getProblemTypeArabicLabel(type: string | undefined): string {
   if (!type) return 'تسجيل جديد';
   switch (type) {
     case 'cert_primary_eq':
-      return 'معادلة مؤهلات (المرحلة الابتدائية)';
     case 'cert_intermediate_eq':
-      return 'معادلة مؤهلات (المرحلة المتوسطة)';
     case 'cert_secondary_eq':
-      return 'معادلة مؤهلات (المرحلة الثانوية)';
+      return 'معادلة';
     case 'vacancies_unavailable':
     case 'vacancies_closed':
-      return 'نقل طالب (طلب شاغر)';
-    case 'new_registration_saudi':
-      return 'تسجيل جديد (سعودي)';
-    case 'new_registration_resident':
-      return 'تسجيل جديد (مقيم)';
     case 'student_density':
-      return 'نقل طالب (كثافة بالفصول)';
-    case 'unjustified_rejection':
-      return 'معاملة قبول (رفض دون مبرر)';
     case 'distance_from_school':
-      return 'نقل طالب (بعد السكن)';
+      return 'نقل';
+    case 'new_registration_saudi':
+    case 'new_registration_resident':
     case 'unregistered_desire':
-      return 'تسجيل جديد (قبول بالرغبة)';
+      return 'تسجيل جديد';
+    case 'unjustified_rejection':
+      return 'معاملة قبول';
     case 'other':
-      return 'معاملة قبول / أخرى';
+      return 'أخرى';
     default:
       return type;
   }
@@ -913,7 +918,7 @@ export async function createFullSystemBackupSnapshot(): Promise<string> {
   const backupPayload = {
     timestamp: new Date().toISOString(),
     version: '2.0',
-    system: 'منصة الخدمات الموحدة للقبول والمعادلات',
+    system: 'منصة خدمات المستفيد للقبول والمعادلات',
     counts: {
       surveys: surveys.length,
       schools: schools.length,
