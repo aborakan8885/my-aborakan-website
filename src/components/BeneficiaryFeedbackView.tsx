@@ -122,6 +122,8 @@ export default function BeneficiaryFeedbackView({
       { wch: 40 }
     ];
     const workbook = XLSX.utils.book_new();
+    if (!workbook.Workbook) workbook.Workbook = {};
+    workbook.Workbook.Views = [{ RTL: true }];
     XLSX.utils.book_append_sheet(workbook, worksheet, 'ملاحظات المستفيدين');
     XLSX.writeFile(workbook, `beneficiary_feedbacks_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };

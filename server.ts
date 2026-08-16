@@ -1,5 +1,6 @@
 import express from "express";
 import compression from "compression";
+import helmet from "helmet";
 import path from "path";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -16,20 +17,30 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection caught safely:", reason);
 });
 
-// Official Gmail Configuration for Applet
-const OFFICIAL_EMAIL_USER = process.env.OFFICIAL_EMAIL_USER || "qabulmadinah@gmail.com";
-const OFFICIAL_EMAIL_PASS = process.env.OFFICIAL_EMAIL_PASS || "Salim123321rs&1";
+// Official Configuration for Applet (Secrets must be in environment variables)
+const OFFICIAL_EMAIL_USER = process.env.OFFICIAL_EMAIL_USER;
+const OFFICIAL_EMAIL_PASS = process.env.OFFICIAL_EMAIL_PASS;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-const mailTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: OFFICIAL_EMAIL_USER,
-    pass: OFFICIAL_EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+if (!OFFICIAL_EMAIL_USER || !OFFICIAL_EMAIL_PASS) {
+  console.warn("SECURITY WARNING: OFFICIAL_EMAIL_USER or OFFICIAL_EMAIL_PASS not configured. Email features will be disabled.");
+}
+if (!ADMIN_PASSWORD) {
+  console.warn("SECURITY WARNING: ADMIN_PASSWORD not configured. Admin login will be disabled.");
+}
+
+const mailTransporter = OFFICIAL_EMAIL_USER && OFFICIAL_EMAIL_PASS 
+  ? nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: OFFICIAL_EMAIL_USER,
+        pass: OFFICIAL_EMAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: true // Hardened: Always verify certificates in production
+      }
+    })
+  : null;
 
 interface SchoolItem {
   id: string;
@@ -48,18 +59,23 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Enable response compression (Gzip / Brotli) for maximum throughput under high load
+  // Standard Security Headers with Helmet
+  app.use(helmet({
+    contentSecurityPolicy: false, // Vite handles CSP in dev, and it can be tricky for SPAs without config
+    crossOriginEmbedderPolicy: false
+  }));
+
+  // Enable response compression (Gzip / Brotli) for maximum throughput
   app.use(compression({ level: 6, threshold: 1024 }));
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+  app.use(express.json({ limit: "10mb" })); // Reduced limit for better security
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-  // High concurrency headers and caching
+  // Custom high concurrency headers
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("Keep-Alive", "timeout=65, max=100000");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     next();
   });
 
@@ -68,13 +84,25 @@ async function startServer() {
     limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit
   });
 
-  // API Endpoint: Health & High Concurrency Status check
+  // Middleware: Basic Admin API Key protection for sensitive mutations
+  const adminApiKeyMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const providedKey = req.headers["x-admin-api-key"];
+    const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+
+    // If API key is configured, strictly enforce it
+    if (ADMIN_API_KEY && providedKey !== ADMIN_API_KEY) {
+      return res.status(403).json({ success: false, error: "Unauthorized access: Invalid API Key" });
+    }
+    next();
+  };
+
+  // API Endpoint: Health & System Status check
   app.get("/api/health", (_req, res) => {
     res.json({ 
       status: "ok", 
       service: "High Concurrency Admissions & Surveys Engine",
       capacity: "20,000+ Concurrent Requests Handled",
-      officialEmail: OFFICIAL_EMAIL_USER,
+      emailService: mailTransporter ? "operational" : "disabled",
       memoryUsage: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`
     });
   });
@@ -83,15 +111,20 @@ async function startServer() {
   app.get("/api/email/status", (_req, res) => {
     res.json({
       success: true,
-      officialEmail: OFFICIAL_EMAIL_USER,
-      configured: true,
+      configured: !!mailTransporter,
       service: "Gmail SMTP Service"
     });
   });
 
-  // API Endpoint: Send official emails using qabulmadinah@gmail.com
-  app.post("/api/send-email", async (req, res): Promise<any> => {
+  // API Endpoint: Send official emails
+  app.post("/api/send-email", adminApiKeyMiddleware, async (req, res): Promise<any> => {
     try {
+      if (!mailTransporter) {
+        return res.status(503).json({
+          success: false,
+          error: "Email service is not configured on the server."
+        });
+      }
       const { to, subject, bodyText, bodyHtml, triggerReason } = req.body || {};
 
       if (!to) {
@@ -147,7 +180,29 @@ async function startServer() {
     }
   });
 
-  // API Endpoint: High-throughput Batch Request processing for high load testing / submission spikes
+  // API Endpoint: Admin Login (Secure password check)
+  app.post("/api/admin/login", (req, res): any => {
+    const { nationalId, password } = req.body || {};
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+
+    if (!ADMIN_PASSWORD) {
+      return res.status(503).json({ success: false, error: "Admin login is not configured on server." });
+    }
+
+    // Secure credentials verification
+    if (nationalId === "1068575628" && password === ADMIN_PASSWORD) {
+      return res.json({ 
+        success: true, 
+        message: "Authenticated", 
+        adminApiKey: ADMIN_API_KEY || "none" // Return the key to the client for subsequent requests if configured
+      });
+    }
+
+    return res.status(401).json({ success: false, error: "Invalid credentials" });
+  });
+
+  // API Endpoint: High-throughput Batch Request processing
   app.post("/api/requests/batch", (req, res): any => {
     try {
       const items = Array.isArray(req.body?.items) ? req.body.items : [req.body];

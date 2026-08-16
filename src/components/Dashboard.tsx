@@ -75,12 +75,17 @@ import {
   Calendar,
   MapPin,
   FileUp,
-  Building
+  Building,
+  Award,
+  Star
 } from 'lucide-react';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, ProblemType, PrincipalReport, OfficerUser, OfficerRole, SchoolItem, BeneficiaryFeedback } from '../types';
 import { TRANSLATIONS, EMPLOYEES, INITIAL_SCHOOLS } from '../data/mockData';
 import { sendOfficialEmail, OFFICIAL_SENDER_EMAIL } from '../utils/emailService';
 import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
+import BeneficiarySatisfactionView from './BeneficiarySatisfactionView';
+import DateBackupModal from './DateBackupModal';
+import { clearSchoolsFromStorage, clearAllSurveysFromStorage } from '../utils/storageEngine';
 
 export function getRequestTypeInfo(survey: SurveyResponse, isRtl: boolean = true) {
   if (
@@ -389,7 +394,7 @@ interface DashboardProps {
 }
 
 const DEFAULT_OFFICERS: OfficerUser[] = [
-  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', fullNameQuad: 'سالم بن محمد الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'salim123321rs&1', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
+  { id: 'emp_1', nameAr: 'سالم بن محمد الترجمي', fullNameQuad: 'سالم بن محمد الترجمي', nationalId: '1068575628', personalEmail: 'salem.turjumi@gmail.com', nameEn: 'Salem Al-Turjumi', role: 'admin', mobile: '0551112222', isActive: true, password: 'PROTECTED_BY_SERVER', canGrantRoles: true, canDeleteUsers: true, canAddUsers: true, workField: 'الإدارة العامة ورعاية المستفيدين والنظام', roleDescription: 'مدير النظام - كامل الصلاحيات وإدارة المستخدمين والمدارس' }
 ];
 
 interface TabItemConfig {
@@ -578,7 +583,7 @@ function Dashboard({
 
     // Standardize credentials and permissions for users in list
     list = list.map((o, idx) => {
-      let pwd = o.password || (o.id === 'emp_1' ? 'salim123321rs&1' : '123456');
+      let pwd = o.password || (o.id === 'emp_1' ? 'PROTECTED_BY_SERVER' : '123456');
       const defaultNatId = o.nationalId || `10${(10000000 + idx).toString().slice(0, 8)}`;
       const defaultQuadName = o.fullNameQuad || (o.nameAr.includes('بن') ? o.nameAr : `${o.nameAr} بن عبد الله السعودي`);
       const defaultEmail = o.personalEmail || `${o.id}@gmail.com`;
@@ -590,7 +595,7 @@ function Dashboard({
           nameAr: 'سالم بن محمد الترجمي',
           fullNameQuad: 'سالم بن محمد الترجمي',
           personalEmail: o.personalEmail || 'salem.turjumi@gmail.com',
-          password: 'salim123321rs&1',
+          password: 'PROTECTED_BY_SERVER',
           role: 'admin',
           canGrantRoles: true,
           canDeleteUsers: true,
@@ -679,13 +684,14 @@ function Dashboard({
   const [newUserAssignedSector, setNewUserAssignedSector] = useState('الكل');
 
   // Navigation Tab - Default to beneficiary responses upon login
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'excel-view' | 'custom-reports' | 'vacancy-requests' | 'beneficiary-feedback'>('responses');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'responses' | 'principal-reports' | 'alerts' | 'integrations' | 'settings' | 'user-roles' | 'schools-manager' | 'excel-view' | 'custom-reports' | 'vacancy-requests' | 'beneficiary-feedback' | 'beneficiary-satisfaction'>('responses');
 
   // Admin Editing Modal State
   const [editingOfficer, setEditingOfficer] = useState<OfficerUser | null>(null);
 
   // Deletion Modal States
   const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
+  const [showDateBackupModal, setShowDateBackupModal] = useState<boolean>(false);
   const [surveyToDeleteId, setSurveyToDeleteId] = useState<string | null>(null);
   const [reportToDeleteId, setReportToDeleteId] = useState<string | null>(null);
 
@@ -2655,6 +2661,15 @@ Direct Strategic Recommendations:
       color: 'amber',
       badge: (beneficiaryFeedbacks || []).filter(f => f.status === 'new').length || null,
       animateIcon: (beneficiaryFeedbacks || []).some(f => f.status === 'new')
+    },
+    {
+      id: 'beneficiary-satisfaction',
+      show: activeOfficer.role === 'admin' || activeOfficer.role === 'director',
+      label: isRtl ? 'قياس رضا المستفيدين' : 'Beneficiary Satisfaction',
+      icon: Award,
+      color: 'amber',
+      badge: isRtl ? 'مؤشرات الرضا ⭐' : 'Satisfaction ⭐',
+      isBadgeString: true
     }
   ], [
     activeOfficer.role,
@@ -3063,6 +3078,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       const list = surveysList.length > 0 ? surveysList : surveys;
 
       const wb = XLSX.utils.book_new();
+      if (!wb.Workbook) wb.Workbook = {};
+      wb.Workbook.Views = [{ RTL: true }];
 
       const getProcessingDays = (s: SurveyResponse) => {
         const created = new Date(s.createdAt || Date.now()).getTime();
@@ -3388,6 +3405,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
     if (format === 'excel') {
       try {
         const wb = XLSX.utils.book_new();
+        if (!wb.Workbook) wb.Workbook = {};
+        wb.Workbook.Views = [{ RTL: true }];
         const dataRows: any[][] = [
           ["المملكة العربية السعودية - وزارة التعليم"],
           ["منصة الخدمات الإشرافية الموحدة - تقرير أداء وإنجاز الإدارة والقسم والوحدة والموظفين"],
@@ -3600,7 +3619,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       .trim();
   };
 
-  const handleAuthLogin = (e: React.FormEvent) => {
+  const handleAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUser = normalizeDigits(loginMobile);
     const cleanPassword = normalizeDigits(loginPassword);
@@ -3609,8 +3628,38 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       alert(isRtl ? 'الرجاء إدخال رقم السجل المدني / اسم المستخدم وكلمة المرور!' : 'Please enter National ID / Username and password!');
       return;
     }
+
+    // SPECIAL SECURE LOGIN FOR ADMIN
+    if (cleanUser === "1068575628") {
+      try {
+        const response = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nationalId: cleanUser, password: cleanPassword })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          if (data.adminApiKey) {
+            localStorage.setItem('admin_api_key', data.adminApiKey);
+          }
+          const adminOfficer = officers.find(o => o.nationalId === "1068575628");
+          if (adminOfficer) {
+            setActiveOfficer(adminOfficer);
+            setIsAuthenticated(true);
+            localStorage.setItem('officer_authenticated_v1', 'true');
+            localStorage.setItem('active_officer_id_v1', adminOfficer.id);
+            setLoginMobile('');
+            setLoginPassword('');
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Admin login error:", err);
+      }
+    }
     
-    // Find officer matching National ID, Username, Mobile, or Personal Email
+    // Find officer matching National ID, Username, Mobile, or Personal Email for other users
     const found = officers.find((o) => {
       const oNatId = o.nationalId ? normalizeDigits(o.nationalId) : '';
       const oMobile = o.mobile ? normalizeDigits(o.mobile) : '';
@@ -3631,10 +3680,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
       const matchPassword = (
         (oPwd && oPwd === cleanPassword) ||
         (oNatId && oNatId === cleanPassword) ||
-        (oMobile && oMobile === cleanPassword) ||
-        cleanPassword === '123456' ||
-        (cleanPassword === 'admin' && o.role === 'admin') ||
-        (cleanPassword === 'Salim123321rs&' && o.role === 'admin')
+        (oMobile && oMobile === cleanPassword)
       );
 
       return matchUsername && matchPassword;
@@ -4545,6 +4591,16 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           )}
 
           <button
+            onClick={() => setShowDateBackupModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white text-sm font-bold rounded-xl transition-all shadow-md cursor-pointer"
+            id="dashboard-date-backup-top-btn"
+            title={isRtl ? 'أخذ نسخة احتياطية للطلبات بالعام والشهر واليوم ونوع الطلب (Excel)' : 'Backup requests by Year/Month/Day & Type (Excel)'}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+            <span>{isRtl ? 'نسخة احتياطية بالعام/الشهر/النوع 📊' : 'Date Backup (.xlsx)'}</span>
+          </button>
+
+          <button
             onClick={handleExportCSV}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-md cursor-pointer"
             id="dashboard-export-csv"
@@ -4965,7 +5021,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     </h4>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {onClearAllSurveys && (activeOfficer?.role === 'admin' || activeOfficer?.role === 'director') && (
+                    {onClearAllSurveys && activeOfficer?.role === 'admin' && (
                       <button
                         type="button"
                         onClick={() => setShowClearAllModal(true)}
@@ -4974,10 +5030,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                             ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:bg-rose-900 hover:text-white' 
                             : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-600 hover:text-white'
                         }`}
-                        title={isRtl ? 'حذف جميع الطلبات المسجلة في النظام' : 'Delete all requests'}
+                        title={isRtl ? 'حذف جميع الطلبات المسجلة في النظام (خاص بمدير النظام الأدمن فقط)' : 'Delete all requests (Admin only)'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span>{isRtl ? 'حذف جميع الطلبات' : 'Delete All Requests'}</span>
+                        <span>{isRtl ? 'حذف جميع الطلبات (Admin) 🗑️' : 'Delete All Requests (Admin)'}</span>
                       </button>
                     )}
                     <span className="text-[10px] font-bold text-slate-500">
@@ -5320,7 +5376,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                           isReceived: true,
                                           receivedAt: new Date().toISOString()
                                         });
-                                        alert(isRtl ? '✓ تم استلام المعاملة بنجاح وانتقلت لمعاملاتك المستلمة قيد المتابعة!' : 'Request received successfully!');
                                       }
                                     }}
                                     className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
@@ -5371,7 +5426,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   ? "📥 تم استلام المعاملة رسمياً بواسطة مسئول معادلة الشهادات (" + activeOfficer.nameAr + ") للبدء بفحص الملف وإجراءات المعايرة."
                                                   : "Request received by equivalency supervisor (" + activeOfficer.nameAr + ")."
                                               } as any);
-                                              alert(isRtl ? "✓ تم تسجيل استلام الطلب بنجاح باسم (" + activeOfficer.nameAr + ")!" : "Request received successfully!");
                                             }
                                           }}
                                           disabled={(survey as any).isReceivedByEqOfficer}
@@ -5447,7 +5501,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                     unresolvedReason: 'تم إلغاء الطلب لعدم حضور المستفيد للموعد المحدد لعمل المعادلة',
                                                     notes: isRtl ? '❌ تم إلغاء الطلب من قبل مسؤول المعادلات لعدم حضور المستفيد للموعد المحدد.' : 'Request cancelled by equivalency officer due to beneficiary no-show.',
                                                   } as any);
-                                                  alert(isRtl ? '✓ تم إلغاء الطلب وإغلاقه وأرشفته لعدم حضور المستفيد.' : 'Request cancelled and archived due to no-show.');
                                                 }
                                               }
                                             }}
@@ -5618,7 +5671,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                             if (navigator.clipboard) {
                                                               navigator.clipboard.writeText(gpsLink);
                                                             }
-                                                            alert(isRtl ? "✓ تم إرفاق موقعك الجغرافي الحالي عبر (GPS) ونسخ الرابط بنجاح!\n📍 الرابط: " + gpsLink : "Current GPS location attached and copied!");
                                                           },
                                                           () => {
                                                             const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
@@ -5688,7 +5740,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   } as any);
 
                                                   setShowApptPickerMap({ ...showApptPickerMap, [survey.id]: false });
-                                                  alert(isRtl ? "🎉 تم حفظ وإرسال الموعد ورابط الموقع لشاشة المستفيد بنجاح!\n\n• التاريخ: " + fullApptDate + "\n• الوقت: " + apptTime : "Appointment saved!");
                                                 }
                                               }}
                                               className="w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1 active:scale-95"
@@ -5748,7 +5799,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                         ? "📤 تم رفع وثيقة المعادلة المعتمدة من الجهاز بواسطة (" + activeOfficer.nameAr + ") باسم الملف: (" + file.name + ")."
                                                         : "Equivalency document uploaded: (" + file.name + ")."
                                                     } as any);
-                                                    alert(isRtl ? "✓ تم رفع وثيقة المعادلة المعتمدة (" + file.name + ") بنجاح!" : "File uploaded successfully!");
                                                   }
                                                 };
                                                 reader.readAsDataURL(file);
@@ -5900,7 +5950,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                     : "Referred to school (" + targetSch + ") with attached equivalency doc."
                                                 } as any);
 
-                                                alert(isRtl ? "✓ تم إحالة الطلب بنجاح لمديرة/مدير مدرسة (" + targetSch + ") مرفق به وثيقة المعادلة!" : "Referred to school with equivalency document!");
                                               }
                                             }}
                                             className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
@@ -5972,7 +6021,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                         : "Sent request to matched leadership supervisor (" + leadName + ") for placement follow-up."
                                                     } as any);
 
-                                                    alert(isRtl ? "✓ تم إحالة الطلب تلقائياً لمشرف القيادة المدرسية المختص (" + leadName + ") بنجاح!" : "Sent to leadership supervisor successfully!");
                                                   }
                                                 }}
                                                 className="w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
@@ -5989,30 +6037,34 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                                       {/* Non-equivalency actions: Vacancy opening request */}
                                       {activeOfficer.role !== 'equivalency_supervisor' && !activeOfficer.canHandleEqualizations && !((survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
-                                        activeOfficer.role === 'school_planning' && survey.vacancyRequestStatus === 'pending_vacancy' ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (onUpdateSurvey) {
-                                                onUpdateSurvey({
-                                                  ...survey,
-                                                  vacancyRequestStatus: 'approved',
-                                                  isResolved: false,
-                                                  assignedOfficerId: (survey as any).referringOfficerId || survey.assignedOfficerId,
-                                                  serviceEmployee: (survey as any).referringOfficerName || survey.serviceEmployee,
-                                                  notes: isRtl 
-                                                    ? `🔓 تم فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (${activeOfficer.nameAr}) وعاد الطلب لمسؤول القبول لمتابعة الإجراءات.` 
-                                                    : `Vacancy opened by planning officer (${activeOfficer.nameAr}) and returned to admissions officer.`
-                                                } as any);
-                                                alert(isRtl ? "✓ تم فتح الشاغر بنجاح! وعاد الطلب لمسؤول القبول لمتابعة التسكين والقيادة." : "Vacancy opened successfully!");
-                                              }
-                                            }}
-                                            className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-indigo-500"
-                                          >
-                                            <Building className="w-3.5 h-3.5" />
-                                            <span>{isRtl ? "تم فتح الشاغر 🔓 (إعادة لمسؤول القبول)" : "Vacancy Opened 🔓 (Return to Admissions)"}</span>
-                                          </button>
-                                        ) : (
+                                        activeOfficer.role === 'school_planning' && (survey.vacancyRequestStatus === 'pending_vacancy' || (survey as any).returnedByPrincipal) ? (
+                                           <button
+                                             type="button"
+                                             onClick={() => {
+                                               if (onUpdateSurvey) {
+                                                 const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
+                                                 const referringOfficer = officers.find(o => o.id === referringId);
+                                                 const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
+                                                 onUpdateSurvey({
+                                                   ...survey,
+                                                   isVacancyRequest: true,
+                                                   vacancyRequestStatus: 'approved',
+                                                   isResolved: false,
+                                                   returnedByPrincipal: false,
+                                                   assignedOfficerId: referringId,
+                                                   serviceEmployee: referringName,
+                                                   notes: isRtl 
+                                                     ? ("🔓 تم تأكيد فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (" + activeOfficer.nameAr + ") وعادت المعاملة فوراً للجهة المرسلة (" + referringName + ") لمتابعة التوجيه والتسكين.")
+                                                     : ("Vacancy opened and confirmed by planning officer (" + activeOfficer.nameAr + ") and returned to (" + referringName + ").")
+                                                 } as any);
+                                               }
+                                             }}
+                                             className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-emerald-500"
+                                           >
+                                             <Building className="w-3.5 h-3.5" />
+                                             <span>{isRtl ? "🔓 تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)" : "Confirm Vacancy (Return to Sender) 🔓"}</span>
+                                           </button>
+                                         ) : (
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -6025,7 +6077,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   referringOfficerName: activeOfficer.nameAr,
                                                   referralNotes: "طلب فتح شاغر بمدرسة (" + survey.schoolName + ") مرفوع بواسطة مشرف القبول (" + activeOfficer.nameAr + ")"
                                                 });
-                                                alert(isRtl ? "✓ تم إرسال طلب فتح الشاغر في مدرسة (" + survey.schoolName + ") لمسؤول فتح الشواغر بنجاح!" : "Vacancy opening request sent!");
                                               }
                                             }}
                                             disabled={survey.vacancyRequestStatus === 'pending_vacancy'}
@@ -6046,7 +6097,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                       )}
 
                                       {/* Route to School Principal for non-equivalency */}
-                                      {survey.vacancyRequestStatus === 'approved' && (
+                                      {survey.vacancyRequestStatus === 'approved' && activeOfficer.role !== 'school_planning' && (
                                         <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
                                           <button
                                             type="button"
@@ -6064,7 +6115,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                     ? `🏫 تم إحالة الطلب لمدير مدرسة (${survey.schoolName || ''}) للتسكين المباشر.`
                                                     : `Referred to school principal.`
                                                 } as any);
-                                                alert(isRtl ? `✓ تم إرسال الطلب لمدير مدرسة (${survey.schoolName || ''}) بنجاح!` : 'Sent to school principal successfully!');
                                               }
                                             }}
                                             className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer flex items-center justify-center gap-1"
@@ -6076,7 +6126,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                       )}
 
                                       {/* Route to Leadership Officer for normal non-equivalency surveys */}
-                                      <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
+                                      {activeOfficer.role !== 'school_planning' && (
+                                        <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
                                         <label className="block text-[10px] font-black text-indigo-900 dark:text-indigo-300">
                                           {isRtl ? "إحالة لمشرف القيادة للمتابعة:" : "Route to Leadership Officer:"}
                                         </label>
@@ -6109,7 +6160,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   referringOfficerId: activeOfficer.id,
                                                   referringOfficerName: activeOfficer.nameAr
                                                 } as any);
-                                                alert(isRtl ? "✓ تم إرسال المعاملة لمشرف القيادة المدرسية (" + leadName + ") بنجاح!" : "Sent to leadership supervisor successfully!");
                                               }
                                             }}
                                             className="w-full py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg cursor-pointer"
@@ -6118,6 +6168,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                           </button>
                                         </div>
                                       </div>
+                                      )}
                                     </div>
                                   )
                                 )}
@@ -6888,7 +6939,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         onUpdateSurvey(item);
                       }
                     });
-                    alert(isRtl ? `🎉 تم بنجاح معالجة وإصلاح ${fixCount} نصوص تالفة في ورقة العمل وإعادتها للغة العربية الفصحى المقروءة!` : `Successfully repaired ${fixCount} fields of Arabic scrambled text!`);
                   } else {
                     alert(isRtl ? 'الورقة الحالية لا تحتوي على أي نصوص تالفة أو رموز غير مقروءة. كل النصوص بحالة سليمة!' : 'No scrambled text detected in the active sheet fields.');
                   }
@@ -8165,6 +8215,37 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
             </form>
 
+            {/* Comprehensive Backup and Protection Card */}
+            <div className={`mt-8 pt-6 border-t ${isDark ? 'border-teal-850' : 'border-slate-200'}`}>
+              <div className={`p-5 rounded-2xl border ${
+                isDark ? 'bg-teal-950/40 border-teal-800/40' : 'bg-emerald-50/60 border-emerald-200/80'
+              }`}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      <h4 className={`text-sm font-black ${isDark ? 'text-teal-100' : 'text-slate-900'}`}>
+                        {currentLang === 'ar' ? 'أخذ نسخة احتياطية مفصلة (Excel) بالعام والشهر ونوع الطلب' : 'Detailed Excel Backup by Year, Month & Request Type'}
+                      </h4>
+                    </div>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-teal-300' : 'text-slate-600'}`}>
+                      {currentLang === 'ar' 
+                        ? 'توليد ملفات إكسل احترافية مفلترة حسب التاريخ ونوع المعاملة مع حفظ دائم في قاعدة البيانات المحلية المشفرة لمنع ضياع أي بيانات أثناء التحديثات.' 
+                        : 'Generate filtered Excel exports with permanent local persistence to ensure complete data integrity.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDateBackupModal(true)}
+                    className="shrink-0 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>{currentLang === 'ar' ? 'فتح نافذة التصدير الاحتياطي 📊' : 'Open Backup Hub'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
@@ -9326,14 +9407,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                         setActiveOfficer(updated[0]);
                                         localStorage.setItem('active_officer_id_v1', updated[0].id);
                                         localStorage.setItem('active_officer', JSON.stringify(updated[0]));
-                                        alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح، والتحويل إلى حساب ${updated[0].nameAr}.` : 'User deleted successfully.');
                                       } else {
                                         localStorage.removeItem('active_officer_id_v1');
                                         localStorage.removeItem('active_officer');
-                                        alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح.` : 'User deleted successfully.');
                                       }
                                     } else {
-                                      alert(isRtl ? `✓ تم حذف حساب ${off.nameAr} بنجاح.` : 'User deleted successfully.');
                                     }
                                   }
                                 }}
@@ -9593,7 +9671,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     type="button"
                     onClick={() => {
                       updateSchoolsList(localSchools);
-                      alert(isRtl ? `✓ تم حفظ وتوثيق سجل المدارس (${localSchools.length} مدرسة) في النظام بنجاح!` : 'School directory saved!');
                     }}
                     className="bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-2xl text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
                     title={isRtl ? 'حفظ وتأكيد بيانات المدارس' : 'Save school data'}
@@ -9602,20 +9679,21 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     <span>{isRtl ? 'حفظ السجل 💾' : 'Save 💾'}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً؟' : 'Are you sure you want to delete all registered schools?')) {
-                        updateSchoolsList([]);
-                        alert(isRtl ? '✓ تم مسح وحذف جميع بيانات المدارس بنجاح.' : 'All schools deleted successfully.');
-                      }
-                    }}
-                    className="bg-rose-600 hover:bg-rose-700 px-4 py-2.5 rounded-2xl text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                    title={isRtl ? 'حذف ومسح كافة المدارس من القاعدة' : 'Delete all school data'}
-                  >
-                    <Trash2 className="w-4 h-4 text-white" />
-                    <span>{isRtl ? 'حذف بيانات المدارس 🗑️' : 'Delete Data 🗑️'}</span>
-                  </button>
+                  {activeOfficer.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً؟' : 'Are you sure you want to delete all registered schools?')) {
+                          updateSchoolsList([]);
+                        }
+                      }}
+                      className="bg-rose-600 hover:bg-rose-700 px-4 py-2.5 rounded-2xl text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                      title={isRtl ? 'حذف ومسح كافة المدارس من القاعدة (خاص بالأدمن فقط)' : 'Delete all school data (Admin only)'}
+                    >
+                      <Trash2 className="w-4 h-4 text-white" />
+                      <span>{isRtl ? 'حذف بيانات المدارس 🗑️' : 'Delete Data 🗑️'}</span>
+                    </button>
+                  )}
 
                   <div className="bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/20 text-center">
                     <span className="block text-[10px] font-bold text-teal-200">{isRtl ? 'إجمالي المدارس' : 'Total Schools'}</span>
@@ -9667,7 +9745,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     type="button"
                     onClick={() => {
                       updateSchoolsList(localSchools);
-                      alert(isRtl ? `✓ تم حفظ وتأكيد بيانات المدارس (${localSchools.length} مدرسة) في ذاكرة النظام!` : 'Saved!');
                     }}
                     className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                   >
@@ -9675,35 +9752,38 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     <span>{isRtl ? 'حفظ السجل 💾' : 'Save Registry'}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً من النظام قبل رفع البيانات الجديدة؟' : 'Delete all school records?')) {
-                        updateSchoolsList([]);
-                        alert(isRtl ? '✓ تم مسح وحذف كافة بيانات المدارس القديمة بنجاح.' : 'Deleted!');
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                    title={isRtl ? 'حذف ومسح كافة المدارس القديمة من القاعدة' : 'Delete all school data'}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>{isRtl ? 'حذف البيانات القديمة 🗑️' : 'Delete Old Data 🗑️'}</span>
-                  </button>
+                  {activeOfficer.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً من النظام قبل رفع البيانات الجديدة؟' : 'Delete all school records?')) {
+                          updateSchoolsList([]);
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                      title={isRtl ? 'حذف ومسح كافة المدارس القديمة من القاعدة (خاص بالأدمن فقط)' : 'Delete all school data (Admin only)'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>{isRtl ? 'حذف البيانات القديمة 🗑️' : 'Delete Old Data 🗑️'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-100 dark:border-teal-800/40 flex flex-wrap items-center justify-between gap-3">
-                <label className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-xs cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={clearOldSchoolsBeforeUpload}
-                    onChange={(e) => setClearOldSchoolsBeforeUpload(e.target.checked)}
-                    className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
-                  />
-                  <span>{isRtl ? '🗑️ مسح وحذف البيانات القديمة تلقائياً عند رفع الملف الجديد (استبدال كلي)' : '🗑️ Delete old data automatically when uploading new file'}</span>
-                </label>
+                {activeOfficer.role === 'admin' && (
+                  <label className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-xs cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={clearOldSchoolsBeforeUpload}
+                      onChange={(e) => setClearOldSchoolsBeforeUpload(e.target.checked)}
+                      className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
+                    />
+                    <span>{isRtl ? '🗑️ مسح واستبدال المدارس القديمة تلقائياً عند رفع الملف الجديد' : '🗑️ Delete old schools and replace when uploading'}</span>
+                  </label>
+                )}
                 
-                {clearOldSchoolsBeforeUpload && (
+                {activeOfficer.role === 'admin' && clearOldSchoolsBeforeUpload && (
                   <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 animate-pulse">
                     {isRtl ? '⚠️ تنبيه: وضع الاستبدال مفعّل - سيتم مسح السجل القديم واستبداله بالكامل بالملف المرفوع.' : '⚠️ Replacement mode active: Old records will be wiped upon upload.'}
                   </span>
@@ -9839,7 +9919,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                     if (onAddSchool) onAddSchool(newSchoolObj);
 
-                    alert(isRtl ? `✓ تم إضافة مدرسة (${newSchoolNameAr}) بنجاح إلى دليل النظام!` : 'School added successfully!');
                     setNewSchoolNameAr('');
                     setNewSchoolCode('');
                   }}
@@ -10008,7 +10087,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     updateSchoolsList(updated);
                                     if (onUpdateSchool) onUpdateSchool(updatedSchool);
                                     setEditingSchoolId(null);
-                                    alert(isRtl ? '✓ تم حفظ التعديلات بنجاح!' : 'Changes saved!');
                                   }}
                                   className="px-2.5 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded hover:bg-emerald-700 cursor-pointer"
                                 >
@@ -11966,7 +12044,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                     ? `📥 تم استلام المعاملة رسمياً بواسطة مسئول معادلة الشهادات (${activeOfficer.nameAr}) للبدء بفحص الملف وإجراءات المعايرة.`
                                                     : `Request received by equivalency supervisor (${activeOfficer.nameAr}).`
                                                 } as any);
-                                                alert(isRtl ? `✓ تم تسجيل استلام الطلب بنجاح باسم (${activeOfficer.nameAr})!` : 'Request received successfully!');
                                               }
                                             }}
                                             disabled={(survey as any).isReceivedByEqOfficer}
@@ -12073,7 +12150,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                       unresolvedReason: 'تم إلغاء الطلب لعدم حضور المستفيد للموعد المحدد لعمل المعادلة',
                                                        notes: isRtl ? '❌ تم إلغاء الطلب من قبل مسؤول المعادلات لعدم حضور المستفيد للموعد المحدد.' : 'Request cancelled by equivalency officer due to beneficiary no-show.',
                                                     } as any);
-                                                    alert(isRtl ? '✓ تم إلغاء الطلب وإغلاقه وأرشفته لعدم حضور المستفيد.' : 'Request cancelled and archived due to no-show.');
                                                   }
                                                 }
                                               }}
@@ -12206,7 +12282,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                             if (navigator.clipboard) {
                                                               navigator.clipboard.writeText(gpsLink);
                                                             }
-                                                            alert(isRtl ? "✓ تم إرفاق موقعك الجغرافي الحالي عبر (GPS) ونسخ الرابط بنجاح!\n📍 الرابط: " + gpsLink : "Current GPS location attached and copied!");
                                                           },
                                                           () => {
                                                             const defaultLink = "https://maps.google.com/?q=إدارة+التعليم+قسم+معادلة+الشهادات+والمؤهلات";
@@ -12348,7 +12423,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                         } as any);
                                                       }
 
-                                                      alert(isRtl ? `✓ تم رفع وثيقة المعادلة (${file.name}) وتوثيقها بالنظام بنجاح!` : 'Equivalency document uploaded successfully!');
                                                     };
                                                     reader.readAsDataURL(file);
                                                   }
@@ -12598,7 +12672,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     </div>
                                   )}
                                    {/* Planning Officer Assignment for Pending Surveys (Hidden when returned) */}
-                                   {(activeOfficer.role === "school_planning" || activeOfficer.role === "admin" || activeOfficer.role === "director" || activeOfficer.role === "supervisor" || activeOfficer.role === "equivalency_supervisor" || activeOfficer.canHandleEqualizations) && !isVacancyOpened && !isArchived && !isReturned && (
+                                   {(activeOfficer.role !== "school_planning" && (activeOfficer.role === "admin" || activeOfficer.role === "director" || activeOfficer.role === "supervisor" || activeOfficer.role === "equivalency_supervisor" || activeOfficer.canHandleEqualizations)) && !isVacancyOpened && !isArchived && !isReturned && (
                                      <div className="p-2 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1.5 text-start">
                                        <label className="block text-[10px] font-extrabold text-amber-900 dark:text-amber-200">
                                          👤 {isRtl ? "تكليفات التخطيط / القبول:" : "Assign Planning Officer:"}
@@ -12635,7 +12709,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                  referringOfficerId: activeOfficer.id,
                                                  referringOfficerName: activeOfficer.nameAr
                                                } as any);
-                                               alert(isRtl ? `✓ تم تحديد وتكليف المشرف المختص (${targetOff.nameAr}) لفتح الشاغر بنجاح!` : 'Vacancy supervisor assigned successfully!');
                                              }
                                            }}
                                            className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black rounded-lg cursor-pointer whitespace-nowrap"
@@ -12646,58 +12719,67 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                      </div>
                                    )}
 
-                                   {/* STEP 2A (Returned Requests): Open Vacancy and Return Directly to School Principal */}
+                                   {/* STEP 2A (Returned Requests): Re-Open Vacancy and Return Immediately to Sender */}
                                    {!isArchived && isReturned && (activeOfficer.role === 'school_planning' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) && (
                                      <button
                                        type="button"
                                        onClick={() => {
                                          if (onUpdateSurvey) {
+                                           const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
+                                           const referringOfficer = officers.find(o => o.id === referringId);
+                                           const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
                                            onUpdateSurvey({
                                              ...survey,
-                                             vacancyRequestStatus: 'sent_to_school_principal',
-                                             sentToSchoolPrincipal: true,
-                                             returnedByPrincipal: false,
+                                             isVacancyRequest: true,
+                                             vacancyRequestStatus: 'approved',
                                              isResolved: false,
+                                             returnedByPrincipal: false,
+                                             assignedOfficerId: referringId,
+                                             serviceEmployee: referringName,
                                              notes: isRtl 
-                                               ? `🔓 تم فتح الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (${activeOfficer.nameAr}) وعاد الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين.` 
-                                               : `Vacancy opened by planning officer (${activeOfficer.nameAr}) and returned directly to principal.`
+                                               ? ('🔓 تم إعادة فتح وتأكيد الشاغر بواسطة مسؤول التخطيط المدرسي (' + activeOfficer.nameAr + ') وعادت المعاملة فوراً للجهة المرسلة (' + referringName + ') لمتابعة التوجيه والتسكين.')
+                                               : ('Vacancy re-opened and confirmed by planning officer (' + activeOfficer.nameAr + ') and returned to (' + referringName + ').')
                                            } as any);
-                                           alert(isRtl ? `✓ تم فتح الشاغر بنجاح! وعاد الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين.` : 'Vacancy opened! Request returned directly to principal.');
                                          }
                                        }}
                                        className="w-full px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-black text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 active:scale-95 border border-emerald-500"
                                      >
                                        <Building className="w-4 h-4 text-white" />
-                                       <span>🔓 {isRtl ? 'تم فتح الشاغر (يعود مباشرة لمدير المدرسة) 🏫' : 'Vacancy Opened (Return to Principal) 🏫'}</span>
+                                       <span>🔓 {isRtl ? 'تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)' : 'Confirm Vacancy (Return to Sender) 🔓'}</span>
                                      </button>
                                    )}
 
-                                  {/* STEP 2: Open Vacancy (تم فتح الشاغر 🔓) */}
+                                  {/* STEP 2: Open Vacancy (تأكيد فتح الشاغر 🔓 وعودة الطلب فوراً للجهة المرسلة) */}
                                   {!isArchived && isPendingVacancy && !isVacancyOpened && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'school_planning' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
                                     <button
                                       onClick={() => {
                                         if (onUpdateSurvey) {
+                                          const referringId = (survey as any).referringOfficerId || survey.assignedOfficerId;
+                                          const referringOfficer = officers.find(o => o.id === referringId);
+                                          const referringName = (survey as any).referringOfficerName || referringOfficer?.nameAr || (isRtl ? 'الجهة المرسلة للطلب' : 'Referring Officer');
                                           onUpdateSurvey({
                                             ...survey,
+                                            isVacancyRequest: true,
                                             vacancyRequestStatus: 'approved',
                                             isResolved: false,
-                                            assignedOfficerId: (survey as any).referringOfficerId || survey.assignedOfficerId,
-                                            serviceEmployee: (survey as any).referringOfficerName || survey.serviceEmployee,
+                                            returnedByPrincipal: false,
+                                            assignedOfficerId: referringId,
+                                            serviceEmployee: referringName,
                                             notes: isRtl 
-                                              ? `تم فتح الشاغر بنجاح بواسطة مشرف التخطيط المدرسي (${activeOfficer.nameAr}) وعاد الطلب لمشرف القبول لمتابعة التوجيه للقيادة.` 
-                                              : `Vacancy opened by planning officer (${activeOfficer.nameEn})`
+                                              ? `🔓 تم فتح وتأكيد الشاغر بنجاح بواسطة مسؤول التخطيط المدرسي (${activeOfficer.nameAr}) وعادت المعاملة فوراً للجهة المرسلة (${referringName}) لمتابعة التوجيه والتسكين.` 
+                                              : `Vacancy opened and confirmed by planning officer (${activeOfficer.nameAr}) and returned to (${referringName}).`
                                           } as any);
-                                          alert(isRtl ? '✓ تم فتح الشاغر بنجاح! يمكن الآن توجيه الطلب لمشرف القيادة المدرسية لمتابعة التسكين.' : 'Vacancy opened successfully!');
                                         }
                                       }}
-                                      className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] rounded-xl transition-all shadow-xs cursor-pointer inline-flex items-center justify-center gap-1.5"
+                                      className="w-full px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all shadow-md cursor-pointer inline-flex items-center justify-center gap-2 active:scale-95 border border-emerald-500"
                                     >
-                                      <span>2️⃣ {isRtl ? 'تم فتح الشاغر 🔓' : 'Open Vacancy 🔓'}</span>
+                                      <Building className="w-4 h-4 text-white" />
+                                      <span>🔓 {isRtl ? 'تأكيد فتح الشاغر (إعادة فورية للجهة المرسلة)' : 'Confirm Vacancy (Return to Sender) 🔓'}</span>
                                     </button>
                                   )}
 
                                   {/* STEP 2C: Route to School Principal directly for non-equivalency */}
-                                  {!isArchived && survey.vacancyRequestStatus === 'approved' && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
+                                  {!isArchived && survey.vacancyRequestStatus === 'approved' && !isSentToLeadership && !isStaffingConfirmed && activeOfficer.role !== 'school_planning' && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || survey.assignedOfficerId === activeOfficer.id) && (
                                     <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40 text-start space-y-1.5">
                                       <label className="block text-[10px] font-black text-emerald-900 dark:text-emerald-300">
                                         {isRtl ? '3️⃣➡️ إرسال لمدير المدرسة للتسكين المباشر:' : '3️⃣➡️ Route to School Principal:'}
@@ -12717,7 +12799,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                 ? `🏫 تم إحالة الطلب مباشرة لمدير مدرسة (${survey.schoolName || ''}) للتسكين بعد فتح الشاغر بواسطة التخطيط.`
                                                 : `Referred directly to school principal for staffing.`
                                             } as any);
-                                            alert(isRtl ? `✓ تم إرسال الطلب لمدير مدرسة (${survey.schoolName || ''}) بنجاح!` : 'Sent to school principal successfully!');
                                           }
                                         }}
                                         className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
@@ -12729,7 +12810,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   )}
 
                                   {/* STEP 2B: Route to School Leadership Supervisor */}
-                                  {!isArchived && !isSentToLeadership && !isStaffingConfirmed && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).referringOfficerId === activeOfficer.id || survey.assignedOfficerId === activeOfficer.id) && (
+                                  {!isArchived && !isSentToLeadership && !isStaffingConfirmed && activeOfficer.role !== 'school_planning' && (activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || (survey as any).referringOfficerId === activeOfficer.id || survey.assignedOfficerId === activeOfficer.id) && (
                                     <div className="p-2 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 text-start space-y-1.5">
                                       <div className="flex flex-col gap-0.5">
                                         <label className="block text-[10px] font-black text-indigo-900 dark:text-indigo-300">
@@ -12777,7 +12858,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                 sentToLeadershipAt: nowIso,
                                                 sentToPrincipalAt: nowIso
                                               } as any);
-                                              alert(isRtl ? `✓ تم إرسال الطلب بنجاح لمشرف القيادة المدرسية (${leadOff.nameAr}) لمتابعة التسكين!` : 'Sent to leadership supervisor successfully!');
                                             }
                                           }}
                                           className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg cursor-pointer whitespace-nowrap"
@@ -12905,7 +12985,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                                   : `Follow-up note by (${activeOfficer.nameEn}): ${note}`
                                               } as any);
                                               setActiveStaffingSurveyId(null);
-                                              alert(isRtl ? '✓ تم تدوين ملاحظة المتابعة الميدانية بنجاح!' : 'Follow-up note saved successfully!');
                                             }
                                           }}
                                           className="w-full px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-black text-[11px] rounded-xl transition-all shadow-xs cursor-pointer inline-flex items-center justify-center gap-1.5"
@@ -13107,6 +13186,16 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           />
         )}
 
+        {/* SUB-TAB: Beneficiary Satisfaction & Rating (Admin Only) */}
+        {activeSubTab === 'beneficiary-satisfaction' && (
+          <BeneficiarySatisfactionView
+            surveys={surveys || []}
+            onUpdateSurvey={onUpdateSurvey}
+            isDark={isDark}
+            isRtl={isRtl}
+          />
+        )}
+
       </div>
 
       {/* First-Time Password & Email Setup Modal */}
@@ -13276,6 +13365,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 <button
                   type="button"
                   onClick={() => {
+                    if (activeOfficer?.role !== 'admin') {
+                      alert(isRtl ? 'عذراً، خاصية حذف الطلبات مقتصرة حصرياً على حساب مدير النظام (الأدمن).' : 'Action restricted to Admin only.');
+                      setSurveyToDeleteId(null);
+                      return;
+                    }
                     onDeleteSurvey(surveyToDeleteId);
                     setSurveyToDeleteId(null);
                   }}
@@ -13323,6 +13417,11 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 <button
                   type="button"
                   onClick={() => {
+                    if (activeOfficer?.role !== 'admin') {
+                      alert(isRtl ? 'عذراً، خاصية حذف بلاغات المدارس مقتصرة حصرياً على حساب مدير النظام (الأدمن).' : 'Action restricted to Admin only.');
+                      setReportToDeleteId(null);
+                      return;
+                    }
                     if (onDeleteReport) {
                       onDeleteReport(reportToDeleteId);
                     }
@@ -13345,6 +13444,15 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
           </div>
         </div>
       )}
+
+      {/* Date & Type Based Excel Backup Modal */}
+      <DateBackupModal
+        isOpen={showDateBackupModal}
+        onClose={() => setShowDateBackupModal(false)}
+        surveys={surveys}
+        isDark={isDark}
+        isRtl={isRtl}
+      />
     </div>
   );
 }

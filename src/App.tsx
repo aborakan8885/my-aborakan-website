@@ -17,7 +17,9 @@ import {
   loadSurveysFromStorage,
   clearAllSurveysFromStorage,
   savePrincipalReportsToStorage,
-  loadPrincipalReportsFromStorage
+  loadPrincipalReportsFromStorage,
+  saveSchoolsToStorage,
+  loadSchoolsFromStorage
 } from './utils/storageEngine';
 import {
   INITIAL_CONFIG,
@@ -233,9 +235,11 @@ export default function App() {
     return INITIAL_SCHOOLS;
   });
 
+  const [isInitialLoaded, setIsInitialLoaded] = useState<boolean>(false);
+
   const handleUpdateSchools = (newList: SchoolItem[]) => {
     setSchoolsList(newList);
-    localStorage.setItem('app_schools_list_v1', JSON.stringify(newList));
+    saveSchoolsToStorage(newList);
   };
 
   // Action feedback message states
@@ -248,21 +252,35 @@ export default function App() {
 
   // Async initial load from storage engine (IndexedDB + LocalStorage fallback)
   useEffect(() => {
-    loadSurveysFromStorage().then(data => {
-      setSurveys(data || []);
-    });
-    loadPrincipalReportsFromStorage().then(data => {
-      setPrincipalReports(data || []);
+    Promise.all([
+      loadSurveysFromStorage(),
+      loadPrincipalReportsFromStorage(),
+      loadSchoolsFromStorage()
+    ]).then(([surveysData, reportsData, schoolsData]) => {
+      if (surveysData && surveysData.length > 0) {
+        setSurveys(surveysData);
+      }
+      if (reportsData && reportsData.length > 0) {
+        setPrincipalReports(reportsData);
+      }
+      if (schoolsData && schoolsData.length > 0) {
+        setSchoolsList(schoolsData);
+      }
+      setIsInitialLoaded(true);
+    }).catch(err => {
+      console.warn('Initial storage load fallback:', err);
+      setIsInitialLoaded(true);
     });
   }, []);
 
-  // Save changes to local persistence via storageEngine with debounce
+  // Save changes to local persistence via storageEngine with debounce - ONLY after initial load completes!
   useEffect(() => {
+    if (!isInitialLoaded) return;
     const timer = setTimeout(() => {
       saveSurveysToStorage(surveys);
-    }, 2000);
+    }, 1500);
     return () => clearTimeout(timer);
-  }, [surveys]);
+  }, [surveys, isInitialLoaded]);
 
   useEffect(() => {
     try {
@@ -273,11 +291,12 @@ export default function App() {
   }, [emailLogs]);
 
   useEffect(() => {
+    if (!isInitialLoaded) return;
     const timer = setTimeout(() => {
       savePrincipalReportsToStorage(principalReports);
-    }, 2500);
+    }, 1500);
     return () => clearTimeout(timer);
-  }, [principalReports]);
+  }, [principalReports, isInitialLoaded]);
 
   useEffect(() => {
     try {
@@ -419,9 +438,9 @@ export default function App() {
     setPrincipalReports([]);
     setEmailLogs([]);
     setIntegrationLogs([]);
-    clearAllSurveysFromStorage();
+    clearAllSurveysFromStorage('admin');
     triggerToast(
-      currentLang === 'ar' ? 'تم حذف ومسح جميع الطلبات والبلاغات والتقارير المسجلة في النظام (المرسلة والمعالجة والمعلقة) نهائياً.' : 'All registered requests and reports cleared successfully.',
+      currentLang === 'ar' ? 'تم حذف ومسح جميع الطلبات والبلاغات والتقارير المسجلة في النظام نهائياً بواسطة الأدمن.' : 'All registered requests and reports cleared successfully.',
       'info'
     );
   };

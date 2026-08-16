@@ -1,17 +1,31 @@
 // High-Performance IndexedDB + LocalStorage Hybrid Persistence Engine
-// Engineered to handle 20,000+ simultaneous requests and massive datasets without quota crashes or UI blocking.
+// Engineered to handle 20,000+ simultaneous requests and massive datasets without quota crashes or data loss.
+import * as XLSX from 'xlsx';
+import { SurveyResponse, PrincipalReport, SchoolItem, OfficerUser, BeneficiaryFeedback, ProblemType } from '../types';
 
-const DB_NAME = 'MoeSmartSystemDB';
-const DB_VERSION = 1;
+const DB_NAME = 'MoeSmartSystemDB_v2';
+const DB_VERSION = 2;
+
 const STORE_SURVEYS = 'surveys';
 const STORE_REPORTS = 'principal_reports';
+const STORE_SCHOOLS = 'schools';
+const STORE_OFFICERS = 'officers';
+const STORE_FEEDBACKS = 'feedbacks';
+const STORE_SNAPSHOTS = 'snapshots';
+
+let dbInstance: IDBDatabase | null = null;
 
 function openDB(): Promise<IDBDatabase> {
+  if (dbInstance) {
+    return Promise.resolve(dbInstance);
+  }
+
   return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
-      reject(new Error('IndexedDB not supported'));
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject(new Error('IndexedDB not supported in current environment'));
       return;
     }
+
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -22,17 +36,45 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_REPORTS)) {
         db.createObjectStore(STORE_REPORTS, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORE_SCHOOLS)) {
+        db.createObjectStore(STORE_SCHOOLS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_OFFICERS)) {
+        db.createObjectStore(STORE_OFFICERS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_FEEDBACKS)) {
+        db.createObjectStore(STORE_FEEDBACKS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
+        db.createObjectStore(STORE_SNAPSHOTS, { keyPath: 'id' });
+      }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      resolve(dbInstance);
+    };
+
     request.onerror = () => reject(request.error);
   });
 }
 
-/**
- * Safely persists large array datasets to IndexedDB & LocalStorage fallback
- */
-export async function saveSurveysToStorage(surveys: any[]): Promise<void> {
+// ----------------------------------------------------
+// 1. SURVEYS PERSISTENCE (طلبات المستفيدين)
+// ----------------------------------------------------
+export async function saveSurveysToStorage(surveys: SurveyResponse[], options?: { isConfirmedAdminClear?: boolean }): Promise<void> {
+  // Guard against blank overwrite during initial un-hydrated state
+  if (!surveys || (!Array.isArray(surveys))) return;
+
+  if (surveys.length === 0 && !options?.isConfirmedAdminClear) {
+    // Prevent accidental wipeout if state was temporarily empty during mount
+    const existing = await loadSurveysFromStorage();
+    if (existing && existing.length > 0) {
+      console.warn('Blocked blank overwrite to protect existing requests.');
+      return;
+    }
+  }
+
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_SURVEYS, 'readwrite');
@@ -49,59 +91,148 @@ export async function saveSurveysToStorage(surveys: any[]): Promise<void> {
       tx.onabort = () => reject(tx.error);
     });
   } catch (err) {
-    console.warn('IndexedDB bulk save skipped or failed, using localStorage fallback:', err);
+    console.warn('IndexedDB saveSurveys failed, falling back to LocalStorage:', err);
   }
 
-  // Fallback / Cache to localStorage with Quota Protection
+  // Backup to localStorage with Quota Protection
   try {
-    if (surveys.length <= 1000) {
+    if (surveys.length <= 2000) {
       localStorage.setItem('beneficiary_surveys', JSON.stringify(surveys));
     } else {
       localStorage.setItem('beneficiary_surveys', JSON.stringify(surveys.slice(0, 1000)));
     }
   } catch (quotaErr) {
     try {
-      localStorage.setItem('beneficiary_surveys', JSON.stringify(surveys.slice(0, 500)));
+      localStorage.setItem('beneficiary_surveys', JSON.stringify(surveys.slice(0, 300)));
     } catch {
       /* ignore */
     }
   }
 }
 
-export async function loadSurveysFromStorage(): Promise<any[]> {
+export async function loadSurveysFromStorage(): Promise<SurveyResponse[]> {
+  let dbItems: SurveyResponse[] = [];
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_SURVEYS, 'readonly');
     const store = tx.objectStore(STORE_SURVEYS);
     
-    const items = await new Promise<any[]>((resolve, reject) => {
+    dbItems = await new Promise<SurveyResponse[]>((resolve, reject) => {
       const getAllReq = store.getAll();
       getAllReq.onsuccess = () => resolve(getAllReq.result || []);
       getAllReq.onerror = () => reject(getAllReq.error);
     });
-
-    if (items) {
-      return items;
-    }
   } catch (err) {
-    console.warn('IndexedDB load failed, trying localStorage fallback:', err);
+    console.warn('IndexedDB loadSurveys failed, checking localStorage fallback:', err);
   }
 
-  // Fallback to LocalStorage
+  // LocalStorage check
+  let lsItems: SurveyResponse[] = [];
   try {
     const cached = localStorage.getItem('beneficiary_surveys');
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) lsItems = parsed;
     }
   } catch {
     /* ignore */
   }
 
-  return [];
+  // Merge unique records by ID to ensure zero data loss
+  const mergedMap = new Map<string, SurveyResponse>();
+  dbItems.forEach(item => { if (item && item.id) mergedMap.set(item.id, item); });
+  lsItems.forEach(item => { if (item && item.id && !mergedMap.has(item.id)) mergedMap.set(item.id, item); });
+
+  return Array.from(mergedMap.values());
 }
 
-export async function savePrincipalReportsToStorage(reports: any[]): Promise<void> {
+// ----------------------------------------------------
+// 2. SCHOOLS PERSISTENCE (بيانات وملفات المدارس المرفوعة)
+// ----------------------------------------------------
+export async function saveSchoolsToStorage(schools: SchoolItem[], options?: { isConfirmedAdminClear?: boolean }): Promise<void> {
+  if (!schools || !Array.isArray(schools)) return;
+
+  if (schools.length === 0 && !options?.isConfirmedAdminClear) {
+    const existing = await loadSchoolsFromStorage();
+    if (existing && existing.length > 0) {
+      console.warn('Blocked blank schools overwrite to protect uploaded records.');
+      return;
+    }
+  }
+
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_SCHOOLS, 'readwrite');
+    const store = tx.objectStore(STORE_SCHOOLS);
+    
+    store.clear();
+    for (let i = 0; i < schools.length; i++) {
+      store.put(schools[i]);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB saveSchools failed:', err);
+  }
+
+  // Save to localStorage with quota handling
+  try {
+    localStorage.setItem('app_schools_list_v1', JSON.stringify(schools));
+  } catch (quotaErr) {
+    console.warn('LocalStorage quota exceeded for schools list, preserved in IndexedDB successfully.');
+  }
+}
+
+export async function loadSchoolsFromStorage(): Promise<SchoolItem[]> {
+  let dbSchools: SchoolItem[] = [];
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_SCHOOLS, 'readonly');
+    const store = tx.objectStore(STORE_SCHOOLS);
+    
+    dbSchools = await new Promise<SchoolItem[]>((resolve, reject) => {
+      const getAllReq = store.getAll();
+      getAllReq.onsuccess = () => resolve(getAllReq.result || []);
+      getAllReq.onerror = () => reject(getAllReq.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB loadSchools failed:', err);
+  }
+
+  let lsSchools: SchoolItem[] = [];
+  try {
+    const cached = localStorage.getItem('app_schools_list_v1');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) lsSchools = parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  if (dbSchools && dbSchools.length > 0) {
+    return dbSchools;
+  }
+  return lsSchools;
+}
+
+// ----------------------------------------------------
+// 3. PRINCIPAL REPORTS PERSISTENCE (تقارير وبلاغات مدراء المدارس)
+// ----------------------------------------------------
+export async function savePrincipalReportsToStorage(reports: PrincipalReport[], options?: { isConfirmedAdminClear?: boolean }): Promise<void> {
+  if (!reports || !Array.isArray(reports)) return;
+
+  if (reports.length === 0 && !options?.isConfirmedAdminClear) {
+    const existing = await loadPrincipalReportsFromStorage();
+    if (existing && existing.length > 0) {
+      return;
+    }
+  }
+
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_REPORTS, 'readwrite');
@@ -122,43 +253,100 @@ export async function savePrincipalReportsToStorage(reports: any[]): Promise<voi
   }
 
   try {
-    if (reports.length <= 1000) {
-      localStorage.setItem('principal_reports', JSON.stringify(reports));
-    } else {
-      localStorage.setItem('principal_reports', JSON.stringify(reports.slice(0, 1000)));
-    }
+    localStorage.setItem('principal_reports', JSON.stringify(reports.slice(0, 1000)));
   } catch {
-    try {
-      localStorage.setItem('principal_reports', JSON.stringify(reports.slice(0, 500)));
-    } catch {
-      /* ignore */
-    }
+    /* ignore */
   }
 }
 
-export async function loadPrincipalReportsFromStorage(): Promise<any[]> {
+export async function loadPrincipalReportsFromStorage(): Promise<PrincipalReport[]> {
+  let dbReports: PrincipalReport[] = [];
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_REPORTS, 'readonly');
     const store = tx.objectStore(STORE_REPORTS);
     
-    const items = await new Promise<any[]>((resolve, reject) => {
+    dbReports = await new Promise<PrincipalReport[]>((resolve, reject) => {
       const getAllReq = store.getAll();
       getAllReq.onsuccess = () => resolve(getAllReq.result || []);
       getAllReq.onerror = () => reject(getAllReq.error);
     });
-
-    if (items) {
-      return items;
-    }
   } catch (err) {
     console.warn('IndexedDB load reports failed:', err);
   }
 
+  let lsReports: PrincipalReport[] = [];
+  try {
+    const cached = localStorage.getItem('principal_reports');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) lsReports = parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const merged = new Map<string, PrincipalReport>();
+  dbReports.forEach(r => { if (r && r.id) merged.set(r.id, r); });
+  lsReports.forEach(r => { if (r && r.id && !merged.has(r.id)) merged.set(r.id, r); });
+
+  return Array.from(merged.values());
+}
+
+// ----------------------------------------------------
+// 4. OFFICERS & FEEDBACKS PERSISTENCE
+// ----------------------------------------------------
+export async function saveOfficersToStorage(officers: OfficerUser[]): Promise<void> {
+  if (!officers || !Array.isArray(officers) || officers.length === 0) return;
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_OFFICERS, 'readwrite');
+    const store = tx.objectStore(STORE_OFFICERS);
+    store.clear();
+    for (const off of officers) store.put(off);
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem('officer_users_v4', JSON.stringify(officers));
+    localStorage.setItem('officer_users_v3', JSON.stringify(officers));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loadOfficersFromStorage(): Promise<OfficerUser[]> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_OFFICERS, 'readonly');
+    const store = tx.objectStore(STORE_OFFICERS);
+    const dbItems = await new Promise<OfficerUser[]>((res) => {
+      const req = store.getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror = () => res([]);
+    });
+    if (dbItems && dbItems.length > 0) return dbItems;
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    const cached = localStorage.getItem('officer_users_v4') || localStorage.getItem('officer_users_v3');
+    if (cached) return JSON.parse(cached);
+  } catch {
+    /* ignore */
+  }
   return [];
 }
 
-export async function clearAllSurveysFromStorage(): Promise<void> {
+// ----------------------------------------------------
+// 5. ADMIN-ONLY RESTRICTED CLEAR FUNCTIONS
+// ----------------------------------------------------
+export async function clearAllSurveysFromStorage(actorRole?: string): Promise<boolean> {
+  if (actorRole !== 'admin') {
+    console.error('Unauthorized deletion attempt. Only Admin can clear database.');
+    return false;
+  }
+
   try {
     const db = await openDB();
     const tx = db.transaction([STORE_SURVEYS, STORE_REPORTS], 'readwrite');
@@ -171,6 +359,7 @@ export async function clearAllSurveysFromStorage(): Promise<void> {
   } catch (err) {
     console.warn('IndexedDB clear error:', err);
   }
+
   try {
     localStorage.removeItem('beneficiary_surveys');
     localStorage.removeItem('principal_reports');
@@ -183,5 +372,322 @@ export async function clearAllSurveysFromStorage(): Promise<void> {
   } catch {
     /* ignore */
   }
+
+  return true;
 }
 
+export async function clearSchoolsFromStorage(actorRole?: string): Promise<boolean> {
+  if (actorRole !== 'admin') {
+    console.error('Unauthorized schools clear attempt. Only Admin can clear schools.');
+    return false;
+  }
+
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_SCHOOLS, 'readwrite');
+    tx.objectStore(STORE_SCHOOLS).clear();
+  } catch (e) {
+    /* ignore */
+  }
+
+  try {
+    localStorage.removeItem('app_schools_list_v1');
+  } catch {
+    /* ignore */
+  }
+
+  return true;
+}
+
+// ----------------------------------------------------
+// 6. DATE-BASED EXCEL BACKUP ENGINE (Year, Month, Day, Request Type)
+// ----------------------------------------------------
+
+export interface BackupFilterOptions {
+  year?: string | number; // e.g. '2026', '2025', 'all'
+  month?: string | number; // e.g. '1' to '12', or 'all'
+  day?: string | number; // e.g. '1' to '31', or 'all'
+  problemType?: string; // 'all' or specific ProblemType
+  stage?: string; // 'all' or specific stage (الابتدائية, المتوسطة, الثانوية, ...)
+  gender?: string; // 'all', 'boys', 'girls'
+  status?: string; // 'all', 'resolved', 'pending'
+}
+
+export function getProblemTypeArabicLabel(type: string | undefined): string {
+  if (!type) return 'أخرى / عام';
+  switch (type) {
+    case 'cert_primary_eq':
+      return 'معادلة شهادة - المرحلة الابتدائية';
+    case 'cert_intermediate_eq':
+      return 'معادلة شهادة - المرحلة المتوسطة';
+    case 'cert_secondary_eq':
+      return 'معادلة شهادة - المرحلة الثانوية';
+    case 'vacancies_unavailable':
+    case 'vacancies_closed':
+      return 'طلب شاغر ونقل مدرسي';
+    case 'new_registration_saudi':
+      return 'تسجيل مستجد - سعودي';
+    case 'new_registration_resident':
+      return 'تسجيل مستجد - مقيم';
+    case 'student_density':
+      return 'كثافة طلابية بالفصول';
+    case 'unjustified_rejection':
+      return 'رفض القبول دون مبرر نظامي';
+    case 'distance_from_school':
+      return 'نقل بسبب بعد السكن عن المدرسة';
+    case 'unregistered_desire':
+      return 'طلب قبول ومعادلة شهادة';
+    case 'other':
+      return 'استفسار أو معاملة أخرى';
+    default:
+      return type;
+  }
+}
+
+export function getStageArabicLabel(stage: string | undefined): string {
+  if (!stage) return 'غير محدد';
+  const s = stage.toLowerCase();
+  if (s.includes('primary') || s.includes('ابتدائي')) return 'المرحلة الابتدائية';
+  if (s.includes('intermediate') || s.includes('متوسط')) return 'المرحلة المتوسطة';
+  if (s.includes('secondary') || s.includes('ثانوي')) return 'المرحلة الثانوية';
+  if (s.includes('kindergarten') || s.includes('روض')) return 'رياض الأطفال';
+  return stage;
+}
+
+export function filterSurveysByDateAndType(surveys: SurveyResponse[], filters: BackupFilterOptions): SurveyResponse[] {
+  if (!surveys || !Array.isArray(surveys)) return [];
+
+  return surveys.filter((item) => {
+    if (!item) return false;
+
+    // Parse date
+    const d = item.createdAt ? new Date(item.createdAt) : new Date();
+    const itemYear = d.getFullYear().toString();
+    const itemMonth = (d.getMonth() + 1).toString(); // 1-12
+    const itemDay = d.getDate().toString(); // 1-31
+
+    // 1. Year Filter
+    if (filters.year && filters.year !== 'all' && filters.year.toString() !== itemYear) {
+      return false;
+    }
+
+    // 2. Month Filter
+    if (filters.month && filters.month !== 'all' && filters.month.toString() !== itemMonth) {
+      return false;
+    }
+
+    // 3. Day Filter
+    if (filters.day && filters.day !== 'all' && filters.day.toString() !== itemDay) {
+      return false;
+    }
+
+    // 4. Problem Type / Category Filter
+    if (filters.problemType && filters.problemType !== 'all') {
+      if (filters.problemType === 'equalizations') {
+        const isEq = item.isEqualizationRequest || item.isNonFreshStudent || item.problemType === 'cert_primary_eq' || item.problemType === 'cert_intermediate_eq' || item.problemType === 'cert_secondary_eq';
+        if (!isEq) return false;
+      } else if (filters.problemType === 'vacancies') {
+        const isVac = item.isVacancyRequest || item.problemType === 'vacancies_unavailable' || (item.problemType as string) === 'vacancies_closed' || item.problemType === 'distance_from_school';
+        if (!isVac) return false;
+      } else if (filters.problemType === 'registrations') {
+        const isReg = item.problemType === 'new_registration_saudi' || item.problemType === 'new_registration_resident';
+        if (!isReg) return false;
+      } else if (item.problemType !== filters.problemType) {
+        return false;
+      }
+    }
+
+    // 5. Stage Filter
+    if (filters.stage && filters.stage !== 'all') {
+      const stageCat = getStageArabicLabel(item.stage);
+      if (!stageCat.includes(filters.stage) && !item.stage?.includes(filters.stage)) {
+        return false;
+      }
+    }
+
+    // 6. Gender Filter
+    if (filters.gender && filters.gender !== 'all') {
+      const itemGender = item.gender || (item.schoolName?.includes('بنات') ? 'girls' : 'boys');
+      if (itemGender !== filters.gender) {
+        return false;
+      }
+    }
+
+    // 7. Status Filter
+    if (filters.status && filters.status !== 'all') {
+      if (filters.status === 'resolved' && !item.isResolved) return false;
+      if (filters.status === 'pending' && item.isResolved) return false;
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Exports a beautifully structured Excel file containing the filtered backup of requests.
+ */
+export function exportRequestsBackupToExcel(
+  surveys: SurveyResponse[],
+  filters: BackupFilterOptions,
+  officersList: OfficerUser[] = []
+): { success: boolean; count: number; filename: string } {
+  const filtered = filterSurveysByDateAndType(surveys, filters);
+
+  if (filtered.length === 0) {
+    return { success: false, count: 0, filename: '' };
+  }
+
+  const officerMap = new Map<string, string>();
+  officersList.forEach(o => officerMap.set(o.id, o.nameAr));
+
+  // Build Arabic Data Rows
+  const rows = filtered.map((s, index) => {
+    const d = s.createdAt ? new Date(s.createdAt) : new Date();
+    const yearStr = d.getFullYear().toString();
+    const monthStr = (d.getMonth() + 1).toString().padStart(2, '0');
+    const dayStr = d.getDate().toString().padStart(2, '0');
+    const timeStr = d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    const fullDateFormatted = `${yearStr}/${monthStr}/${dayStr} ${timeStr}`;
+
+    const assignedOfficerName = s.assignedOfficerId ? (officerMap.get(s.assignedOfficerId) || s.assignedOfficerId) : (s.planningOfficerName || s.leadershipOfficerName || 'غير مسند');
+    const statusText = s.isResolved 
+      ? 'منجز ومكتمل' 
+      : s.vacancyRequestStatus === 'staffing_confirmed' 
+      ? 'تم تأكيد التسكين بالمدرسة' 
+      : s.vacancyRequestStatus === 'sent_to_school_principal'
+      ? 'مرسل لمدير المدرسة للتسكين'
+      : s.vacancyRequestStatus === 'sent_to_leadership'
+      ? 'مرسل للإدارة المدرسية'
+      : s.vacancyRequestStatus === 'approved'
+      ? 'تمت الموافقة وفتح الشاغر'
+      : 'قيد المعالجة والدراسة';
+
+    return {
+      'م': index + 1,
+      'رقم المعاملة / الطلب': s.id,
+      'سنة التسجيل': yearStr,
+      'شهر التسجيل': monthStr,
+      'يوم التسجيل': dayStr,
+      'تاريخ ووقت التسجيل': fullDateFormatted,
+      'اسم المستفيد / ولي الأمر': s.beneficiaryName || s.parentName || 'غير مسجل',
+      'رقم الهوية / الإقامة': s.nationalId || 'غير متوفر',
+      'رقم الجوال': s.phoneNumber || 'غير متوفر',
+      'الجنسية': s.nationality || 'سعودي',
+      'نوع الإقامة': s.residencyType === 'visit' ? 'تأشيرة زيارة' : s.residencyType === 'regular' ? 'إقامة نظامية' : (s.customResidencyType || 'مواطن'),
+      'المرحلة الدراسية': getStageArabicLabel(s.stage),
+      'الصف الدراسي': s.grade || 'غير محدد',
+      'الجنس': s.gender === 'girls' ? 'بنات' : 'بنين',
+      'المدرسة المطلوبة (الرغبة 1)': s.schoolName || 'غير محدد',
+      'المدرسة البديلة (الرغبة 2)': s.secondSchoolName || '-',
+      'المدرسة البديلة (الرغبة 3)': s.thirdSchoolName || '-',
+      'مكتب التعليم / القطاع': s.sector || s.district || 'المدينة المنورة',
+      'الحي السكني': s.neighborhood || '-',
+      'نوع الطلب': getProblemTypeArabicLabel(s.problemType),
+      'حالة الطلب': statusText,
+      'الموظف المسؤول': assignedOfficerName,
+      'تفاصيل وملاحظات الطلب': s.notes || s.otherProblemDetails || '-',
+      'ملاحظات فتح الشواغر / التسكين': s.vacancyReplyNote || s.staffingNote || s.referralNotes || '-',
+      'تاريخ آخر إجراء': s.lastUpdatedAt ? new Date(s.lastUpdatedAt).toLocaleDateString('ar-SA') : '-',
+      'تقييم الموظف': s.staffSatisfaction ? `${s.staffSatisfaction}/5` : 'لم يقيم',
+      'تقييم الاستقبال': s.receptionSatisfaction ? `${s.receptionSatisfaction}/5` : 'لم يقيم'
+    };
+  });
+
+  // Create Excel Workbook
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+
+  // Set RTL Support
+  (worksheet as any)['!views'] = [{ RTL: true }];
+
+  // Column Widths for readability
+  const colWidths = [
+    { wch: 6 },   // م
+    { wch: 18 },  // رقم الطلب
+    { wch: 10 },  // سنة
+    { wch: 10 },  // شهر
+    { wch: 10 },  // يوم
+    { wch: 20 },  // تاريخ ووقت
+    { wch: 28 },  // اسم المستفيد
+    { wch: 16 },  // الهوية
+    { wch: 15 },  // الجوال
+    { wch: 14 },  // الجنسية
+    { wch: 15 },  // نوع الإقامة
+    { wch: 18 },  // المرحلة
+    { wch: 14 },  // الصف
+    { wch: 10 },  // الجنس
+    { wch: 28 },  // المدرسة 1
+    { wch: 24 },  // المدرسة 2
+    { wch: 24 },  // المدرسة 3
+    { wch: 20 },  // القطاع
+    { wch: 16 },  // الحي
+    { wch: 28 },  // نوع الطلب
+    { wch: 24 },  // حالة الطلب
+    { wch: 20 },  // الموظف
+    { wch: 35 },  // تفاصيل
+    { wch: 30 },  // ملاحظات الشواغر
+    { wch: 16 },  // آخر إجراء
+    { wch: 12 },  // تقييم 1
+    { wch: 12 }   // تقييم 2
+  ];
+  worksheet['!cols'] = colWidths;
+
+  const workbook = XLSX.utils.book_new();
+  workbook.Workbook = { Views: [{ RTL: true }] };
+
+  const sheetName = 'سجل النسخة الاحتياطية';
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+  // Build meaningful filename
+  const yr = filters.year && filters.year !== 'all' ? `_${filters.year}` : '';
+  const mo = filters.month && filters.month !== 'all' ? `_شهر${filters.month}` : '';
+  const dy = filters.day && filters.day !== 'all' ? `_يوم${filters.day}` : '';
+  const tp = filters.problemType && filters.problemType !== 'all' ? `_${filters.problemType}` : '_جميع_الطلبات';
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const filename = `نسخة_احتياطية_الطلبات${tp}${yr}${mo}${dy}_بتاريخ_${todayStr}.xlsx`;
+
+  XLSX.writeFile(workbook, filename);
+
+  return { success: true, count: filtered.length, filename };
+}
+
+/**
+ * Creates an instant full JSON snapshot of everything for 100% data guarantee
+ */
+export async function createFullSystemBackupSnapshot(): Promise<string> {
+  const surveys = await loadSurveysFromStorage();
+  const schools = await loadSchoolsFromStorage();
+  const reports = await loadPrincipalReportsFromStorage();
+  const officers = await loadOfficersFromStorage();
+
+  const backupPayload = {
+    timestamp: new Date().toISOString(),
+    version: '2.0',
+    system: 'منصة الخدمات الموحدة للقبول والمعادلات',
+    counts: {
+      surveys: surveys.length,
+      schools: schools.length,
+      reports: reports.length,
+      officers: officers.length
+    },
+    data: {
+      surveys,
+      schools,
+      reports,
+      officers
+    }
+  };
+
+  const jsonStr = JSON.stringify(backupPayload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `نسخة_شاملة_النظام_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  return `تم أخذ نسخة شاملة بنجاح تحتوي على (${surveys.length}) طلب و (${schools.length}) مدرسة.`;
+}

@@ -1236,11 +1236,10 @@ export default function Portal({
                     </h3>
                     
                     {matchedSurveys.map((survey) => {
-                      const cleanExistingNotes = (survey.notes && !survey.notes.includes('🚨') && !survey.notes.includes('طلب تسكين') && !survey.notes.includes('فتح الشاغر') && !survey.notes.includes('توجيه')) ? survey.notes : '';
                       const local = evals[survey.id] || {
                         staffSatisfaction: survey.staffSatisfaction || 0,
                         receptionSatisfaction: survey.receptionSatisfaction || 0,
-                        notes: cleanExistingNotes,
+                        notes: '',
                         isResolved: survey.isResolved || false,
                       };
 
@@ -1446,69 +1445,255 @@ export default function Portal({
                             const st = (survey as any).vacancyRequestStatus;
                             const isDone = survey.isResolved || st === 'executed' || st === 'staffing_confirmed' || (survey as any).principalConfirmedStaffing;
 
-                            // 1. FINAL PLACEMENT APPROVED (Ordered strictly as requested by user)
+                            // 1. FINAL PLACEMENT APPROVED (Congratulation & Mandatory Evaluation first)
                             if (isDone) {
                               const placedSchoolName = (survey as any).vacancyOpenedSchoolName || survey.schoolName;
                               const stageFormatted = isRtl ? (survey.stage === 'EarlyChildhood' ? 'طفولة مبكرة' : survey.stage === 'Kindergarten' ? 'رياض أطفال' : survey.stage === 'Primary' ? 'ابتدائي' : survey.stage === 'Intermediate' ? 'متوسط' : 'ثانوي') : survey.stage;
+                              const hasSubmittedRating = Boolean(
+                                local.success || 
+                                (evals[survey.id] && (evals[survey.id].staffSatisfaction > 0 || evals[survey.id].receptionSatisfaction > 0)) || 
+                                (survey.staffSatisfaction && survey.staffSatisfaction > 0)
+                              );
 
                               return (
-                                <div className="space-y-4">
-                                  {/* Step 1: Education Directorate Congratulation Banner */}
-                                  <div className={`p-5 rounded-2xl border flex items-center gap-4 ${
-                                    isDark ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200' : 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                                <div className="space-y-5">
+                                  {/* Step 1: Education Directorate Congratulation Banner (Exact wording requested) */}
+                                  <div className={`p-5 sm:p-6 rounded-3xl border text-center space-y-2 shadow-md ${
+                                    isDark ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100' : 'bg-emerald-50 border-emerald-300 text-emerald-950'
                                   }`}>
-                                    <CheckCircle className={`w-8 h-8 shrink-0 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                                    <div className="space-y-1">
-                                      <h3 className="text-base sm:text-lg font-black leading-snug">
-                                        🎉 {isRtl 
-                                          ? 'تبارك لك الإدارة العامة للتعليم بمنطقة المدينة المنورة بقبول ابنكم/ابنتكم' 
-                                          : 'Congratulations! Your student has been accepted by Madinah Education Directorate.'}
-                                      </h3>
-                                      <p className="text-xs font-bold opacity-90">
-                                        {isRtl ? 'تم اعتماد التسكين نهائياً بالمدرسة. يمكنك الاطلاع على بيانات التسكين والتأكيد أدناه.' : 'Placement confirmed. Please view school details and evaluate our service below.'}
-                                      </p>
+                                    <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 mb-1">
+                                      <CheckCircle className="w-9 h-9" />
                                     </div>
+                                    <h3 className="text-base sm:text-xl font-black leading-snug text-emerald-900 dark:text-emerald-200">
+                                      {isRtl 
+                                        ? '( تبارك لك الادارة العامة للتعليم بمنطقة المدينة المنورة قبول ابنكم / ابنتكم )' 
+                                        : '( Madinah Education Directorate congratulates you on the acceptance of your student )'}
+                                    </h3>
+                                    <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-teal-200 max-w-2xl mx-auto leading-relaxed">
+                                      {isRtl 
+                                        ? 'وللاطلاع على بيانات المدرسة نأمل منكم أولاً تقييم الخدمة وإبداء المقترحات والملاحظات بكل شفافية' 
+                                        : 'To view school and placement details, please first evaluate the service and share your feedback.'}
+                                    </p>
                                   </div>
 
-                                  {/* Step 2: Placed School Details Box & Guidance to Beneficiary */}
-                                  <div className={`p-5 rounded-2xl border space-y-4 shadow-sm ${
-                                    isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
+                                  {/* Step 2: Beneficiary Satisfaction & Evaluation Form */}
+                                  <div className={`p-5 sm:p-6 rounded-3xl border space-y-5 shadow-sm ${
+                                    isDark ? 'bg-teal-950/40 border-teal-800/40' : 'bg-white border-slate-200'
                                   }`}>
-                                    <div className="flex items-center gap-2 border-b pb-3 border-emerald-200 dark:border-teal-800/60 font-black text-sm text-emerald-800 dark:text-emerald-300">
-                                      <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                      <span>{isRtl ? '🏫 بيانات المدرسة المسكن بها الطالب والمرحلة والصف:' : '🏫 Placed School & Grade Details:'}</span>
+                                    <div className="flex items-center justify-between gap-3 border-b pb-3 border-slate-100 dark:border-teal-800/40">
+                                      <div className="flex items-center gap-2">
+                                        <Award className="w-5 h-5 text-amber-500" />
+                                        <h4 className={`text-sm sm:text-base font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                          {isRtl ? 'استبيان قياس رضا المستفيد والتقييم' : 'Beneficiary Satisfaction & Evaluation Survey'}
+                                        </h4>
+                                      </div>
+                                      {hasSubmittedRating && (
+                                        <span className="text-[11px] font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                                          {isRtl ? '✓ تم إرسال التقييم بنجاح' : '✓ Evaluation Submitted'}
+                                        </span>
+                                      )}
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-extrabold">
-                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
-                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المدرسة المسكن عليها:' : 'Assigned School:'}</span>
-                                        <span className="text-sm font-black text-emerald-900 dark:text-emerald-200">{placedSchoolName}</span>
-                                      </div>
-                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
-                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المرحلة الدراسية:' : 'Stage:'}</span>
-                                        <span className="text-sm font-black text-slate-900 dark:text-white">{stageFormatted}</span>
-                                      </div>
-                                      <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
-                                        <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'الصف المسكن به:' : 'Assigned Grade:'}</span>
-                                        <span className="text-sm font-black text-slate-900 dark:text-white">{survey.grade || 'غير محدد'}</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="p-3.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs shadow-xs flex items-center gap-3">
-                                      <Clock className="w-5 h-5 shrink-0 text-slate-900" />
-                                      <span className="leading-relaxed">
-                                        {isRtl 
-                                          ? '⚡ تأكيد وتوجيه عاجل لولي الأمر: يرجى المبادرة وسرعة مراجعة إدارة المدرسة المسكن بها الطالب/ة لاستكمال باقي إجراءات القيد والتثبيت الفعلي بالفصول.'
-                                          : '⚡ Important Note: Please quickly visit the school administration to finalize enrollment procedures.'}
-                                      </span>
-                                    </div>
-
-                                    {(survey as any).staffingNote && (
-                                      <div className="text-[11px] bg-slate-50 dark:bg-black/20 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 font-bold">
-                                        📌 {isRtl ? `ملاحظة التسكين الميداني: ${(survey as any).staffingNote}` : `Placement Note: ${(survey as any).staffingNote}`}
+                                    {/* Success Notification */}
+                                    {local.success && (
+                                      <div className={`border rounded-2xl p-4 text-xs font-bold flex items-center gap-2.5 animate-in fade-in duration-300 ${
+                                        isDark ? 'bg-emerald-950/50 border-emerald-800 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                      }`}>
+                                        <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
+                                        <span>{isRtl ? 'تم حفظ وإرسال تقييمكم بنجاح! تم فتح تفاصيل المدرسة أدناه.' : 'Your rating has been saved! School details are now available below.'}</span>
                                       </div>
                                     )}
+
+                                    {/* Star 1: Staff performance */}
+                                    <div className="space-y-2">
+                                      <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
+                                        {isRtl ? '1. تقييم رضاك عن أداء ومساعدة الموظف المختص بالخدمة:' : '1. Satisfaction with specialized employee performance:'}
+                                      </label>
+                                      <div className="flex items-center gap-1.5">
+                                        {[1, 2, 3, 4, 5].map((star) => {
+                                          const hoverVal = hoverStaff[survey.id] || 0;
+                                          const isFilled = hoverVal ? star <= hoverVal : star <= (local.staffSatisfaction || 0);
+                                          return (
+                                            <button
+                                              key={star}
+                                              type="button"
+                                              onClick={() => {
+                                                setEvals(prev => ({
+                                                  ...prev,
+                                                  [survey.id]: {
+                                                    ...(prev[survey.id] || local),
+                                                    staffSatisfaction: star
+                                                  }
+                                                }));
+                                              }}
+                                              onMouseEnter={() => {
+                                                setHoverStaff(prev => ({ ...prev, [survey.id]: star }));
+                                              }}
+                                              onMouseLeave={() => {
+                                                setHoverStaff(prev => ({ ...prev, [survey.id]: 0 }));
+                                              }}
+                                              className="focus:outline-none transition-transform hover:scale-110 active:scale-125 cursor-pointer p-1"
+                                            >
+                                              <Star
+                                                className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                                                  isFilled
+                                                    ? 'fill-amber-400 text-amber-400 filter drop-shadow-sm'
+                                                    : 'text-slate-300 dark:text-slate-600'
+                                                }`}
+                                              />
+                                            </button>
+                                          );
+                                        })}
+                                        <span className={`text-xs font-black mr-2 px-2.5 py-1 rounded-lg ${
+                                          (local.staffSatisfaction || 0) > 0 
+                                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-300' 
+                                            : 'text-slate-400 dark:text-slate-500'
+                                        }`}>
+                                          {(local.staffSatisfaction || 0) > 0 ? `${local.staffSatisfaction} / 5` : (isRtl ? 'يرجى التقييم' : 'Please rate')}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Star 2: Reception quality */}
+                                    <div className="space-y-2">
+                                      <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
+                                        {isRtl ? '2. تقييم رضاك عن جودة الاستقبال والتوجيه والإرشاد بالإدارة:' : '2. Satisfaction with reception and guidance quality:'}
+                                      </label>
+                                      <div className="flex items-center gap-1.5">
+                                        {[1, 2, 3, 4, 5].map((star) => {
+                                          const hoverVal = hoverReception[survey.id] || 0;
+                                          const isFilled = hoverVal ? star <= hoverVal : star <= (local.receptionSatisfaction || 0);
+                                          return (
+                                            <button
+                                              key={star}
+                                              type="button"
+                                              onClick={() => {
+                                                setEvals(prev => ({
+                                                  ...prev,
+                                                  [survey.id]: {
+                                                    ...(prev[survey.id] || local),
+                                                    receptionSatisfaction: star
+                                                  }
+                                                }));
+                                              }}
+                                              onMouseEnter={() => {
+                                                setHoverReception(prev => ({ ...prev, [survey.id]: star }));
+                                              }}
+                                              onMouseLeave={() => {
+                                                setHoverReception(prev => ({ ...prev, [survey.id]: 0 }));
+                                              }}
+                                              className="focus:outline-none transition-transform hover:scale-110 active:scale-125 cursor-pointer p-1"
+                                            >
+                                              <Star
+                                                className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                                                  isFilled
+                                                    ? 'fill-amber-400 text-amber-400 filter drop-shadow-sm'
+                                                    : 'text-slate-300 dark:text-slate-600'
+                                                }`}
+                                              />
+                                            </button>
+                                          );
+                                        })}
+                                        <span className={`text-xs font-black mr-2 px-2.5 py-1 rounded-lg ${
+                                          (local.receptionSatisfaction || 0) > 0 
+                                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-300' 
+                                            : 'text-slate-400 dark:text-slate-500'
+                                        }`}>
+                                          {(local.receptionSatisfaction || 0) > 0 ? `${local.receptionSatisfaction} / 5` : (isRtl ? 'يرجى التقييم' : 'Please rate')}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Additional Comments Textarea (Clean empty box without placeholder as requested) */}
+                                    <div className="space-y-2">
+                                      <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
+                                        {isRtl ? '3. المقترحات والملاحظات:' : '3. Suggestions & Feedback:'}
+                                      </label>
+                                      <textarea
+                                        value={local.notes || ''}
+                                        onChange={(e) => {
+                                          setEvals(prev => ({
+                                            ...prev,
+                                            [survey.id]: {
+                                              ...(prev[survey.id] || local),
+                                              notes: e.target.value
+                                            }
+                                          }));
+                                        }}
+                                        placeholder=""
+                                        rows={3}
+                                        className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-2xl border transition-all outline-none focus:ring-2 ${
+                                          isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
+                                        } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
+                                      />
+                                    </div>
+
+                                    {/* Action Button: Save Evaluation & Show School Details */}
+                                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveEval(survey)}
+                                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer"
+                                      >
+                                        <Send className="w-4 h-4" />
+                                        <span>{isRtl ? 'حفظ التقييم وعرض بيانات المدرسة' : 'Save Rating & View School Details'}</span>
+                                      </button>
+                                      
+                                      {hasSubmittedRating && (
+                                        <span className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                                          {isRtl ? 'يمكنك تحديث التقييم والملاحظات في أي وقت بالضغط على حفظ.' : 'You can update your feedback anytime.'}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
+
+                                  {/* Step 3: School Placement Details (Revealed upon evaluation or if already evaluated) */}
+                                  {hasSubmittedRating ? (
+                                    <div className={`p-5 sm:p-6 rounded-3xl border space-y-4 shadow-sm animate-in fade-in duration-300 ${
+                                      isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
+                                    }`}>
+                                      <div className="flex items-center gap-2 border-b pb-3 border-emerald-200 dark:border-teal-800/60 font-black text-sm text-emerald-800 dark:text-emerald-300">
+                                        <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                        <span>{isRtl ? '🏫 بيانات المدرسة المسكن بها الطالب والمرحلة والصف:' : '🏫 Placed School & Grade Details:'}</span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-extrabold">
+                                        <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                          <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المدرسة المسكن عليها:' : 'Assigned School:'}</span>
+                                          <span className="text-sm sm:text-base font-black text-emerald-900 dark:text-emerald-200">{placedSchoolName}</span>
+                                        </div>
+                                        <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                          <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'المرحلة الدراسية:' : 'Stage:'}</span>
+                                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">{stageFormatted}</span>
+                                        </div>
+                                        <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-black/30 border border-emerald-200 dark:border-emerald-800">
+                                          <span className="text-[10px] opacity-75 block text-slate-500 dark:text-teal-400">{isRtl ? 'الصف المسكن به:' : 'Assigned Grade:'}</span>
+                                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">{survey.grade || 'غير محدد'}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="p-3.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs shadow-xs flex items-center gap-3">
+                                        <Clock className="w-5 h-5 shrink-0 text-slate-900" />
+                                        <span className="leading-relaxed">
+                                          {isRtl 
+                                            ? '⚡ تأكيد وتوجيه عاجل لولي الأمر: يرجى المبادرة وسرعة مراجعة إدارة المدرسة المسكن بها الطالب/ة لاستكمال باقي إجراءات القيد والتثبيت الفعلي بالفصول.'
+                                            : '⚡ Important Note: Please quickly visit the school administration to finalize enrollment procedures.'}
+                                        </span>
+                                      </div>
+
+                                      {(survey as any).staffingNote && (
+                                        <div className="text-[11px] bg-slate-50 dark:bg-black/20 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold">
+                                          📌 {isRtl ? `ملاحظة التسكين الميداني: ${(survey as any).staffingNote}` : `Placement Note: ${(survey as any).staffingNote}`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className={`p-4 rounded-2xl border border-dashed text-center text-xs font-bold ${
+                                      isDark ? 'border-amber-700/50 bg-amber-950/20 text-amber-300' : 'border-amber-300 bg-amber-50/60 text-amber-900'
+                                    }`}>
+                                      <span>🔒 {isRtl ? 'يرجى تقييم الخدمة أولاً أعلاه لعرض بيانات المدرسة المسكن بها الطالب' : 'Please rate the service above to view assigned school details'}</span>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
@@ -1601,184 +1786,6 @@ export default function Portal({
                               </div>
                             );
                           })()}
-
-                          {/* Evaluation & Feedback Form (Only visible after final placement by School Principal) */}
-                          {(() => {
-                            const isPlacedByPrincipal = survey.principalConfirmedStaffing || (survey as any).vacancyRequestStatus === 'staffing_confirmed' || (survey as any).vacancyRequestStatus === 'executed' || survey.isResolved;
-
-                            if (!isPlacedByPrincipal) {
-                              return (
-                                <div className={`border-t pt-5 p-4 rounded-2xl border text-center space-y-2 ${
-                                  isDark ? 'bg-amber-950/20 border-amber-800/40 text-amber-300' : 'bg-amber-50/80 border-amber-200 text-amber-900'
-                                }`}>
-                                  <div className="flex items-center justify-center gap-2 font-black text-xs">
-                                    <Lock className="w-4 h-4 text-amber-500" />
-                                    <span>{isRtl ? 'استبيان قياس رضا المستفيد والتقييم مغلق حالياً 🔒' : 'Satisfaction Survey Currently Locked 🔒'}</span>
-                                  </div>
-                                  <p className="text-[11px] font-bold opacity-90 max-w-lg mx-auto leading-relaxed">
-                                    {isRtl
-                                      ? '📌 يظهر استبيان قياس رضا المستفيد والتقييم فقط بعد تسكين الطالب نهائياً من قبل مدير المدرسة.'
-                                      : 'The satisfaction survey and evaluation will be enabled only after final student placement by the school principal.'}
-                                  </p>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div className={`border-t pt-6 space-y-6 ${isDark ? 'border-teal-800/20' : 'border-slate-100'}`}>
-                                <div className="space-y-1">
-                                  <h4 className={`text-base font-black flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                    <Award className="w-5 h-5 text-amber-500" />
-                                    <span>{isRtl ? 'استبيان قياس رضا المستفيد والتقييم' : 'Beneficiary Satisfaction & Evaluation Survey'}</span>
-                                  </h4>
-                                  <p className="text-xs text-slate-400 leading-relaxed">
-                                    {isRtl 
-                                      ? 'رأيك يساهم بشكل مباشر في تحسين حوكمة القبول والتوجيه. الرجاء تقييم تجربتك معنا بكل شفافية.' 
-                                      : 'Your evaluation directly helps in optimizing the quality governance. Please rate objectively.'}
-                                  </p>
-                                </div>
-
-                            {/* Success Notification */}
-                            {local.success && (
-                              <div className={`border rounded-xl p-4 text-xs font-bold flex items-center gap-2.5 ${
-                                isDark ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                              }`}>
-                                <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
-                                <span>{isRtl ? 'تم تحديث تقييمك بنجاح وحفظه في النظام الموحد بالكامل!' : 'Your satisfaction ratings have been saved and applied!'}</span>
-                              </div>
-                            )}
-
-                            {/* Interactive Star 1: Staff performance */}
-                            <div className="space-y-2">
-                              <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
-                                {isRtl ? '1. تقييم رضاك عن أداء ومساعدة الموظف المختص بالخدمة' : '1. Satisfaction with the specialized employee support & performance'}
-                              </label>
-                              <div className="flex items-center gap-1">
-                                {[1, 2, 3, 4, 5].map((star) => {
-                                  const hoverVal = hoverStaff[survey.id] || 0;
-                                  const isFilled = hoverVal ? star <= hoverVal : star <= local.staffSatisfaction;
-                                  return (
-                                    <button
-                                      key={star}
-                                      type="button"
-                                      onClick={() => {
-                                        setEvals(prev => ({
-                                          ...prev,
-                                          [survey.id]: {
-                                            ...(prev[survey.id] || local),
-                                            staffSatisfaction: star
-                                          }
-                                        }));
-                                      }}
-                                      onMouseEnter={() => {
-                                        setHoverStaff(prev => ({ ...prev, [survey.id]: star }));
-                                      }}
-                                      onMouseLeave={() => {
-                                        setHoverStaff(prev => ({ ...prev, [survey.id]: 0 }));
-                                      }}
-                                      className="focus:outline-none transition-transform active:scale-125 cursor-pointer"
-                                    >
-                                      <Star
-                                        className={`w-7 h-7 ${
-                                          isFilled
-                                            ? 'fill-amber-400 text-amber-400 filter drop-shadow-sm'
-                                            : 'text-slate-300 dark:text-slate-600'
-                                        }`}
-                                      />
-                                    </button>
-                                  );
-                                })}
-                                <span className={`text-xs font-bold mr-2 ${isDark ? 'text-teal-400' : 'text-slate-500'}`}>
-                                  {local.staffSatisfaction > 0 ? `${local.staffSatisfaction} / 5` : (isRtl ? 'لم يحدد بعد' : 'Not rated yet')}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Interactive Star 2: Reception quality */}
-                            <div className="space-y-2">
-                              <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
-                                {isRtl ? '2. تقييم رضاك عن جودة الاستقبال والتوجيه والإرشاد بالإدارة' : '2. Satisfaction with reception and guidance quality'}
-                              </label>
-                              <div className="flex items-center gap-1">
-                                {[1, 2, 3, 4, 5].map((star) => {
-                                  const hoverVal = hoverReception[survey.id] || 0;
-                                  const isFilled = hoverVal ? star <= hoverVal : star <= local.receptionSatisfaction;
-                                  return (
-                                    <button
-                                      key={star}
-                                      type="button"
-                                      onClick={() => {
-                                        setEvals(prev => ({
-                                          ...prev,
-                                          [survey.id]: {
-                                            ...(prev[survey.id] || local),
-                                            receptionSatisfaction: star
-                                          }
-                                        }));
-                                      }}
-                                      onMouseEnter={() => {
-                                        setHoverReception(prev => ({ ...prev, [survey.id]: star }));
-                                      }}
-                                      onMouseLeave={() => {
-                                        setHoverReception(prev => ({ ...prev, [survey.id]: 0 }));
-                                      }}
-                                      className="focus:outline-none transition-transform active:scale-125 cursor-pointer"
-                                    >
-                                      <Star
-                                        className={`w-7 h-7 ${
-                                          isFilled
-                                            ? 'fill-amber-400 text-amber-400 filter drop-shadow-sm'
-                                            : 'text-slate-300 dark:text-slate-600'
-                                        }`}
-                                      />
-                                    </button>
-                                  );
-                                })}
-                                <span className={`text-xs font-bold mr-2 ${isDark ? 'text-teal-400' : 'text-slate-500'}`}>
-                                  {local.receptionSatisfaction > 0 ? `${local.receptionSatisfaction} / 5` : (isRtl ? 'لم يحدد بعد' : 'Not rated yet')}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Additional Comments Textarea */}
-                            <div className="space-y-2">
-                              <label className={`block text-xs font-extrabold ${isDark ? 'text-teal-200' : 'text-slate-700'}`}>
-                                {isRtl ? '3. ملاحظات، مقترحات أو تفاصيل إضافية:' : '3. Additional notes, remarks or suggestions:'}
-                              </label>
-                              <textarea
-                                value={local.notes}
-                                onChange={(e) => {
-                                  setEvals(prev => ({
-                                    ...prev,
-                                    [survey.id]: {
-                                      ...(prev[survey.id] || local),
-                                      notes: e.target.value
-                                    }
-                                  }));
-                                }}
-                                placeholder={isRtl ? 'أدخل أي تعليقات أو مقترحات تساهم في تحسين مستوى الخدمة...' : 'Write any comments here...'}
-                                rows={3}
-                                className={`w-full p-4 text-xs sm:text-sm font-semibold rounded-xl border transition-all outline-none focus:ring-2 ${
-                                  isDark ? 'bg-teal-950/60 text-white focus:bg-teal-950' : 'bg-slate-50 focus:bg-white text-slate-900'
-                                } border-slate-200 dark:border-teal-800/40 focus:border-emerald-500 focus:ring-emerald-100`}
-                              />
-                            </div>
-
-                            {/* Submit Rating Action Button */}
-                            <div className="flex justify-end pt-2">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveEval(survey)}
-                                className="flex items-center gap-2 px-6 py-3 bg-[#218caa] hover:bg-emerald-50 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer"
-                              >
-                                <Send className="w-4 h-4" />
-                                <span>{isRtl ? 'حفظ وإرسال التقييم المحدث' : 'Save & Submit Updated Rating'}</span>
-                              </button>
-                            </div>
-
-                          </div>
-                        );
-                      })()}
                         </div>
                       );
                     })}

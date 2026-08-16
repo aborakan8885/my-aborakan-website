@@ -27,10 +27,13 @@ export interface SendEmailResponse {
  */
 export async function sendOfficialEmail(payload: SendEmailPayload): Promise<SendEmailResponse> {
   try {
+    const adminApiKey = typeof window !== 'undefined' ? localStorage.getItem('admin_api_key') : null;
+    
     const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(adminApiKey && { 'X-Admin-API-Key': adminApiKey })
       },
       body: JSON.stringify({
         to: payload.to,
