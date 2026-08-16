@@ -8,6 +8,7 @@ import Header from './components/Header';
 import SurveyForm from './components/SurveyForm';
 import Dashboard from './components/Dashboard';
 import Portal from './components/Portal';
+import AccessGate from './components/AccessGate';
 import ErrorBoundary from './components/ErrorBoundary';
 import ContactFeedbackModal from './components/ContactFeedbackModal';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, PrincipalReport, SchoolItem, BeneficiaryFeedback } from './types';
@@ -736,6 +737,7 @@ export default function App() {
   const isDark = theme === 'dark';
 
   return (
+    <AccessGate>
     <div
       className={`min-h-screen flex flex-col font-sans select-none antialiased transition-colors duration-300 ${
         isDark ? 'bg-gradient-to-br from-[#0b1f2e] via-[#081724] to-[#05101a] text-slate-100' : 'bg-gradient-to-br from-[#f2f9fd] via-[#e8f4fb] to-[#dfeff8] text-slate-900'
@@ -1054,5 +1056,6 @@ export default function App() {
         </>
       )}
     </div>
+    </AccessGate>
   );
 }
