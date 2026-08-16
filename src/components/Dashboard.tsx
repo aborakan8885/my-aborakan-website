@@ -85,36 +85,93 @@ import { sendOfficialEmail, OFFICIAL_SENDER_EMAIL } from '../utils/emailService'
 import BeneficiaryFeedbackView from './BeneficiaryFeedbackView';
 import BeneficiarySatisfactionView from './BeneficiarySatisfactionView';
 import DateBackupModal from './DateBackupModal';
-import { clearSchoolsFromStorage, clearAllSurveysFromStorage } from '../utils/storageEngine';
+import { clearSchoolsFromStorage, clearAllSurveysFromStorage, saveSchoolsToStorage, loadSchoolsFromStorage, isSurveyEqualizationRequest, isSurveyTransferRequest } from '../utils/storageEngine';
+export { isSurveyEqualizationRequest, isSurveyTransferRequest };
 
-export function getRequestTypeInfo(survey: SurveyResponse, isRtl: boolean = true) {
-  if (
-    survey.isEqualizationRequest ||
-    survey.studentCategoryType === 'non_fresh' ||
-    survey.equalizationStage ||
-    survey.problemType?.startsWith('cert_')
-  ) {
+export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, isRtl: boolean = true): {
+  label: string;
+  subLabel: string;
+  badgeClass: string;
+  icon: string;
+  category: 'registration' | 'transfer' | 'equalization' | 'admission';
+} {
+  if (!survey) {
     return {
-      label: isRtl ? 'معادلة شهادات ومؤهلات' : 'Cert. Equivalency',
-      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
-      icon: '🎓'
+      label: isRtl ? 'تسجيل جديد' : 'New Registration',
+      subLabel: isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration',
+      badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
+      icon: '🎒',
+      category: 'registration'
     };
   }
-  if (
-    survey.serviceType === 'transfer' ||
-    survey.transferReason ||
-    survey.guardianTransferPledge
-  ) {
+
+  // 1. TRANSFER (طلب نقل طالب من مدرسة إلى مدرسة) -> وحدة القبول والتسجيل
+  if (isSurveyTransferRequest(survey)) {
+    let sub = isRtl ? 'طلب نقل بين المدارس' : 'Transfer Request';
+    if (survey.problemType === 'distance_from_school') {
+      sub = isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Distance from School Transfer';
+    } else if (survey.problemType === 'vacancies_unavailable' || (survey.problemType as string) === 'vacancies_closed') {
+      sub = isRtl ? 'طلب شاغر ونقل مدرسي' : 'School Vacancy & Transfer';
+    } else if (survey.problemType === 'student_density') {
+      sub = isRtl ? 'نقل لمعالجة كثافة الفصول' : 'Classroom Density Transfer';
+    } else if (survey.transferReason) {
+      sub = survey.transferReason;
+    }
     return {
-      label: isRtl ? 'طلب نقل طالب' : 'Student Transfer',
+      label: isRtl ? 'نقل طالب' : 'Student Transfer',
+      subLabel: sub,
       badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/40',
-      icon: '🔄'
+      icon: '🔄',
+      category: 'transfer'
     };
   }
+
+  // 2. EQUALIZATION (معادلة مؤهلات وشهادات) -> مسؤول معادلة الشهادات
+  if (isSurveyEqualizationRequest(survey)) {
+    let sub = isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency';
+    if (survey.problemType === 'cert_primary_eq' || survey.equalizationStage === 'primary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الابتدائية' : 'Primary Cert. Equivalency';
+    } else if (survey.problemType === 'cert_intermediate_eq' || survey.equalizationStage === 'intermediate') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة المتوسطة' : 'Intermediate Cert. Equivalency';
+    } else if (survey.problemType === 'cert_secondary_eq' || survey.equalizationStage === 'secondary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الثانوية' : 'Secondary Cert. Equivalency';
+    }
+    return {
+      label: isRtl ? 'معادلة مؤهلات' : 'Qualifications Equivalency',
+      subLabel: sub,
+      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
+      icon: '🎓',
+      category: 'equalization'
+    };
+  }
+
+  // 3. ADMISSION CASE (معاملة قبول)
+  if (survey.problemType === 'unjustified_rejection') {
+    return {
+      label: isRtl ? 'معاملة قبول' : 'Admission Case',
+      subLabel: isRtl ? 'معالجة رفض قبول دون مبرر نظامي' : 'Unjustified Rejection Case',
+      badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40',
+      icon: '📋',
+      category: 'admission'
+    };
+  }
+
+  // 4. NEW REGISTRATION (تسجيل جديد)
+  let subReg = isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration';
+  if (survey.problemType === 'new_registration_saudi') {
+    subReg = isRtl ? 'تسجيل مستجد - سعودي' : 'New Saudi Registration';
+  } else if (survey.problemType === 'new_registration_resident') {
+    subReg = isRtl ? 'تسجيل مستجد - مقيم' : 'New Resident Registration';
+  } else if (survey.problemType === 'unregistered_desire') {
+    subReg = isRtl ? 'تسجيل وقبول بالرغبة الأولى' : 'Desired Registration';
+  }
+
   return {
-    label: isRtl ? 'تسجيل مستجد' : 'New Registration',
+    label: isRtl ? 'تسجيل جديد' : 'New Registration',
+    subLabel: subReg,
     badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
-    icon: '🎒'
+    icon: '🎒',
+    category: 'registration'
   };
 }
 
@@ -797,19 +854,24 @@ function Dashboard({
     }
   };
 
-  const getProblemName = (key: string) => {
+  const getProblemName = (key: string, surveyObj?: SurveyResponse) => {
+    if (surveyObj) {
+      const info = getRequestTypeInfo(surveyObj, isRtl);
+      return `${info.label} (${info.subLabel})`;
+    }
     switch (key) {
-      case 'vacancies_unavailable': return t?.probVacancies || 'الشواغر غير متاحة';
-      case 'student_density': return t?.probDensity || 'كثافة طلابية بالفصول';
-      case 'unjustified_rejection': return t?.probRejection || 'رفض الطلب دون مبرر نظامي';
-      case 'cert_primary_eq': return t?.probPrimaryEq || 'معادلة الشهادة للمرحلة الابتدائية';
-      case 'cert_intermediate_eq': return t?.probIntermediateEq || 'معادلة الشهادة للمرحلة المتوسطة';
-      case 'cert_secondary_eq': return t?.probSecondaryEq || 'معادلة الشهادة للمرحلة الثانوية';
-      case 'distance_from_school': return t?.probDistance || 'نقل بسبب بعد السكن عن المدرسة';
-      case 'unregistered_desire': return t?.probUnregistered || 'طلب قبول ومعادلة شهادة';
-      case 'new_registration_saudi': return t?.probNewSaudi || (isRtl ? 'تسجيل مستجد سعودي' : 'New Saudi Registration');
-      case 'new_registration_resident': return t?.probNewResident || (isRtl ? 'تسجيل مستجد مقيم' : 'New Resident Registration');
-      default: return isRtl ? 'أخرى / ملاحظة عامة' : 'Other / General Feedback';
+      case 'vacancies_unavailable': return isRtl ? 'نقل طالب (طلب شاغر)' : 'Student Transfer (Vacancy)';
+      case 'vacancies_closed': return isRtl ? 'نقل طالب (شواغر مغلقة)' : 'Student Transfer (Closed)';
+      case 'student_density': return isRtl ? 'نقل طالب (كثافة بالفصول)' : 'Student Transfer (Density)';
+      case 'unjustified_rejection': return isRtl ? 'معاملة قبول (رفض دون مبرر)' : 'Admission Case (Rejection)';
+      case 'cert_primary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الابتدائية)' : 'Equivalency (Primary)';
+      case 'cert_intermediate_eq': return isRtl ? 'معادلة مؤهلات (المرحلة المتوسطة)' : 'Equivalency (Intermediate)';
+      case 'cert_secondary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الثانوية)' : 'Equivalency (Secondary)';
+      case 'distance_from_school': return isRtl ? 'نقل طالب (بعد السكن)' : 'Student Transfer (Distance)';
+      case 'unregistered_desire': return isRtl ? 'تسجيل جديد (قبول بالرغبة)' : 'New Registration (Desired)';
+      case 'new_registration_saudi': return isRtl ? 'تسجيل جديد (سعودي)' : 'New Registration (Saudi)';
+      case 'new_registration_resident': return isRtl ? 'تسجيل جديد (مقيم)' : 'New Registration (Resident)';
+      default: return isRtl ? 'معاملة قبول / أخرى' : 'Admission Case / Other';
     }
   };
 
@@ -1556,6 +1618,8 @@ Direct Strategic Recommendations:
         if (Array.isArray(parsed)) return parsed;
       } catch { return schools || []; }
     }
+    const wasSaved = localStorage.getItem('app_schools_saved_v1');
+    if (wasSaved === 'true') return [];
     return schools || INITIAL_SCHOOLS;
   });
 
@@ -1588,8 +1652,17 @@ Direct Strategic Recommendations:
 
   const updateSchoolsList = (newList: SchoolItem[]) => {
     setLocalSchools(newList);
-    localStorage.setItem('app_schools_list_v1', JSON.stringify(newList));
-    if (onImportSchools) onImportSchools(newList);
+    try {
+      localStorage.setItem('app_schools_list_v1', JSON.stringify(newList));
+      localStorage.setItem('app_schools_saved_v1', 'true');
+      localStorage.setItem('app_schools_last_saved_at', new Date().toISOString());
+    } catch (e) {
+      console.warn('LocalStorage quota notice for schools:', e);
+    }
+    saveSchoolsToStorage(newList, { isConfirmedAdminClear: true });
+    if (onImportSchools) {
+      onImportSchools(newList);
+    }
   };
 
   const handleDownloadSchoolTemplate = () => {
@@ -2000,14 +2073,14 @@ Direct Strategic Recommendations:
     if (activeOfficer.role === 'equivalency_supervisor') {
       return surveys.filter((s) => {
         if (!s) return false;
-        return !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        return isSurveyEqualizationRequest(s);
       });
     }
 
     if (activeOfficer.role === 'school_planning') {
       return surveys.filter((s) => {
         if (!s) return false;
-        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        const isEqItem = isSurveyEqualizationRequest(s);
         if (isEqItem && !isEqAuthUser) return false;
         if (s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id) return true;
         
@@ -2018,6 +2091,8 @@ Direct Strategic Recommendations:
           (s as any).vacancyRequestStatus === 'sent_to_school_principal' ||
           (s as any).vacancyRequestStatus === 'staffing_confirmed' ||
           (s as any).vacancyRequestStatus === 'executed' ||
+          (s as any).vacancyRequestStatus === 'returned_no_vacancy' ||
+          (s as any).principalDecision === 'rejected' ||
           s.problemType === 'vacancies_unavailable' ||
           (s.problemType as string) === 'vacancies_closed';
 
@@ -2043,7 +2118,7 @@ Direct Strategic Recommendations:
     if (activeOfficer.role === 'school_leadership') {
       return surveys.filter((s) => {
         if (!s) return false;
-        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        const isEqItem = isSurveyEqualizationRequest(s);
         
         if (isEqItem && !isEqAuthUser) {
           const isSentToLead = (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || (s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
@@ -2093,7 +2168,7 @@ Direct Strategic Recommendations:
       return surveys.filter((s) => {
         if (!s) return false;
         // STRICT ISOLATION: Equivalency requests MUST NOT appear in normal admission officers' lists!
-        const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+        const isEqItem = isSurveyEqualizationRequest(s);
         if (isEqItem && !isEqAuthUser) return false;
 
         // If explicitly assigned or referred
@@ -2148,7 +2223,7 @@ Direct Strategic Recommendations:
     }
 
     if (!isEqAuthUser) {
-      return surveys.filter((s) => !((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage));
+      return surveys.filter((s) => !isSurveyEqualizationRequest(s));
     }
 
     return surveys;
@@ -2192,7 +2267,7 @@ Direct Strategic Recommendations:
     return surveys.filter(s => {
       if (!s) return false;
       const st = (s as any).vacancyRequestStatus;
-      const isEqItem = !!((s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || (s as any).equalizationStage);
+      const isEqItem = isSurveyEqualizationRequest(s);
       const isEqReferredToPrincipal = isEqItem && ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed');
       const isEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations;
 
@@ -2365,11 +2440,30 @@ Direct Strategic Recommendations:
   // Helper for lookup of school principal details
   const getSchoolPrincipalDetails = useCallback((schoolNameStr: string) => {
     if (!schoolNameStr) return { name: 'أ. مدير المدرسة المعتمد', mobile: '0550000000' };
+    const sNorm = normalizeArabicText(schoolNameStr);
+
+    // Check localSchools first
+    if (localSchools && localSchools.length > 0) {
+      const foundSchool = localSchools.find(sch => {
+        const schNorm = normalizeArabicText(sch.nameAr || '');
+        return schNorm && sNorm && (sNorm.includes(schNorm) || schNorm.includes(sNorm));
+      });
+      if (foundSchool) {
+        const name = (foundSchool as any).principalName || (foundSchool as any).managerName || (foundSchool as any).manager || (foundSchool as any).principal || (foundSchool as any).customFields?.['اسم المدير'] || (foundSchool as any).customFields?.['المدير'] || (foundSchool as any).customFields?.['مدير المدرسة'];
+        const mobile = (foundSchool as any).principalPhone || (foundSchool as any).phone || (foundSchool as any).mobile || (foundSchool as any).customFields?.['رقم الجوال'] || (foundSchool as any).customFields?.['الجوال'] || (foundSchool as any).customFields?.['هاتف المدرسة'];
+        if (name || mobile) {
+          return {
+            name: name || 'أ. مدير المدرسة المعتمد',
+            mobile: mobile || '0550000000'
+          };
+        }
+      }
+    }
+
     try {
       const raw = localStorage.getItem('registered_principals_v1');
       if (raw) {
         const regs = JSON.parse(raw);
-        const sNorm = normalizeArabicText(schoolNameStr);
         const found = regs.find((r: any) => {
           const rNorm = normalizeArabicText(r.schoolName || '');
           return rNorm && sNorm && (sNorm.includes(rNorm) || rNorm.includes(sNorm));
@@ -2385,7 +2479,6 @@ Direct Strategic Recommendations:
       // ignore
     }
 
-    const sNorm = normalizeArabicText(schoolNameStr);
     if (sNorm.includes('داوود') || sNorm.includes('ابي داوود')) {
       return { name: 'أ. راكان سالم الترجمي', mobile: '0555123456' };
     }
@@ -2396,7 +2489,7 @@ Direct Strategic Recommendations:
       return { name: 'أ. محمد بن علي العوفي', mobile: '0544332211' };
     }
     return { name: 'أ. مدير المدرسة المعتمد', mobile: '0550000000' };
-  }, []);
+  }, [localSchools]);
 
   // Helper for stage category
   const getDefaultCategory = (survey: SurveyResponse) => {
@@ -5365,7 +5458,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 </div>
 
                                 {/* ACTION 1: Receive Request Button */}
-                                {(!survey.assignedOfficerId || survey.assignedOfficerId !== activeOfficer.id || !survey.isReceived) && !survey.isResolved && activeOfficer.role !== 'school_planning' && (
+                                {(!survey.assignedOfficerId || survey.assignedOfficerId !== activeOfficer.id || !survey.isReceived) && !survey.isResolved && activeOfficer.role !== 'school_planning' && activeOfficer.role !== 'school_leadership' && (
                                   <button
                                     onClick={() => {
                                       if (onUpdateSurvey) {
@@ -5385,9 +5478,89 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   </button>
                                 )}
 
+                                {/* LEADERSHIP OFFICER VIEW IN RESPONSES: Detailed Notice & 24h Delay Indicator */}
+                                {activeOfficer.role === 'school_leadership' && (
+                                  (() => {
+                                    const pDetails = getSchoolPrincipalDetails(survey.schoolName);
+                                    const sentTime = (survey as any).sentToLeadershipAt || (survey as any).sentToPrincipalAt || survey.createdAt;
+                                    const sentDate = sentTime ? new Date(sentTime) : new Date();
+                                    const now = new Date();
+                                    const diffMs = now.getTime() - sentDate.getTime();
+                                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                                    const diffDays = Math.floor(diffHours / 24);
+                                    const isDelayedOver24h = diffHours >= 24 && !survey.isResolved && (survey as any).vacancyRequestStatus !== 'staffing_confirmed' && (survey as any).vacancyRequestStatus !== 'executed' && (survey as any).vacancyRequestStatus !== 'archived';
+                                    const sendingSupervisor = (survey as any).referringOfficerName || (survey as any).planningOfficerName || (survey as any).serviceEmployee || (survey as any).receivedByEqOfficerName || (isRtl ? 'مشرف القبول والتسجيل' : 'Admissions Supervisor');
+
+                                    return (
+                                      <div className={`p-3 rounded-2xl border text-start space-y-2 transition-all mt-2 ${
+                                        isDelayedOver24h
+                                          ? 'bg-red-50/95 dark:bg-red-950/70 border-2 border-red-500 text-red-950 dark:text-red-100 shadow-sm'
+                                          : 'bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-950 dark:text-indigo-100'
+                                      }`}>
+                                        <div className="flex items-center justify-between border-b pb-1.5 border-current/20">
+                                          <span className={`text-xs font-black flex items-center gap-1.5 ${isDelayedOver24h ? 'text-red-700 dark:text-red-300' : 'text-indigo-900 dark:text-indigo-200'}`}>
+                                            🏫 {isRtl ? 'إشعار إحالة الطلب لمدير المدرسة' : 'Referral Notice to Principal'}
+                                          </span>
+                                          {isDelayedOver24h ? (
+                                            <span className="px-2.5 py-0.5 bg-red-600 text-white text-[10px] font-black rounded-full animate-pulse flex items-center gap-1">
+                                              <AlertTriangle className="w-3 h-3 text-white" />
+                                              <span>{isRtl ? `تأخر الإنجاز (${diffDays > 0 ? `${diffDays} يوم و ` : ''}${diffHours % 24}س)` : `Delayed (${diffDays}d ${diffHours % 24}h)`}</span>
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold rounded-md flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                                              <Clock className="w-3 h-3 text-emerald-600" />
+                                              <span>{isRtl ? `ضمن المهلة (${diffHours}س)` : `Within SLA (${diffHours}h)`}</span>
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-1.5 text-xs">
+                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                            <span className="font-bold opacity-75">{isRtl ? 'المشرف المرسل للطلب:' : 'Sending Supervisor:'}</span>
+                                            <span className="font-black text-indigo-700 dark:text-indigo-300">👤 {sendingSupervisor}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                            <span className="font-bold opacity-75">{isRtl ? 'اسم المدرسة:' : 'School Name:'}</span>
+                                            <span className="font-extrabold text-slate-900 dark:text-white">🏫 {survey.schoolName}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                            <span className="font-bold opacity-75">{isRtl ? 'اسم مدير المدرسة:' : 'Principal Name:'}</span>
+                                            <span className="font-extrabold text-slate-900 dark:text-white">👨‍💼 {pDetails.name}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                            <span className="font-bold opacity-75">{isRtl ? 'رقم جوال المدير:' : 'Principal Mobile:'}</span>
+                                            <div className="flex items-center gap-2">
+                                              <a href={`tel:${pDetails.mobile}`} className="font-extrabold font-mono dir-ltr text-emerald-600 hover:underline">
+                                                📞 {pDetails.mobile}
+                                              </a>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg text-[11px]">
+                                            <span className="font-bold opacity-75">{isRtl ? 'تاريخ ووقت الإرسال:' : 'Sent Date & Time:'}</span>
+                                            <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                                              📅 {sentDate.toLocaleString(isRtl ? 'ar-SA' : 'en-US', { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {isDelayedOver24h ? (
+                                          <div className="p-2 bg-red-100 dark:bg-red-900/60 rounded-xl border border-red-300 dark:border-red-800 text-[11px] font-black text-red-900 dark:text-red-100 flex items-start gap-1.5">
+                                            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                                            <span>{isRtl ? '🚨 مؤشر تأخير: تأخر إنهاء المعاملة وتسكين الطالب لأكثر من 24 ساعة! يرجى التواصل المباشر مع مدير المدرسة والتأكيد الفوري.' : '🚨 Delayed: Exceeded 24 hours without completion. Contact principal immediately.'}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="p-1.5 bg-indigo-100/70 dark:bg-indigo-900/40 rounded-xl text-[10px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
+                                            <span>ℹ️ {isRtl ? 'جاري المتابعة الميدانية مع مدير المدرسة لاستكمال التسكين.' : 'Follow-up in progress with school principal.'}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()
+                                )}
+
                                 {/* WORKFLOW BUTTONS FOR ADMISSION & EQUIVALENCY SUPERVISOR & SCHOOL PLANNING */}
                                 {!survey.isResolved && (survey.assignedOfficerId === activeOfficer.id || activeOfficer.role === 'admin' || activeOfficer.role === 'director' || activeOfficer.role === 'supervisor' || activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'school_planning') && (
-                                  (activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || (survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') ? (
+                                  isSurveyEqualizationRequest(survey) ? (
                                     <div className="space-y-2 p-2.5 rounded-2xl bg-purple-50/50 dark:bg-slate-900/90 border border-purple-200 dark:border-purple-800/80 shadow-xs text-start mt-2">
                                       <div className="flex items-center justify-between pb-1.5 border-b border-purple-200/80 dark:border-purple-900/60">
                                         <span className="text-[11px] font-black text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
@@ -6036,7 +6209,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   ) : (
                                     <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                                       {/* Non-equivalency actions: Vacancy opening request */}
-                                      {activeOfficer.role !== 'equivalency_supervisor' && !activeOfficer.canHandleEqualizations && !((survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq') && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
+                                      {!isSurveyEqualizationRequest(survey) && survey.vacancyRequestStatus !== 'approved' && survey.vacancyRequestStatus !== 'sent_to_leadership' && survey.vacancyRequestStatus !== 'sent_to_school_principal' && survey.vacancyRequestStatus !== 'staffing_confirmed' && (
                                         activeOfficer.role === 'school_planning' && (survey.vacancyRequestStatus === 'pending_vacancy' || (survey as any).returnedByPrincipal) ? (
                                            <button
                                              type="button"
@@ -9671,6 +9844,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     type="button"
                     onClick={() => {
                       updateSchoolsList(localSchools);
+                      alert(isRtl 
+                        ? `💾 تم حفظ وتثبيت بيانات (${localSchools.length}) مدرسة بنجاح في قاعدة البيانات والتخزين الدائم!` 
+                        : `Saved ${localSchools.length} schools successfully!`);
                     }}
                     className="bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-2xl text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
                     title={isRtl ? 'حفظ وتأكيد بيانات المدارس' : 'Save school data'}
@@ -9685,6 +9861,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       onClick={() => {
                         if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً؟' : 'Are you sure you want to delete all registered schools?')) {
                           updateSchoolsList([]);
+                          alert(isRtl ? '🗑️ تم حذف ومسح جميع بيانات المدارس من قاعدة البيانات بنجاح.' : 'All schools deleted successfully.');
                         }
                       }}
                       className="bg-rose-600 hover:bg-rose-700 px-4 py-2.5 rounded-2xl text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
@@ -9745,6 +9922,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     type="button"
                     onClick={() => {
                       updateSchoolsList(localSchools);
+                      alert(isRtl 
+                        ? `💾 تم حفظ وتثبيت بيانات (${localSchools.length}) مدرسة بنجاح في قاعدة البيانات والتخزين الدائم!` 
+                        : `Saved ${localSchools.length} schools successfully!`);
                     }}
                     className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                   >
@@ -9758,6 +9938,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       onClick={() => {
                         if (confirm(isRtl ? '⚠️ هل أنت متأكد تماماً من حذف ومسح جميع بيانات المدارس المسجلة نهائياً من النظام قبل رفع البيانات الجديدة؟' : 'Delete all school records?')) {
                           updateSchoolsList([]);
+                          alert(isRtl ? '🗑️ تم حذف ومسح جميع بيانات المدارس من قاعدة البيانات بنجاح.' : 'All schools deleted successfully.');
                         }
                       }}
                       className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
@@ -9917,10 +10098,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     const updated = [newSchoolObj, ...localSchools];
                     updateSchoolsList(updated);
 
-                    if (onAddSchool) onAddSchool(newSchoolObj);
-
                     setNewSchoolNameAr('');
                     setNewSchoolCode('');
+                    alert(isRtl ? `✓ تمت إضافة مدرسة (${newSchoolObj.nameAr}) وحفظها بنجاح!` : `School (${newSchoolObj.nameAr}) added and saved successfully!`);
                   }}
                   className="px-5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer inline-flex items-center gap-1.5"
                 >
@@ -10085,7 +10265,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                     };
                                     const updated = localSchools.map(s => s.id === school.id ? updatedSchool : s);
                                     updateSchoolsList(updated);
-                                    if (onUpdateSchool) onUpdateSchool(updatedSchool);
                                     setEditingSchoolId(null);
                                   }}
                                   className="px-2.5 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded hover:bg-emerald-700 cursor-pointer"
@@ -10181,7 +10360,6 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                   if (confirm(isRtl ? `هل أنت متأكد من حذف مدرسة (${school.nameAr})؟` : `Delete school ${school.nameAr}?`)) {
                                     const updated = localSchools.filter(s => s.id !== school.id);
                                     updateSchoolsList(updated);
-                                    if (onDeleteSchool) onDeleteSchool(school.id);
                                   }
                                 }}
                                 className="px-2.5 py-1 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 text-[10px] font-black rounded-lg transition-all cursor-pointer border border-rose-500/20"
@@ -11472,7 +11650,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       if (!s) return false;
                       const st = (s as any).vacancyRequestStatus;
 
-                      const isEqItem = (s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || !!(s as any).equalizationStage;
+                      const isEqItem = isSurveyEqualizationRequest(s);
                       const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                       const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
@@ -11577,7 +11755,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     const activeAllCount = baseList.filter(s => !checkPlaced(s)).length;
 
                     const canEqAuth = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
-                    const eqCount = baseList.filter(s => !checkPlaced(s) && ((s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq')).length;
+                    const eqCount = baseList.filter(s => !checkPlaced(s) && isSurveyEqualizationRequest(s)).length;
 
                     const fromAdmissionsCount = baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal).length;
 
@@ -11644,7 +11822,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         if (!s) return false;
                         const st = (s as any).vacancyRequestStatus;
 
-                        const isEqItem = (s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || !!(s as any).equalizationStage;
+                        const isEqItem = isSurveyEqualizationRequest(s);
                         const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                         const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
@@ -11769,7 +11947,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         if (vacancyFilterStatus === 'pending') return !isPlacedOrClosed && (st === 'pending' || st === 'pending_vacancy' || !st) && !(s as any).returnedByPrincipal;
                         if (vacancyFilterStatus === 'approved') return !isPlacedOrClosed && st === 'approved';
                         if (vacancyFilterStatus === 'returned_no_vacancy') return !isPlacedOrClosed && (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true);
-                        if (vacancyFilterStatus === 'equalization') return !isPlacedOrClosed && ((s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq');
+                        if (vacancyFilterStatus === 'equalization') return !isPlacedOrClosed && isSurveyEqualizationRequest(s);
                         if (vacancyFilterStatus === 'sent_to_leadership') return !isPlacedOrClosed && (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal);
                         if (vacancyFilterStatus === 'delayed') {
                           if (isPlacedOrClosed || (st !== 'sent_to_leadership' && st !== 'sent_to_school_principal')) return false;
@@ -11811,7 +11989,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                           const isSentToLeadership = status === 'sent_to_leadership' || status === 'sent_to_school_principal';
                           const isVacancyOpened = status === 'approved';
                           const isPendingVacancy = !status || status === 'pending' || status === 'pending_vacancy';
-                          const isEq = !!((survey as any).isEqualizationRequest || (survey as any).isNonFreshStudent || survey.problemType === 'cert_primary_eq' || survey.problemType === 'cert_intermediate_eq' || survey.problemType === 'cert_secondary_eq' || (survey as any).equalizationStage);
+                          const isEq = isSurveyEqualizationRequest(survey);
                           const isEqDone = !!((survey as any).equalizationCompleted || status === 'sent_to_leadership' || status === 'sent_to_school_principal' || isStaffingConfirmed);
                           const canEqAuth = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
@@ -11972,9 +12150,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                                 </span>
 
                                 {(survey as any).returnedByPrincipal && (
-                                  <div className="mt-2 p-1.5 bg-red-50 dark:bg-red-950/40 text-[10px] text-red-800 dark:text-red-200 rounded-lg border border-red-200 dark:border-red-900/50 text-start font-medium">
-                                    <span className="font-bold block text-red-700 dark:text-red-300 me-1">🚨 سبب الإعادة من المدرسة:</span>
-                                    {(survey as any).principalReturnReason || (isRtl ? 'الفصول ممتلئة ولا توجد طاقة استيعابية' : 'No space in classrooms')}
+                                  <div className="mt-2.5 p-2 bg-red-100/90 dark:bg-red-950/70 text-[11px] text-red-950 dark:text-red-100 rounded-xl border-2 border-red-400 dark:border-red-800 text-start font-bold shadow-xs">
+                                    <div className="flex items-center gap-1 text-red-700 dark:text-red-300 mb-1">
+                                      <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                      <span className="font-black text-[10px]">{isRtl ? 'سبب إعادة الطلب من مدير المدرسة:' : 'School Return Reason:'}</span>
+                                    </div>
+                                    <p className="p-1.5 rounded-lg bg-white/90 dark:bg-black/50 border border-red-200 dark:border-red-900 text-red-900 dark:text-red-100 leading-snug font-extrabold">
+                                      {(survey as any).principalReturnReason || (isRtl ? 'الفصول ممتلئة ولا توجد طاقة استيعابية' : 'No space in classrooms')}
+                                    </p>
                                   </div>
                                 )}
 
@@ -12885,50 +13068,63 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                                   {/* LEADERSHIP OFFICER VIEW: Notice to School Principal, School Details, Principal Info, Sent Timestamp & Delay Highlight */}
                                   {!isArchived && isSentToLeadership && !isStaffingConfirmed && isCurrentActiveLeadership && (
-                                    <div className={`p-2.5 rounded-2xl border text-start space-y-1.5 transition-all ${
+                                    <div className={`p-3 rounded-2xl border text-start space-y-2 transition-all ${
                                       isDelayedOverOneDay
-                                        ? 'bg-red-50 dark:bg-red-950/60 border-2 border-red-500 text-red-950 dark:text-red-100 shadow-sm'
-                                        : 'bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-950 dark:text-indigo-100'
+                                        ? 'bg-red-50/95 dark:bg-red-950/70 border-2 border-red-500 text-red-950 dark:text-red-100 shadow-sm'
+                                        : 'bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-950 dark:text-indigo-100'
                                     }`}>
-                                      <div className="flex items-center justify-between border-b pb-1 border-current/20">
-                                        <span className={`text-[11px] font-black flex items-center gap-1 ${isDelayedOverOneDay ? 'text-red-700 dark:text-red-300' : 'text-indigo-900 dark:text-indigo-200'}`}>
-                                          🏫 {isRtl ? 'تم إرسال الطلب لمدير المدرسة:' : 'Sent to School Principal:'}
+                                      <div className="flex items-center justify-between border-b pb-1.5 border-current/20">
+                                        <span className={`text-xs font-black flex items-center gap-1.5 ${isDelayedOverOneDay ? 'text-red-700 dark:text-red-300' : 'text-indigo-900 dark:text-indigo-200'}`}>
+                                          🏫 {isRtl ? 'إشعار إحالة الطلب لمدير المدرسة' : 'Referral Notice to Principal'}
                                         </span>
                                         {isDelayedOverOneDay ? (
-                                          <span className="px-2 py-0.5 bg-red-600 text-white text-[9px] font-black rounded-full animate-pulse">
-                                            🚨 {isRtl ? `تأخير في التسكين (${diffDays > 0 ? `${diffDays} يوم` : `${diffHours}س`})` : `Delayed (${diffDays}d)`}
+                                          <span className="px-2.5 py-0.5 bg-red-600 text-white text-[10px] font-black rounded-full animate-pulse flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3 text-white" />
+                                            <span>{isRtl ? `تأخر الإنجاز (${diffDays > 0 ? `${diffDays} يوم و ` : ''}${diffHours % 24}س)` : `Delayed (${diffDays}d ${diffHours % 24}h)`}</span>
                                           </span>
                                         ) : (
-                                          <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-[9px] font-bold rounded-md">
-                                            {isRtl ? 'قيد التسكين' : 'In Progress'}
+                                          <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold rounded-md flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                                            <Clock className="w-3 h-3 text-emerald-600" />
+                                            <span>{isRtl ? `ضمن المهلة (${diffHours}س)` : `Within SLA (${diffHours}h)`}</span>
                                           </span>
                                         )}
                                       </div>
 
-                                      <div className="space-y-1 text-[11px]">
-                                        <div className="flex items-center justify-between">
+                                      <div className="space-y-1.5 text-xs">
+                                        <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                          <span className="font-bold opacity-75">{isRtl ? 'المشرف المرسل للطلب:' : 'Sending Supervisor:'}</span>
+                                          <span className="font-black text-indigo-700 dark:text-indigo-300">
+                                            👤 {(survey as any).referringOfficerName || (survey as any).planningOfficerName || (survey as any).serviceEmployee || (survey as any).receivedByEqOfficerName || (isRtl ? 'مشرف القبول والتسجيل' : 'Admissions Supervisor')}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
                                           <span className="font-bold opacity-75">{isRtl ? 'اسم المدرسة:' : 'School Name:'}</span>
-                                          <span className="font-extrabold">{survey.schoolName}</span>
+                                          <span className="font-extrabold text-slate-900 dark:text-white">🏫 {survey.schoolName}</span>
                                         </div>
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
                                           <span className="font-bold opacity-75">{isRtl ? 'اسم مدير المدرسة:' : 'Principal Name:'}</span>
-                                          <span className="font-extrabold">{principalDetails.name}</span>
+                                          <span className="font-extrabold text-slate-900 dark:text-white">👨‍💼 {principalDetails.name}</span>
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="font-bold opacity-75">{isRtl ? 'رقم جواله:' : 'Principal Mobile:'}</span>
-                                          <span className="font-extrabold font-mono dir-ltr">{principalDetails.mobile}</span>
+                                        <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                                          <span className="font-bold opacity-75">{isRtl ? 'رقم جوال المدير:' : 'Principal Mobile:'}</span>
+                                          <div className="flex items-center gap-2">
+                                            <a href={`tel:${principalDetails.mobile}`} className="font-extrabold font-mono dir-ltr text-emerald-600 hover:underline">
+                                              📞 {principalDetails.mobile}
+                                            </a>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center justify-between pt-1 border-t border-current/15 text-[10px]">
+                                        <div className="flex items-center justify-between bg-white/70 dark:bg-slate-900/70 p-1.5 rounded-lg text-[11px]">
                                           <span className="font-bold opacity-75">{isRtl ? 'تاريخ ووقت الإرسال:' : 'Sent Date & Time:'}</span>
-                                          <span className="font-extrabold font-mono">
-                                            {sentDate.toLocaleString(isRtl ? 'ar-SA' : 'en-US', { weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                          <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                                            📅 {sentDate.toLocaleString(isRtl ? 'ar-SA' : 'en-US', { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                           </span>
                                         </div>
                                       </div>
 
                                       {isDelayedOverOneDay && (
-                                        <div className="p-1.5 bg-red-100 dark:bg-red-900/60 rounded-xl border border-red-300 dark:border-red-800 text-[10px] font-bold text-red-800 dark:text-red-200">
-                                          ⚠️ {isRtl ? 'تنبيه: تأخر التسكين عن يوم واحد (24 ساعة). يرجى التواصل المباشر مع مدير المدرسة والتأكيد.' : 'Staffing delayed over 24 hours. Contact principal directly.'}
+                                        <div className="p-2 bg-red-100 dark:bg-red-900/60 rounded-xl border border-red-300 dark:border-red-800 text-[11px] font-black text-red-900 dark:text-red-100 flex items-start gap-1.5">
+                                          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                                          <span>{isRtl ? '🚨 مؤشر تأخير: تأخر إنهاء المعاملة وتسكين الطالب لأكثر من 24 ساعة! يرجى التواصل المباشر مع مدير المدرسة والتأكيد الفوري.' : '🚨 Delayed: Exceeded 24 hours without completion. Contact principal immediately.'}</span>
                                         </div>
                                       )}
                                     </div>
@@ -13070,7 +13266,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   const baseList = surveys.filter(s => {
                     if (!s) return false;
                     const st = (s as any).vacancyRequestStatus;
-                    const isEqItem = (s as any).isEqualizationRequest || (s as any).isNonFreshStudent || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq' || !!(s as any).equalizationStage;
+                    const isEqItem = isSurveyEqualizationRequest(s);
                     const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                     const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
@@ -13109,7 +13305,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     if (vacancyFilterStatus === 'pending') return (st === 'pending' || st === 'pending_vacancy' || !st) && !s.isResolved && !(s as any).returnedByPrincipal;
                     if (vacancyFilterStatus === 'approved') return st === 'approved' && !s.isResolved;
                     if (vacancyFilterStatus === 'returned_no_vacancy') return (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true) && !s.isResolved;
-                    if (vacancyFilterStatus === 'equalization') return (s as any).isEqualizationRequest || s.problemType === 'cert_primary_eq' || s.problemType === 'cert_intermediate_eq' || s.problemType === 'cert_secondary_eq';
+                    if (vacancyFilterStatus === 'equalization') return isSurveyEqualizationRequest(s);
                     if (vacancyFilterStatus === 'sent_to_leadership') return (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal) && !s.isResolved;
                     if (vacancyFilterStatus === 'delayed') {
                       if ((st !== 'sent_to_leadership' && st !== 'sent_to_school_principal') || s.isResolved) return false;

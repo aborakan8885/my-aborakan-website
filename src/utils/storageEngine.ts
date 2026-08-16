@@ -152,14 +152,6 @@ export async function loadSurveysFromStorage(): Promise<SurveyResponse[]> {
 export async function saveSchoolsToStorage(schools: SchoolItem[], options?: { isConfirmedAdminClear?: boolean }): Promise<void> {
   if (!schools || !Array.isArray(schools)) return;
 
-  if (schools.length === 0 && !options?.isConfirmedAdminClear) {
-    const existing = await loadSchoolsFromStorage();
-    if (existing && existing.length > 0) {
-      console.warn('Blocked blank schools overwrite to protect uploaded records.');
-      return;
-    }
-  }
-
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_SCHOOLS, 'readwrite');
@@ -167,7 +159,9 @@ export async function saveSchoolsToStorage(schools: SchoolItem[], options?: { is
     
     store.clear();
     for (let i = 0; i < schools.length; i++) {
-      store.put(schools[i]);
+      if (schools[i]) {
+        store.put(schools[i]);
+      }
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -179,9 +173,11 @@ export async function saveSchoolsToStorage(schools: SchoolItem[], options?: { is
     console.warn('IndexedDB saveSchools failed:', err);
   }
 
-  // Save to localStorage with quota handling
+  // Save to localStorage with quota handling and explicit timestamp & status flag
   try {
     localStorage.setItem('app_schools_list_v1', JSON.stringify(schools));
+    localStorage.setItem('app_schools_saved_v1', 'true');
+    localStorage.setItem('app_schools_last_saved_at', new Date().toISOString());
   } catch (quotaErr) {
     console.warn('LocalStorage quota exceeded for schools list, preserved in IndexedDB successfully.');
   }
@@ -208,7 +204,7 @@ export async function loadSchoolsFromStorage(): Promise<SchoolItem[]> {
     const cached = localStorage.getItem('app_schools_list_v1');
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.length > 0) lsSchools = parsed;
+      if (Array.isArray(parsed)) lsSchools = parsed;
     }
   } catch {
     /* ignore */
@@ -217,7 +213,16 @@ export async function loadSchoolsFromStorage(): Promise<SchoolItem[]> {
   if (dbSchools && dbSchools.length > 0) {
     return dbSchools;
   }
-  return lsSchools;
+  if (lsSchools && lsSchools.length > 0) {
+    return lsSchools;
+  }
+
+  const wasSaved = localStorage.getItem('app_schools_saved_v1');
+  if (wasSaved === 'true') {
+    return [];
+  }
+
+  return [];
 }
 
 // ----------------------------------------------------
@@ -386,12 +391,18 @@ export async function clearSchoolsFromStorage(actorRole?: string): Promise<boole
     const db = await openDB();
     const tx = db.transaction(STORE_SCHOOLS, 'readwrite');
     tx.objectStore(STORE_SCHOOLS).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   } catch (e) {
     /* ignore */
   }
 
   try {
-    localStorage.removeItem('app_schools_list_v1');
+    localStorage.setItem('app_schools_list_v1', '[]');
+    localStorage.setItem('app_schools_saved_v1', 'true');
+    localStorage.setItem('app_schools_last_saved_at', new Date().toISOString());
   } catch {
     /* ignore */
   }
@@ -413,32 +424,271 @@ export interface BackupFilterOptions {
   status?: string; // 'all', 'resolved', 'pending'
 }
 
+export function normalizeArabicText(str: string | number | undefined | null): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '') // Remove diacritics / Tashkeel
+    .replace(/\u0640/g, '') // Remove Tatweel (ـ)
+    .replace(/[أإآٱءئؤ]/g, 'ا') // Normalize all Hamza variants to Alef 'ا'
+    .replace(/ة/g, 'ه') // Normalize Teh Marbuta to Heh 'ه'
+    .replace(/ى/g, 'ي') // Normalize Alef Maqsoora to Yeh 'ي'
+    .replace(/[\u00A0\u200B\u200C\u200D]/g, ' ') // Replace non-breaking / zero-width spaces
+    .replace(/[^\w\s\u0600-\u06FF]/g, ' ') // Replace punctuation, brackets, hyphens with spaces
+    .replace(/\s+/g, ' '); // Collapse spaces
+}
+
+export function cleanSchoolName(name: string | undefined | null): string {
+  if (!name) return '';
+  let norm = normalizeArabicText(name);
+  norm = norm.replace(/\b(مدرسه|مجمع|ابتدائيه|متوسطه|ثانويه|روضه|طفوله مبكره|بنين|بنات|للبنين|للبنات)\b/g, ' ').trim();
+  return norm.replace(/\s+/g, ' ');
+}
+
+/**
+ * Robust matching to verify if a survey/request belongs to the school principal's school
+ */
+export function isMatchingPrincipalSchool(
+  survey: SurveyResponse | undefined | null,
+  principalSession: { schoolCode?: string; schoolName?: string; [key: string]: any } | undefined | null,
+  schoolsList: SchoolItem[] = []
+): boolean {
+  if (!survey || !principalSession) return false;
+
+  const pCode = String(principalSession.schoolCode || '').trim();
+  const pName = String(principalSession.schoolName || '').trim();
+  const pClean = cleanSchoolName(pName);
+  const pNorm = normalizeArabicText(pName);
+
+  // 1. Direct code comparison
+  const sCode = String(survey.schoolCode || '').trim();
+  if (pCode && sCode && sCode === pCode) return true;
+
+  // 2. Assigned leadership / school code / officer ID
+  const assignedId = String((survey as any).assignedLeadershipOfficerId || '').trim();
+  if (pCode && assignedId && assignedId === pCode) return true;
+
+  // 3. Match against survey primary school name
+  const sName = String(survey.schoolName || '').trim();
+  if (sName) {
+    const sNorm = normalizeArabicText(sName);
+    const sClean = cleanSchoolName(sName);
+    if (sNorm === pNorm || (pClean && sClean && (sClean.includes(pClean) || pClean.includes(sClean)))) {
+      return true;
+    }
+  }
+
+  // 4. Match against referral / target / assigned school name (when referred by supervisor or admissions)
+  const targetSchool = String(
+    (survey as any).targetSchoolName || 
+    (survey as any).assignedSchoolName || 
+    (survey as any).referredSchoolName || 
+    (survey as any).directedSchoolName || 
+    (survey as any).vacancyOpenedSchoolName || 
+    ''
+  ).trim();
+  if (targetSchool) {
+    const tNorm = normalizeArabicText(targetSchool);
+    const tClean = cleanSchoolName(targetSchool);
+    if (tNorm === pNorm || (pClean && tClean && (tClean.includes(pClean) || pClean.includes(tClean)))) {
+      return true;
+    }
+  }
+
+  // 5. Match against second/third desires
+  const secondSchool = String(survey.secondSchoolName || '').trim();
+  if (secondSchool) {
+    const s2Norm = normalizeArabicText(secondSchool);
+    const s2Clean = cleanSchoolName(secondSchool);
+    if (s2Norm === pNorm || (pClean && s2Clean && (s2Clean.includes(pClean) || pClean.includes(s2Clean)))) {
+      return true;
+    }
+  }
+
+  const thirdSchool = String(survey.thirdSchoolName || '').trim();
+  if (thirdSchool) {
+    const s3Norm = normalizeArabicText(thirdSchool);
+    const s3Clean = cleanSchoolName(thirdSchool);
+    if (s3Norm === pNorm || (pClean && s3Clean && (s3Clean.includes(pClean) || pClean.includes(s3Clean)))) {
+      return true;
+    }
+  }
+
+  // 6. Match via schools list metadata (cross-reference ministry code & canonical school name)
+  if (schoolsList && schoolsList.length > 0) {
+    const matchedSchoolInList = schoolsList.find(sch => {
+      const schCode = String(sch.ministryCode || sch.code || sch.id || '').trim();
+      const schName = String(sch.nameAr || sch.nameEn || '').trim();
+      if (pCode && schCode && schCode === pCode) return true;
+      if (pNorm && schName && normalizeArabicText(schName) === pNorm) return true;
+      return false;
+    });
+
+    if (matchedSchoolInList) {
+      const canonicalCode = String(matchedSchoolInList.ministryCode || matchedSchoolInList.code || matchedSchoolInList.id || '').trim();
+      const canonicalName = String(matchedSchoolInList.nameAr || '').trim();
+      const canonicalClean = cleanSchoolName(canonicalName);
+
+      if (canonicalCode && sCode && canonicalCode === sCode) return true;
+      if (canonicalClean && sName && cleanSchoolName(sName).includes(canonicalClean)) return true;
+      if (canonicalClean && targetSchool && cleanSchoolName(targetSchool).includes(canonicalClean)) return true;
+    }
+  }
+
+  return false;
+}
+
+export function isSurveyEqualizationRequest(survey: SurveyResponse | undefined | null): boolean {
+  if (!survey) return false;
+  // Transfer requests take precedence and are NEVER equivalency requests
+  if (survey.serviceType === 'transfer' || Boolean(survey.transferReason) || Boolean(survey.guardianTransferPledge)) {
+    return false;
+  }
+  return Boolean(
+    survey.isEqualizationRequest === true ||
+    survey.serviceType === 'equalization' ||
+    survey.problemType === 'cert_primary_eq' ||
+    survey.problemType === 'cert_intermediate_eq' ||
+    survey.problemType === 'cert_secondary_eq' ||
+    survey.problemType?.startsWith('cert_') ||
+    (survey.equalizationStage && survey.equalizationStage !== '') ||
+    (survey as any).equalizationDocAttached
+  );
+}
+
+export function isSurveyTransferRequest(survey: SurveyResponse | undefined | null): boolean {
+  if (!survey) return false;
+  return Boolean(
+    survey.serviceType === 'transfer' ||
+    Boolean(survey.transferReason) ||
+    Boolean(survey.guardianTransferPledge) ||
+    survey.problemType === 'distance_from_school' ||
+    (survey.problemType === 'unregistered_desire' && survey.serviceType === 'transfer')
+  );
+}
+
+/**
+ * Standardized Request Type categorizer across the entire application.
+ * Ensures that:
+ * - New student registration -> 'تسجيل جديد'
+ * - Student transfer -> 'نقل طالب'
+ * - Certificates / Qualifications Equivalency -> 'معادلة مؤهلات'
+ * - Admission / Other -> 'معاملة قبول'
+ */
+export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, isRtl: boolean = true): {
+  label: string;
+  subLabel: string;
+  badgeClass: string;
+  icon: string;
+  category: 'registration' | 'transfer' | 'equalization' | 'admission';
+} {
+  if (!survey) {
+    return {
+      label: isRtl ? 'تسجيل جديد' : 'New Registration',
+      subLabel: isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration',
+      badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
+      icon: '🎒',
+      category: 'registration'
+    };
+  }
+
+  // 1. TRANSFER (طلب نقل طالب من مدرسة إلى مدرسة) -> وحدة القبول والتسجيل
+  if (isSurveyTransferRequest(survey)) {
+    let sub = isRtl ? 'طلب نقل بين المدارس' : 'Transfer Request';
+    if (survey.problemType === 'distance_from_school') {
+      sub = isRtl ? 'نقل بسبب بعد السكن عن المدرسة' : 'Distance from School Transfer';
+    } else if (survey.problemType === 'vacancies_unavailable' || (survey.problemType as string) === 'vacancies_closed') {
+      sub = isRtl ? 'طلب شاغر ونقل مدرسي' : 'School Vacancy & Transfer';
+    } else if (survey.problemType === 'student_density') {
+      sub = isRtl ? 'نقل لمعالجة كثافة الفصول' : 'Classroom Density Transfer';
+    } else if (survey.transferReason) {
+      sub = survey.transferReason;
+    }
+    return {
+      label: isRtl ? 'نقل طالب' : 'Student Transfer',
+      subLabel: sub,
+      badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/40',
+      icon: '🔄',
+      category: 'transfer'
+    };
+  }
+
+  // 2. EQUALIZATION (معادلة مؤهلات وشهادات) -> مسؤول معادلة الشهادات
+  if (isSurveyEqualizationRequest(survey)) {
+    let sub = isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency';
+    if (survey.problemType === 'cert_primary_eq' || survey.equalizationStage === 'primary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الابتدائية' : 'Primary Cert. Equivalency';
+    } else if (survey.problemType === 'cert_intermediate_eq' || survey.equalizationStage === 'intermediate') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة المتوسطة' : 'Intermediate Cert. Equivalency';
+    } else if (survey.problemType === 'cert_secondary_eq' || survey.equalizationStage === 'secondary') {
+      sub = isRtl ? 'معادلة شهادة - المرحلة الثانوية' : 'Secondary Cert. Equivalency';
+    }
+    return {
+      label: isRtl ? 'معادلة مؤهلات' : 'Qualifications Equivalency',
+      subLabel: sub,
+      badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/40',
+      icon: '🎓',
+      category: 'equalization'
+    };
+  }
+
+  // 3. ADMISSION CASE (معاملة قبول)
+  if (survey.problemType === 'unjustified_rejection') {
+    return {
+      label: isRtl ? 'معاملة قبول' : 'Admission Case',
+      subLabel: isRtl ? 'معالجة رفض قبول دون مبرر نظامي' : 'Unjustified Rejection Case',
+      badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40',
+      icon: '📋',
+      category: 'admission'
+    };
+  }
+
+  // 4. NEW REGISTRATION (تسجيل جديد)
+  let subReg = isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration';
+  if (survey.problemType === 'new_registration_saudi') {
+    subReg = isRtl ? 'تسجيل مستجد - سعودي' : 'New Saudi Registration';
+  } else if (survey.problemType === 'new_registration_resident') {
+    subReg = isRtl ? 'تسجيل مستجد - مقيم' : 'New Resident Registration';
+  } else if (survey.problemType === 'unregistered_desire') {
+    subReg = isRtl ? 'تسجيل وقبول بالرغبة الأولى' : 'Desired Registration';
+  }
+
+  return {
+    label: isRtl ? 'تسجيل جديد' : 'New Registration',
+    subLabel: subReg,
+    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40',
+    icon: '🎒',
+    category: 'registration'
+  };
+}
+
 export function getProblemTypeArabicLabel(type: string | undefined): string {
-  if (!type) return 'أخرى / عام';
+  if (!type) return 'تسجيل جديد';
   switch (type) {
     case 'cert_primary_eq':
-      return 'معادلة شهادة - المرحلة الابتدائية';
+      return 'معادلة مؤهلات (المرحلة الابتدائية)';
     case 'cert_intermediate_eq':
-      return 'معادلة شهادة - المرحلة المتوسطة';
+      return 'معادلة مؤهلات (المرحلة المتوسطة)';
     case 'cert_secondary_eq':
-      return 'معادلة شهادة - المرحلة الثانوية';
+      return 'معادلة مؤهلات (المرحلة الثانوية)';
     case 'vacancies_unavailable':
     case 'vacancies_closed':
-      return 'طلب شاغر ونقل مدرسي';
+      return 'نقل طالب (طلب شاغر)';
     case 'new_registration_saudi':
-      return 'تسجيل مستجد - سعودي';
+      return 'تسجيل جديد (سعودي)';
     case 'new_registration_resident':
-      return 'تسجيل مستجد - مقيم';
+      return 'تسجيل جديد (مقيم)';
     case 'student_density':
-      return 'كثافة طلابية بالفصول';
+      return 'نقل طالب (كثافة بالفصول)';
     case 'unjustified_rejection':
-      return 'رفض القبول دون مبرر نظامي';
+      return 'معاملة قبول (رفض دون مبرر)';
     case 'distance_from_school':
-      return 'نقل بسبب بعد السكن عن المدرسة';
+      return 'نقل طالب (بعد السكن)';
     case 'unregistered_desire':
-      return 'طلب قبول ومعادلة شهادة';
+      return 'تسجيل جديد (قبول بالرغبة)';
     case 'other':
-      return 'استفسار أو معاملة أخرى';
+      return 'معاملة قبول / أخرى';
     default:
       return type;
   }

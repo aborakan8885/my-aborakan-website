@@ -399,10 +399,6 @@ export default function SurveyForm({
 
     setTimeout(() => {
       if (isTransferMode) {
-        const isEq = studentCategoryType === 'non_fresh' && equalizationStage !== '';
-        const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
-        const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
-
         const transferReasonLabelMap: Record<string, string> = {
           'registered_unlisted_desire': 'مسجل في رغبة غير مدرجة من قبلي ( تتطلب الاثبات )',
           'registered_far_residence': 'مسجل في رغبة بعيدة عن السكن ( تتطلب الاثبات )',
@@ -417,23 +413,23 @@ export default function SurveyForm({
           nationality: nationality.trim(),
           residencyType: residencyType || undefined,
           customResidencyType: residencyType === 'other' ? customResidencyType.trim() : undefined,
-          studentCategoryType: 'non_fresh',
-          isNonFreshStudent: true,
-          isEqualizationRequest: isEq,
-          equalizationStage: isEq ? equalizationStage : undefined,
+          studentCategoryType: 'fresh',
+          isNonFreshStudent: false,
+          isEqualizationRequest: false,
+          equalizationStage: undefined,
 
           serviceType: 'transfer',
-          transferReason: isEq ? undefined : (transferReasonLabelMap[transferReason] || transferReason),
-          transferReasonCustom: isEq ? undefined : (transferReason === 'other' ? transferReasonCustom.trim() : undefined),
-          transferAttachmentName: isEq ? undefined : (transferAttachmentName || undefined),
-          transferAttachmentData: isEq ? undefined : (transferAttachmentData || undefined),
-          transferAttachmentType: isEq ? undefined : (transferAttachmentType || undefined),
-          transferAttachmentSize: isEq ? undefined : (transferAttachmentSize || undefined),
+          transferReason: (transferReasonLabelMap[transferReason] || transferReason),
+          transferReasonCustom: (transferReason === 'other' ? transferReasonCustom.trim() : undefined),
+          transferAttachmentName: (transferAttachmentName || undefined),
+          transferAttachmentData: (transferAttachmentData || undefined),
+          transferAttachmentType: (transferAttachmentType || undefined),
+          transferAttachmentSize: (transferAttachmentSize || undefined),
           guardianTransferPledge: guardianTransferPledge,
 
-          stage: isEq ? eqStageMapped : stage,
+          stage: stage,
           sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
-          schoolName: (isEq && schoolName.trim()) ? schoolName.trim() : (isEq ? `وحدة القبول والشهادات (${eqStageLabelAr})` : schoolName.trim()),
+          schoolName: schoolName.trim(),
           schoolCode: (schoolCode.trim() || undefined),
           secondSchoolName: (secondSchoolName.trim() || undefined),
           thirdSchoolName: (thirdSchoolName.trim() || undefined),
@@ -443,16 +439,14 @@ export default function SurveyForm({
           isResolved: false,
           staffSatisfaction: 0,
           receptionSatisfaction: 0,
-          notes: isEq 
-            ? `🎓 طلب معادلة شهادة ومؤهل لـ (${eqStageLabelAr}). ${equalizationNotes ? 'تفاصيل المؤهل: ' + equalizationNotes.trim() : ''}`
-            : `🔄 طلب نقل طالب إلى مدرسة (${schoolName.trim()}). السبب: ${transferReasonLabelMap[transferReason] || transferReason}`,
+          notes: `🔄 طلب نقل طالب إلى مدرسة (${schoolName.trim()}). السبب: ${transferReasonLabelMap[transferReason] || transferReason}`,
           isOfflineCreated: !isOnline,
 
           gender: gender ? (gender as 'boys' | 'girls') : 'boys',
-          grade: isEq ? `معادلة ${eqStageLabelAr}` : grade,
+          grade: grade,
           neighborhood: neighborhood.trim() || undefined,
-          contactedSchool: isEq ? 'no' : ((contactedSchool as 'yes' | 'no') || 'no'),
-          schoolFeedback: (!isEq && contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
+          contactedSchool: ((contactedSchool as 'yes' | 'no') || 'no'),
+          schoolFeedback: (contactedSchool === 'yes') ? schoolFeedback.trim() : undefined,
           isVacancyRequest: true,
           vacancyRequestStatus: 'pending_vacancy'
         });
@@ -464,7 +458,7 @@ export default function SurveyForm({
       }
 
       // Standard Flow Submission
-      const isEq = studentCategoryType === 'non_fresh';
+      const isEq = studentCategoryType === 'non_fresh' && Boolean(equalizationStage && equalizationStage !== '');
       const isVac = !isEq && problemType === 'vacancies_unavailable';
 
       const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
@@ -479,7 +473,7 @@ export default function SurveyForm({
         residencyType: residencyType || undefined,
         customResidencyType: residencyType === 'other' ? customResidencyType.trim() : undefined,
         studentCategoryType,
-        isNonFreshStudent: isEq,
+        isNonFreshStudent: false,
         isEqualizationRequest: isEq,
         equalizationStage: isEq ? equalizationStage : undefined,
 

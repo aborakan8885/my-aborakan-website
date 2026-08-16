@@ -114,6 +114,10 @@ export interface SurveyResponse {
   planningNearestTrackSchool?: string;
   planningVacancyReconfirmed?: boolean;
 
+  // Beneficiary Evaluation & Rating submission fields
+  beneficiaryEvaluationSubmitted?: boolean;
+  evaluationSubmittedAt?: string;
+
   referringOfficerId?: string;
   referringOfficerName?: string;
   assignedPlanningOfficerId?: string;

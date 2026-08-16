@@ -223,7 +223,7 @@ export default function App() {
     setAlertToast({ message: 'تم إرسال ملاحظتك بنجاح للأدمن!', type: 'success' });
   };
 
-  // Global synchronized school registry (backed by app_schools_list_v1)
+  // Global synchronized school registry (backed by app_schools_list_v1 and IndexedDB)
   const [schoolsList, setSchoolsList] = useState<SchoolItem[]>(() => {
     const cached = localStorage.getItem('app_schools_list_v1');
     if (cached) {
@@ -232,6 +232,8 @@ export default function App() {
         if (Array.isArray(parsed)) return parsed;
       } catch { /* ignore */ }
     }
+    const wasSaved = localStorage.getItem('app_schools_saved_v1');
+    if (wasSaved === 'true') return [];
     return INITIAL_SCHOOLS;
   });
 
@@ -239,7 +241,7 @@ export default function App() {
 
   const handleUpdateSchools = (newList: SchoolItem[]) => {
     setSchoolsList(newList);
-    saveSchoolsToStorage(newList);
+    saveSchoolsToStorage(newList, { isConfirmedAdminClear: true });
   };
 
   // Action feedback message states
@@ -263,8 +265,11 @@ export default function App() {
       if (reportsData && reportsData.length > 0) {
         setPrincipalReports(reportsData);
       }
-      if (schoolsData && schoolsData.length > 0) {
-        setSchoolsList(schoolsData);
+      if (schoolsData && Array.isArray(schoolsData)) {
+        const wasSaved = localStorage.getItem('app_schools_saved_v1');
+        if (schoolsData.length > 0 || wasSaved === 'true') {
+          setSchoolsList(schoolsData);
+        }
       }
       setIsInitialLoaded(true);
     }).catch(err => {
@@ -281,6 +286,14 @@ export default function App() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [surveys, isInitialLoaded]);
+
+  useEffect(() => {
+    if (!isInitialLoaded) return;
+    const timer = setTimeout(() => {
+      saveSchoolsToStorage(schoolsList, { isConfirmedAdminClear: true });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [schoolsList, isInitialLoaded]);
 
   useEffect(() => {
     try {

@@ -40,6 +40,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Language, SurveyResponse, AppConfig, PrincipalReport, SchoolItem } from '../types';
 import { TRANSLATIONS, INITIAL_SCHOOLS } from '../data/mockData';
 import { SchoolSelectDropdown } from './SchoolSelectDropdown';
+import { isMatchingPrincipalSchool, getRequestTypeInfo, cleanSchoolName, normalizeArabicText, isSurveyEqualizationRequest, isSurveyTransferRequest } from '../utils/storageEngine';
 
 interface PortalProps {
   currentLang: Language;
@@ -130,6 +131,7 @@ export default function Portal({
     notes: string;
     isResolved: boolean;
     success?: boolean;
+    submitted?: boolean;
   }>>({});
   const [hoverStaff, setHoverStaff] = useState<Record<string, number>>({});
   const [hoverReception, setHoverReception] = useState<Record<string, number>>({});
@@ -334,19 +336,33 @@ export default function Portal({
           finalPrincipalName = matchedReport.principalName;
           finalMobile = matchedReport.mobile;
         } else {
-          // Find in surveys
-          const matchedSurvey = surveys.find(
-            s => s.schoolName.trim().toLowerCase() === schoolName.trim().toLowerCase()
-          );
-          if (matchedSurvey) {
-            finalSchoolCode = '45013';
-            finalPrincipalName = 'أ. مدير المدرسة';
-            finalMobile = '0550000000';
-          } else {
-            // Default mock/fallback data
-            finalSchoolCode = '45013';
+          // Look up in schools list
+          const normInput = normalizeArabicText(schoolName);
+          const matchedSchoolObj = schools.find(sch => {
+            const schCode = String(sch.ministryCode || sch.code || sch.id || '').trim();
+            const schNameAr = normalizeArabicText(sch.nameAr);
+            return schNameAr === normInput || (schCode && schCode === schoolName.trim());
+          });
+
+          if (matchedSchoolObj) {
+            finalSchoolCode = String(matchedSchoolObj.ministryCode || matchedSchoolObj.code || matchedSchoolObj.id || '45013');
             finalPrincipalName = 'أ. مدير المدرسة';
             finalMobile = '0554445555';
+          } else {
+            // Find in surveys
+            const matchedSurvey = surveys.find(
+              s => normalizeArabicText(s.schoolName) === normInput
+            );
+            if (matchedSurvey && matchedSurvey.schoolCode) {
+              finalSchoolCode = matchedSurvey.schoolCode;
+              finalPrincipalName = 'أ. مدير المدرسة';
+              finalMobile = '0550000000';
+            } else {
+              // Fallback
+              finalSchoolCode = '45013';
+              finalPrincipalName = 'أ. مدير المدرسة';
+              finalMobile = '0554445555';
+            }
           }
         }
       }
@@ -365,16 +381,8 @@ export default function Portal({
   // Filtered surveys for logged in principal's school
   const schoolSurveys = useMemo(() => {
     if (!principalSession || !surveys) return [];
-    const pCode = String(principalSession.schoolCode || '').trim();
-    if (!pCode) return [];
-    
-    return surveys.filter(s => {
-      if (!s) return false;
-      const sCode = String(s.schoolCode || '').trim();
-      // Use exact code match for strict isolation
-      return sCode === pCode || (s as any).assignedLeadershipOfficerId === pCode;
-    });
-  }, [surveys, principalSession]);
+    return surveys.filter(s => isMatchingPrincipalSchool(s, principalSession, schools));
+  }, [surveys, principalSession, schools]);
 
   // School Stats calculations
   const schoolStats = useMemo(() => {
@@ -410,58 +418,62 @@ export default function Portal({
   // Principal's own school reports
   const myReports = useMemo(() => {
     if (!principalSession || !principalReports) return [];
-    return principalReports.filter(r => r.schoolCode === principalSession.schoolCode);
+    return principalReports.filter(r => {
+      if (r.schoolCode && principalSession.schoolCode && r.schoolCode === principalSession.schoolCode) return true;
+      if (r.schoolName && principalSession.schoolName && normalizeArabicText(r.schoolName) === normalizeArabicText(principalSession.schoolName)) return true;
+      return false;
+    });
   }, [principalReports, principalSession]);
 
   // Incoming placement requests sent to this principal's school
   const placementRequests = useMemo(() => {
     if (!principalSession || !surveys) return [];
-    const pCode = String(principalSession.schoolCode || '').trim();
-    if (!pCode) return [];
 
     return surveys.filter((s) => {
       if (!s) return false;
-      const sCode = String(s.schoolCode || '').trim();
-      const matchesSchool = sCode === pCode || (s as any).assignedLeadershipOfficerId === pCode;
+      const matchesSchool = isMatchingPrincipalSchool(s, principalSession, schools);
+      if (!matchesSchool) return false;
 
-      const isPlacement = (s as any).isVacancyRequest || 
+      // Any request that is either sent/referred to the school or has a placement / registration / transfer / eq nature:
+      const isSentOrPlacement = 
         (s as any).sentToSchoolPrincipal || 
         s.vacancyRequestStatus === 'sent_to_school_principal' || 
-        s.vacancyRequestStatus === 'approved' || 
+        (s as any).sentToLeadership || 
         s.vacancyRequestStatus === 'sent_to_leadership' || 
+        (s as any).isVacancyRequest || 
+        s.vacancyRequestStatus === 'approved' || 
+        s.vacancyRequestStatus === 'pending_vacancy' ||
+        s.vacancyRequestStatus === 'pending' ||
         s.vacancyRequestStatus === 'staffing_confirmed' || 
         s.vacancyRequestStatus === 'executed' ||
+        (s as any).principalConfirmedStaffing ||
+        (s as any).isEqualizationRequest ||
+        (s as any).isNonFreshStudent ||
+        s.serviceType === 'registration' ||
+        s.serviceType === 'transfer' ||
+        s.serviceType === 'new' ||
         s.problemType === 'vacancies_unavailable' ||
+        (s.problemType as string) === 'vacancies_closed' ||
         s.problemType === 'unregistered_desire' ||
-        s.problemType === 'unjustified_rejection';
+        s.problemType === 'unjustified_rejection' ||
+        s.problemType === 'new_registration_saudi' ||
+        s.problemType === 'new_registration_resident' ||
+        s.problemType === 'student_density' ||
+        s.problemType === 'distance_from_school' ||
+        s.problemType?.startsWith('cert_');
 
-      return matchesSchool && isPlacement;
+      return isSentOrPlacement;
     });
-  }, [surveys, principalSession]);
+  }, [surveys, principalSession, schools]);
 
   // Equivalency Placement Requests (طلبات التسكين وفق المعادلات)
   const equivalencyPlacementRequests = useMemo(() => {
-    return placementRequests.filter((s) => {
-      return (s as any).isEqualizationRequest || 
-        (s as any).isNonFreshStudent || 
-        s.problemType === 'cert_primary_eq' || 
-        s.problemType === 'cert_intermediate_eq' || 
-        s.problemType === 'cert_secondary_eq' || 
-        !!(s as any).equalizationStage;
-    });
+    return placementRequests.filter((s) => isSurveyEqualizationRequest(s));
   }, [placementRequests]);
 
   // Admissions Placement Requests (طلبات التسكين المرسلة من وحدة القبول - excludes Equivalency Requests)
   const admissionsPlacementRequests = useMemo(() => {
-    return placementRequests.filter((s) => {
-      const isEq = (s as any).isEqualizationRequest || 
-        (s as any).isNonFreshStudent || 
-        s.problemType === 'cert_primary_eq' || 
-        s.problemType === 'cert_intermediate_eq' || 
-        s.problemType === 'cert_secondary_eq' || 
-        !!(s as any).equalizationStage;
-      return !isEq;
-    });
+    return placementRequests.filter((s) => !isSurveyEqualizationRequest(s));
   }, [placementRequests]);
 
   // Active Placement Source List based on active subtab
@@ -483,20 +495,26 @@ export default function Portal({
     });
   }, [activePlacementSourceList, placementFilter]);
 
-  const getProblemName = (key: string) => {
-    if (key === 'new_registration_saudi') return t.probNewSaudi;
-    if (key === 'new_registration_resident') return t.probNewResident;
-    if (key === 'vacancies_unavailable') return t.probVacancies;
-    if (key === 'student_density') return t.probDensity;
-    if (key === 'unjustified_rejection') return t.probRejection;
-    if (key === 'cert_primary_eq') return t.probPrimaryEq;
-    if (key === 'cert_intermediate_eq') return t.probIntermediateEq;
-    if (key === 'cert_secondary_eq') return t.probSecondaryEq;
-    if (key === 'distance_from_school') return t.probDistance;
-    if (key === 'unregistered_desire') return t.probUnregistered;
-    if (key === 'vacancies_closed') return isRtl ? 'الشواغر مغلقة' : 'Closed Vacancies';
-    if (key === 'class_density') return isRtl ? 'كثافة بالفصول' : 'Classroom Density';
-    return t.probOther || (isRtl ? 'أخرى' : 'Other');
+  const getProblemName = (key: string, surveyObj?: SurveyResponse) => {
+    if (surveyObj) {
+      const info = getRequestTypeInfo(surveyObj, isRtl);
+      return `${info.label} (${info.subLabel})`;
+    }
+    switch (key) {
+      case 'new_registration_saudi': return isRtl ? 'تسجيل جديد (سعودي)' : 'New Registration (Saudi)';
+      case 'new_registration_resident': return isRtl ? 'تسجيل جديد (مقيم)' : 'New Registration (Resident)';
+      case 'vacancies_unavailable': return isRtl ? 'نقل طالب (طلب شاغر)' : 'Student Transfer (Vacancy)';
+      case 'student_density': return isRtl ? 'نقل طالب (كثافة بالفصول)' : 'Student Transfer (Density)';
+      case 'unjustified_rejection': return isRtl ? 'معاملة قبول (رفض دون مبرر)' : 'Admission Case (Rejection)';
+      case 'cert_primary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الابتدائية)' : 'Equivalency (Primary)';
+      case 'cert_intermediate_eq': return isRtl ? 'معادلة مؤهلات (المرحلة المتوسطة)' : 'Equivalency (Intermediate)';
+      case 'cert_secondary_eq': return isRtl ? 'معادلة مؤهلات (المرحلة الثانوية)' : 'Equivalency (Secondary)';
+      case 'distance_from_school': return isRtl ? 'نقل طالب (بعد السكن)' : 'Student Transfer (Distance)';
+      case 'unregistered_desire': return isRtl ? 'تسجيل جديد (قبول بالرغبة)' : 'New Registration (Desired)';
+      case 'vacancies_closed': return isRtl ? 'نقل طالب (شواغر مغلقة)' : 'Student Transfer (Closed)';
+      case 'class_density': return isRtl ? 'نقل طالب (كثافة فصول)' : 'Student Transfer (Density)';
+      default: return isRtl ? 'معاملة قبول / أخرى' : 'Admission Case / Other';
+    }
   };
 
   // Handler for Principal clicking "اعتماد التسكين الميداني ✅" (Approve Staffing)
@@ -671,6 +689,7 @@ export default function Portal({
     const staffSat = local.staffSatisfaction > 0 ? local.staffSatisfaction : 5;
     const receptionSat = local.receptionSatisfaction > 0 ? local.receptionSatisfaction : 5;
     const userNotes = (local.notes || '').trim();
+    const nowIso = new Date().toISOString();
 
     const updatedSurvey: SurveyResponse = {
       ...survey,
@@ -678,7 +697,9 @@ export default function Portal({
       receptionSatisfaction: receptionSat,
       notes: userNotes || survey.notes,
       isResolved: true,
-      lastUpdatedAt: new Date().toISOString()
+      beneficiaryEvaluationSubmitted: true,
+      evaluationSubmittedAt: nowIso,
+      lastUpdatedAt: nowIso
     };
 
     if (onUpdateSurvey) {
@@ -695,7 +716,7 @@ export default function Portal({
       }
     } catch { /* ignore */ }
 
-    // Mark success in state
+    // Mark submitted and success in state
     setEvals(prev => ({
       ...prev,
       [survey.id]: {
@@ -703,21 +724,23 @@ export default function Portal({
         receptionSatisfaction: receptionSat,
         notes: userNotes,
         isResolved: true,
+        submitted: true,
         success: true
       }
     }));
 
     // Alert user
     alert(isRtl 
-      ? '✅ تم حفظ تقييمكم وملاحظاتكم بنجاح ومزامنتها مع قاعدة البيانات!' 
-      : '✅ Your evaluation and feedback have been saved successfully!');
+      ? '✅ تم حفظ وإرسال تقييمكم بنجاح! تم فتح وعرض بيانات التسكين والمدرسة المعتمدة أدناه.' 
+      : '✅ Your evaluation has been submitted successfully! Placement details are unlocked below.');
 
-    // Clear success banner after 4 seconds
+    // Clear success banner animation after 4 seconds (keeping submitted: true)
     setTimeout(() => {
       setEvals(prev => ({
         ...prev,
         [survey.id]: {
           ...(prev[survey.id] || local),
+          submitted: true,
           success: false
         }
       }));
@@ -1294,56 +1317,6 @@ export default function Portal({
                             </div>
                           </div>
 
-                          {/* Vacancy Opened Choice & Reason Display Card */}
-                          {((survey as any).vacancyOpenedChoice || (survey as any).vacancyOpenReason || (survey as any).vacancyOpenedSchoolName) && (
-                            <div className={`p-4 rounded-2xl border text-start space-y-2 ${
-                              isDark ? 'bg-teal-950/40 border-teal-800/60 text-teal-200' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                            }`}>
-                              <div className="flex items-center gap-2 font-black text-sm text-emerald-700 dark:text-emerald-300">
-                                <Sparkles className="w-4 h-4 text-emerald-500" />
-                                <span>{isRtl ? 'تفاصيل ومعلومات الشاغر والتسكين المعتمدة من التخطيط:' : 'Approved Vacancy Placement Details:'}</span>
-                              </div>
-                              
-                              {(survey as any).vacancyOpenedSchoolName && (
-                                <div className="text-xs font-bold">
-                                  <span className="opacity-75">{isRtl ? 'المدرسة المسكن عليها والرغبة: ' : 'Placed School: '}</span>
-                                  <span className="font-extrabold underline text-emerald-800 dark:text-emerald-200">
-                                    {(survey as any).vacancyOpenedSchoolName}
-                                    {(survey as any).vacancyOpenedChoice ? ` (${
-                                      (survey as any).vacancyOpenedChoice === '1st' ? (isRtl ? 'الرغبة الأولى' : '1st Choice')
-                                      : (survey as any).vacancyOpenedChoice === '2nd' ? (isRtl ? 'الرغبة الثانية' : '2nd Choice')
-                                      : (survey as any).vacancyOpenedChoice === '3rd' ? (isRtl ? 'الرغبة الثالثة' : '3rd Choice')
-                                      : (isRtl ? 'مدرسة بديلة قريبة' : 'Alternative School')
-                                    })` : ''}
-                                  </span>
-                                </div>
-                              )}
-
-                              {(survey as any).vacancyOpenReason && (
-                                <div className="text-xs font-semibold p-2.5 rounded-xl bg-white/70 dark:bg-black/20 border border-emerald-200 dark:border-emerald-900">
-                                  <span className="font-bold text-emerald-800 dark:text-emerald-300 block mb-0.5">{isRtl ? '💡 سبب وتوضيح التخطيط المدرسي لولي الأمر:' : '💡 Planning Explanation:'}</span>
-                                  <p className="leading-relaxed">{(survey as any).vacancyOpenReason}</p>
-                                </div>
-                              )}
-
-                              {((survey as any).previousSchoolName || (survey as any).vacancyRerouteReason) && (
-                                <div className="text-xs font-semibold p-2.5 rounded-xl bg-indigo-50/80 dark:bg-black/30 border border-indigo-200 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200 space-y-1">
-                                  <span className="font-bold text-indigo-800 dark:text-indigo-300 block mb-0.5">
-                                    🔀 {isRtl ? 'بيانات التسكين والمدرسة البديلة:' : 'Alternative School Placement Info:'}
-                                  </span>
-                                  <p>
-                                    {isRtl ? `المدرسة السابقة: ${(survey as any).previousSchoolName || 'المدرسة الأولى'} ⬅️ المدرسة الحالية المعينة: ${survey.schoolName}` : `Previous: ${(survey as any).previousSchoolName} ⬅️ Current: ${survey.schoolName}`}
-                                  </p>
-                                  {(survey as any).vacancyRerouteReason && (
-                                    <p className="font-extrabold text-indigo-800 dark:text-indigo-300 bg-white/70 dark:bg-black/40 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900 mt-1">
-                                      💡 {isRtl ? `سبب تغيير المدرسة: ${(survey as any).vacancyRerouteReason}` : `Reason for school change: ${(survey as any).vacancyRerouteReason}`}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
                           {/* Scheduled Review Appointment Box for Equivalency (Only shown when not finalized) */}
                           {!((survey as any).principalConfirmedStaffing || (survey as any).vacancyRequestStatus === 'staffing_confirmed' || (survey as any).vacancyRequestStatus === 'executed' || survey.isResolved) && ((survey as any).hasReviewAppointment || (survey as any).appointmentDate) && (
                             <div className={`p-4 rounded-2xl border text-start space-y-3 shadow-sm ${
@@ -1451,8 +1424,8 @@ export default function Portal({
                               const stageFormatted = isRtl ? (survey.stage === 'EarlyChildhood' ? 'طفولة مبكرة' : survey.stage === 'Kindergarten' ? 'رياض أطفال' : survey.stage === 'Primary' ? 'ابتدائي' : survey.stage === 'Intermediate' ? 'متوسط' : 'ثانوي') : survey.stage;
                               const hasSubmittedRating = Boolean(
                                 local.success || 
-                                (evals[survey.id] && (evals[survey.id].staffSatisfaction > 0 || evals[survey.id].receptionSatisfaction > 0)) || 
-                                (survey.staffSatisfaction && survey.staffSatisfaction > 0)
+                                evals[survey.id]?.submitted ||
+                                (survey as any).beneficiaryEvaluationSubmitted
                               );
 
                               return (
@@ -1500,7 +1473,7 @@ export default function Portal({
                                         isDark ? 'bg-emerald-950/50 border-emerald-800 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
                                       }`}>
                                         <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
-                                        <span>{isRtl ? 'تم حفظ وإرسال تقييمكم بنجاح! تم فتح تفاصيل المدرسة أدناه.' : 'Your rating has been saved! School details are now available below.'}</span>
+                                        <span>{isRtl ? 'تم حفظ وإرسال تقييمكم بنجاح! تم فتح تفاصيل وبيانات التسكين أدناه.' : 'Your rating has been saved! School details are now available below.'}</span>
                                       </div>
                                     )}
 
@@ -1636,18 +1609,18 @@ export default function Portal({
                                         className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer"
                                       >
                                         <Send className="w-4 h-4" />
-                                        <span>{isRtl ? 'حفظ التقييم وعرض بيانات المدرسة' : 'Save Rating & View School Details'}</span>
+                                        <span>{isRtl ? 'حفظ وإرسال التقييم وعرض بيانات التسكين' : 'Save & Send Rating & View Placement'}</span>
                                       </button>
                                       
                                       {hasSubmittedRating && (
                                         <span className="text-xs text-slate-500 dark:text-slate-400 font-bold">
-                                          {isRtl ? 'يمكنك تحديث التقييم والملاحظات في أي وقت بالضغط على حفظ.' : 'You can update your feedback anytime.'}
+                                          {isRtl ? 'يمكنك تحديث التقييم والملاحظات في أي وقت بالضغط على حفظ وإرسال.' : 'You can update your feedback anytime.'}
                                         </span>
                                       )}
                                     </div>
                                   </div>
 
-                                  {/* Step 3: School Placement Details (Revealed upon evaluation or if already evaluated) */}
+                                  {/* Step 3: School Placement Details (Revealed ONLY upon clicking Save & Send or if already evaluated) */}
                                   {hasSubmittedRating ? (
                                     <div className={`p-5 sm:p-6 rounded-3xl border space-y-4 shadow-sm animate-in fade-in duration-300 ${
                                       isDark ? 'bg-teal-950/40 border-teal-700/60 text-teal-100' : 'bg-white border-emerald-300 text-slate-800'
@@ -1672,6 +1645,56 @@ export default function Portal({
                                         </div>
                                       </div>
 
+                                      {/* Vacancy Opened Choice & Planning details */}
+                                      {((survey as any).vacancyOpenedChoice || (survey as any).vacancyOpenReason || (survey as any).vacancyOpenedSchoolName) && (
+                                        <div className={`p-3.5 rounded-2xl border text-start space-y-2 ${
+                                          isDark ? 'bg-teal-950/60 border-teal-800 text-teal-200' : 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
+                                        }`}>
+                                          <div className="flex items-center gap-2 font-black text-xs text-emerald-700 dark:text-emerald-300">
+                                            <Sparkles className="w-4 h-4 text-emerald-500" />
+                                            <span>{isRtl ? 'تفاصيل ومعلومات الشاغر والتسكين المعتمدة من التخطيط:' : 'Approved Vacancy Placement Details:'}</span>
+                                          </div>
+                                          
+                                          {(survey as any).vacancyOpenedSchoolName && (
+                                            <div className="text-xs font-bold">
+                                              <span className="opacity-75">{isRtl ? 'المدرسة المسكن عليها والرغبة: ' : 'Placed School: '}</span>
+                                              <span className="font-extrabold underline text-emerald-800 dark:text-emerald-200">
+                                                {(survey as any).vacancyOpenedSchoolName}
+                                                {(survey as any).vacancyOpenedChoice ? ` (${
+                                                  (survey as any).vacancyOpenedChoice === '1st' ? (isRtl ? 'الرغبة الأولى' : '1st Choice')
+                                                  : (survey as any).vacancyOpenedChoice === '2nd' ? (isRtl ? 'الرغبة الثانية' : '2nd Choice')
+                                                  : (survey as any).vacancyOpenedChoice === '3rd' ? (isRtl ? 'الرغبة الثالثة' : '3rd Choice')
+                                                  : (isRtl ? 'مدرسة بديلة قريبة' : 'Alternative School')
+                                                })` : ''}
+                                              </span>
+                                            </div>
+                                          )}
+
+                                          {(survey as any).vacancyOpenReason && (
+                                            <div className="text-xs font-semibold p-2.5 rounded-xl bg-white/70 dark:bg-black/20 border border-emerald-200 dark:border-emerald-900">
+                                              <span className="font-bold text-emerald-800 dark:text-emerald-300 block mb-0.5">{isRtl ? '💡 سبب وتوضيح التخطيط المدرسي لولي الأمر:' : '💡 Planning Explanation:'}</span>
+                                              <p className="leading-relaxed">{(survey as any).vacancyOpenReason}</p>
+                                            </div>
+                                          )}
+
+                                          {((survey as any).previousSchoolName || (survey as any).vacancyRerouteReason) && (
+                                            <div className="text-xs font-semibold p-2.5 rounded-xl bg-indigo-50/80 dark:bg-black/30 border border-indigo-200 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200 space-y-1">
+                                              <span className="font-bold text-indigo-800 dark:text-indigo-300 block mb-0.5">
+                                                🔀 {isRtl ? 'بيانات التسكين والمدرسة البديلة:' : 'Alternative School Placement Info:'}
+                                              </span>
+                                              <p>
+                                                {isRtl ? `المدرسة السابقة: ${(survey as any).previousSchoolName || 'المدرسة الأولى'} ⬅️ المدرسة الحالية المعينة: ${survey.schoolName}` : `Previous: ${(survey as any).previousSchoolName} ⬅️ Current: ${survey.schoolName}`}
+                                              </p>
+                                              {(survey as any).vacancyRerouteReason && (
+                                                <p className="font-extrabold text-indigo-800 dark:text-indigo-300 bg-white/70 dark:bg-black/40 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900 mt-1">
+                                                  💡 {isRtl ? `سبب تغيير المدرسة: ${(survey as any).vacancyRerouteReason}` : `Reason for school change: ${(survey as any).vacancyRerouteReason}`}
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
                                       <div className="p-3.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs shadow-xs flex items-center gap-3">
                                         <Clock className="w-5 h-5 shrink-0 text-slate-900" />
                                         <span className="leading-relaxed">
@@ -1688,10 +1711,18 @@ export default function Portal({
                                       )}
                                     </div>
                                   ) : (
-                                    <div className={`p-4 rounded-2xl border border-dashed text-center text-xs font-bold ${
-                                      isDark ? 'border-amber-700/50 bg-amber-950/20 text-amber-300' : 'border-amber-300 bg-amber-50/60 text-amber-900'
+                                    <div className={`p-5 rounded-3xl border border-dashed text-center space-y-2 shadow-xs ${
+                                      isDark ? 'border-amber-700/60 bg-amber-950/20 text-amber-300' : 'border-amber-300 bg-amber-50/70 text-amber-900'
                                     }`}>
-                                      <span>🔒 {isRtl ? 'يرجى تقييم الخدمة أولاً أعلاه لعرض بيانات المدرسة المسكن بها الطالب' : 'Please rate the service above to view assigned school details'}</span>
+                                      <div className="flex items-center justify-center gap-2 text-sm sm:text-base font-black text-amber-800 dark:text-amber-300">
+                                        <Lock className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        <span>{isRtl ? '🔒 بيانات التسكين والمدرسة المعتمدة محجوبة حالياً' : '🔒 Placement Details Currently Locked'}</span>
+                                      </div>
+                                      <p className="text-xs font-bold leading-relaxed max-w-xl mx-auto opacity-90">
+                                        {isRtl 
+                                          ? '📌 لا تظهر بيانات التسكين والمدرسة المعتمدة إلا بعد تقييم الخدمة والضغط على أيقونة (حفظ وإرسال التقييم وعرض بيانات التسكين) أعلاه.' 
+                                          : '📌 Placement and assigned school details will only appear after submitting the evaluation above.'}
+                                      </p>
                                     </div>
                                   )}
                                 </div>
@@ -2912,6 +2943,19 @@ export default function Portal({
 
                             {/* Student & Parent Info */}
                             <div className="space-y-3">
+                              {(() => {
+                                const reqType = getRequestTypeInfo(req, isRtl);
+                                return (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border shadow-xs ${reqType.badgeClass}`}>
+                                      <span>{reqType.icon}</span>
+                                      <span>{reqType.label}</span>
+                                      {reqType.subLabel && <span className="opacity-80 text-[11px] font-bold">({reqType.subLabel})</span>}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+
                               <div>
                                 <span className="text-[11px] font-bold text-slate-400 block">{isRtl ? 'اسم الطالب / المستفيد:' : 'Beneficiary / Student Name:'}</span>
                                 <h3 className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>
@@ -3189,12 +3233,15 @@ export default function Portal({
                               </div>
 
                               {/* Problem badge & stage */}
-                              <div className="flex flex-wrap gap-1.5">
-                                <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                                  isDark ? 'bg-teal-950/60 text-teal-300 border border-teal-900' : 'bg-slate-100/80 text-slate-600'
-                                }`}>
-                                  {getProblemName(survey.problemType)}
-                                </span>
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {(() => {
+                                  const reqType = getRequestTypeInfo(survey, isRtl);
+                                  return (
+                                    <span className={`px-2.5 py-0.5 rounded-lg font-black text-[11px] border ${reqType.badgeClass}`}>
+                                      {reqType.icon} {reqType.label} - {reqType.subLabel}
+                                    </span>
+                                  );
+                                })()}
                                 <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
                                   isDark ? 'bg-teal-950/60 text-teal-300 border border-teal-900' : 'bg-slate-100/80 text-slate-600'
                                 }`}>
@@ -3257,25 +3304,29 @@ export default function Portal({
                                 {survey.createdAt ? String(survey.createdAt).split('T')[0] : '2026-08-12'}
                               </span>
                               
-                              <button
-                                onClick={() => onToggleResolved(survey.id)}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border ${
-                                  survey.isResolved
-                                    ? isDark
-                                      ? 'bg-amber-950/40 border-amber-800/40 text-amber-300 hover:bg-amber-900/40'
-                                      : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                                    : isDark
+                              {survey.isResolved ? (
+                                <div className={`px-3 py-1.5 text-xs font-black rounded-lg flex items-center gap-1.5 border ${
+                                  isDark
+                                    ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                }`}>
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  <span>{isRtl ? '✓ تم حل الاستبيان' : '✓ Resolved'}</span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => onToggleResolved(survey.id)}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border ${
+                                    isDark
                                       ? 'bg-gradient-to-r from-[#218caa] to-[#3078a6] border-transparent text-white hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-teal-950/40'
                                       : 'bg-[#218caa] border-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                                }`}
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                <span>
-                                  {survey.isResolved 
-                                    ? (isRtl ? 'تغيير لغير محلول' : 'Set as Unresolved') 
-                                    : (isRtl ? 'تحديث كـ تم الحل' : 'Mark as Resolved')}
-                                </span>
-                              </button>
+                                  }`}
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? 'تحديث كـ تم الحل' : 'Mark as Resolved'}</span>
+                                </button>
+                              )}
                             </div>
                           </motion.div>
                         );
