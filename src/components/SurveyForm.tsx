@@ -24,6 +24,7 @@ import {
   ArrowRight,
   ArrowLeft,
   ArrowRightLeft,
+  X,
   Users,
   MapPin,
   ClipboardList,
@@ -112,7 +113,7 @@ export default function SurveyForm({
   const [transferAttachmentType, setTransferAttachmentType] = useState<string>('');
   const [transferAttachmentSize, setTransferAttachmentSize] = useState<number>(0);
   const [transferAttachmentError, setTransferAttachmentError] = useState<string>('');
-  const [guardianTransferPledge, setGuardianTransferPledge] = useState<boolean>(true);
+  const [guardianTransferPledge, setGuardianTransferPledge] = useState<boolean>(false);
 
   // Student Category Selection: 'fresh' (مستجد) or 'non_fresh' (غير مستجد)
   const [studentCategoryType, setStudentCategoryType] = useState<'fresh' | 'non_fresh'>(() => isTransferMode ? 'non_fresh' : 'fresh');
@@ -123,8 +124,14 @@ export default function SurveyForm({
     return '';
   });
 
-  const [equalizationStage, setEqualizationStage] = useState<'primary' | 'intermediate' | 'secondary' | ''>('');
+  const [equalizationStage, setEqualizationStage] = useState<'primary' | 'intermediate' | 'secondary' | 'other_qualification' | ''>('');
+  const [equalizationOtherQualification, setEqualizationOtherQualification] = useState('');
   const [equalizationNotes, setEqualizationNotes] = useState('');
+  
+  // Modal states for guidelines
+  const [showEqGuidelinesModal, setShowEqGuidelinesModal] = useState(false);
+  const [hasAcceptedEqGuidelines, setHasAcceptedEqGuidelines] = useState(false);
+  const [tempAcceptGuideline, setTempAcceptGuideline] = useState(false);
 
   const [stage, setStage] = useState('');
   const [grade, setGrade] = useState('');
@@ -134,14 +141,31 @@ export default function SurveyForm({
   const [schoolCode, setSchoolCode] = useState('');
   const [secondSchoolName, setSecondSchoolName] = useState('');
   const [thirdSchoolName, setThirdSchoolName] = useState('');
-  const [agreedToAlternativeSchoolPlacement, setAgreedToAlternativeSchoolPlacement] = useState<boolean>(true);
+  const [agreedToAlternativeSchoolPlacement, setAgreedToAlternativeSchoolPlacement] = useState<boolean>(false);
   const [problemType, setProblemType] = useState<ProblemType | ''>('');
   const [otherProblemDetails, setOtherProblemDetails] = useState('');
   const [contactedSchool, setContactedSchool] = useState<'yes' | 'no' | ''>('');
   const [schoolFeedback, setSchoolFeedback] = useState('');
 
   const ALL_NATIONALITIES = [
-    'سعودي', 'مصري', 'سوري', 'يمني', 'سوداني', 'أردني', 'فلسطيني', 'كويتي', 'إماراتي', 'قطري', 'بحريني', 'عماني', 'عراقي', 'لبناني', 'مغربي', 'تونس', 'جزائري', 'ليبيا', 'الصومال', 'موريتانيا', 'باكستاني', 'هندي', 'بنغلاديشي', 'فلبيني', 'أندونيسي', 'تركيا', 'أفغاني', 'أخرى'
+    'سعودي', 'إماراتي', 'كويتي', 'عماني', 'قطري', 'بحريني', 
+    'يمني', 'أردني', 'فلسطيني', 'لبناني', 'سوري', 'عراقي', 
+    'مصري', 'سوداني', 'ليبي', 'تونس', 'جزائري', 'مغربي', 
+    'موريتاني', 'صومالي', 'جيبوتي', 'جزر القمر',
+    'باكستاني', 'هندي', 'بنغلاديشي', 'فلبيني', 'أندونيسي', 'سريلانكي', 'نيبالي',
+    'تركي', 'أفغاني', 'إيراني', 'صيني', 'ياباني', 'كوري جنوبي', 'كوري شمالي',
+    'ماليزي', 'تايلاندي', 'فيتنامي', 'سنغافوري', 'بروناي', 'منغولي', 'أوزبكي', 'كازاخي', 'طاجيكي', 'تركمانستاني', 'قيرغيزستاني',
+    'أمريكي', 'كندي', 'مكسيكي', 'برازيلي', 'أرجنتيني', 'كولومبي', 'بيروفي', 'تشيلي',
+    'فنزويلي', 'إكوادوري', 'بوليفي', 'باراغواياني', 'أوروغواياني', 'بنمي', 'كوبي', 'جامايكي', 'دومينيكاني', 'هندوراسي', 'سلفادوري', 'نيكاراغوي', 'كوستاريكي', 'غواتيمالي',
+    'بريطاني', 'فرنسي', 'ألماني', 'إيطالي', 'إسباني', 'هولندي', 'بلجيكي', 'سويسري',
+    'نمساوي', 'سويدي', 'نرويجي', 'دنماركي', 'فنلندي', 'إيرلندي', 'برتغالي', 'يوناني',
+    'روسي', 'أوكراني', 'بولندي', 'روماني', 'تشيكي', 'مجري', 'بلغاري', 'صربي', 'كرواتي', 'ألباني', 'بوسني', 'إستوني', 'لاتفي', 'ليتواني', 'سلوفاكي', 'سلوفيني', 'قبرصي', 'مالطي', 'أيسلندي', 'لوكسومبورغي',
+    'إثيوبي', 'إريتري', 'نيجيري', 'كينيا', 'تنزانيا', 'أوغندا', 'جنوب أفريقيا', 'غانا', 'السنغال', 'مالي', 'النيجر', 'تشاد', 'الكاميرون', 'ساحل العاج', 'أنغولا', 'موزمبيق', 'مدغشقر', 'زيمبابوي', 'زامبيا', 'رواندا', 'بوروندي', 'غينيا', 'بنين', 'توغو', 'سيراليون', 'ليبيريا',
+    'أسترالي', 'نيوزيلندي', 'فيجي', 'بابوا غينيا الجديدة',
+    'أرميني', 'أذربيجاني', 'جورجي', 'كامبودي', 'لاوسي', 'ميانماري', 'تيمور الشرقية',
+    'ألباني', 'أندوري', 'بيلاروسي', 'مقدوني', 'مولدوفي', 'موناكو', 'سان مارينو', 'فاتيكان',
+    'أنتيغوا وبربودا', 'جزر البهاما', 'بربادوس', 'بليز', 'دومينيكا', 'غرينادا', 'غويانا', 'هايتي', 'سانت كيتس ونيفيس', 'سانت لوسيا', 'سانت فنسنت وغرينادين', 'سورينام', 'ترينيداد وتوباغو',
+    'بوتسوانا', 'بوركينا فاسو', 'الرأس الأخضر', 'جمهورية أفريقيا الوسطى', 'جمهورية الكونغو الديمقراطية', 'جمهورية الكونغو', 'غينيا الاستوائية', 'الغابون', 'غامبيا', 'غينيا بيساو', 'ليسوتو', 'مالاوي', 'موريشيوس', 'ناميبيا', 'سيشل', 'جنوب السودان', 'إسواتيني'
   ];
 
   // -----------------------------------------------------------------
@@ -367,18 +391,30 @@ export default function SurveyForm({
         newErrors.schoolFeedback = isRtl ? 'يرجى كتابة إفادة المدرسة المستلمة بالتفصيل' : 'Please write school feedback';
       }
       if (!guardianTransferPledge) {
-        newErrors.guardianTransferPledge = isRtl ? 'يرجى الموافقة والتأكيد على التعهد والإقرار' : 'Please accept the guardian pledge';
+        newErrors.guardianTransferPledge = isRtl ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' : 'Confirmation of the pledge is a basic requirement to complete the procedure';
+      }
+      if (!agreedToAlternativeSchoolPlacement) {
+        newErrors.agreedToAlternativeSchoolPlacement = isRtl ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' : 'Confirmation of the pledge is a basic requirement to complete the procedure';
       }
     } else if (isTransferMode && requestPath === 'equivalency') {
       // Equivalency branch
       if (!equalizationStage) {
         newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
       }
+      if (equalizationStage === 'other_qualification' && !equalizationOtherQualification.trim()) {
+        newErrors.equalizationOtherQualification = isRtl ? 'يرجى كتابة أخر مؤهل أو شهادة حاصل عليها الطالب' : 'Please write the last qualification or certificate obtained';
+      }
+      if (!agreedToAlternativeSchoolPlacement) {
+        newErrors.agreedToAlternativeSchoolPlacement = isRtl ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' : 'Confirmation of the pledge is a basic requirement to complete the procedure';
+      }
     } else if (!isTransferMode) {
       // Standard Request Validation
       if (studentCategoryType === 'non_fresh') {
         if (!equalizationStage) {
           newErrors.equalizationStage = isRtl ? 'يرجى اختيار نوع المعادلة المطلوب' : 'Please select equalization stage';
+        }
+        if (equalizationStage === 'other_qualification' && !equalizationOtherQualification.trim()) {
+          newErrors.equalizationOtherQualification = isRtl ? 'يرجى كتابة أخر مؤهل أو شهادة حاصل عليها الطالب' : 'Please write the last qualification or certificate obtained';
         }
         if (!schoolName.trim()) {
           newErrors.schoolName = isRtl ? 'يرجى اختيار/إدخال المدرسة الأساسية المرغوبة للالتحاق بعد المعادلة' : 'Please select desired primary school for enrollment after equalization';
@@ -404,6 +440,9 @@ export default function SurveyForm({
         if (!schoolName.trim()) {
           newErrors.schoolName = isRtl ? 'يرجى إدخال اسم المدرسة المعنية' : 'Please enter school name';
         }
+      }
+      if (!agreedToAlternativeSchoolPlacement) {
+        newErrors.agreedToAlternativeSchoolPlacement = isRtl ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' : 'Confirmation of the pledge is a basic requirement to complete the procedure';
       }
     }
 
@@ -437,8 +476,8 @@ export default function SurveyForm({
         };
 
         const isEq = requestPath === 'equivalency';
-        const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
-        const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
+        const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : equalizationStage === 'secondary' ? 'Secondary' : 'Other Qualification';
+        const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : equalizationStage === 'secondary' ? 'المرحلة الثانوية' : (equalizationOtherQualification || 'مؤهل آخر');
 
         const response = onSubmit({
           beneficiaryName: beneficiaryName.trim(),
@@ -450,7 +489,7 @@ export default function SurveyForm({
           studentCategoryType: 'non_fresh',
           isNonFreshStudent: true,
           isEqualizationRequest: isEq,
-          equalizationStage: isEq ? equalizationStage : undefined,
+          equalizationStage: isEq ? (equalizationStage === 'other_qualification' ? equalizationOtherQualification : equalizationStage) : undefined,
 
           serviceType: isEq ? 'registration' : 'transfer',
           transferReason: isEq ? undefined : (transferReasonLabelMap[transferReason] || transferReason),
@@ -500,8 +539,8 @@ export default function SurveyForm({
       const isEq = studentCategoryType === 'non_fresh' && Boolean(equalizationStage && equalizationStage !== '');
       const isVac = !isEq && problemType === 'vacancies_unavailable';
 
-      const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : 'Secondary';
-      const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : 'المرحلة الثانوية';
+      const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : equalizationStage === 'secondary' ? 'Secondary' : 'Other Qualification';
+      const eqStageLabelAr = equalizationStage === 'primary' ? 'المرحلة الابتدائية' : equalizationStage === 'intermediate' ? 'المرحلة المتوسطة' : equalizationStage === 'secondary' ? 'المرحلة الثانوية' : (equalizationOtherQualification || 'مؤهل آخر');
 
       const response = onSubmit({
         beneficiaryName: beneficiaryName.trim(),
@@ -514,7 +553,7 @@ export default function SurveyForm({
         studentCategoryType,
         isNonFreshStudent: false,
         isEqualizationRequest: isEq,
-        equalizationStage: isEq ? equalizationStage : undefined,
+        equalizationStage: isEq ? (equalizationStage === 'other_qualification' ? equalizationOtherQualification : equalizationStage) : undefined,
 
         stage: isEq ? eqStageMapped : stage,
         sector: sector || 'منطقة المدينة المنورة (المقر الرئيسي)',
@@ -1122,67 +1161,6 @@ export default function SurveyForm({
             </h3>
           </div>
 
-          {/* Request Path Selection (Visible in Transfer Mode) */}
-          {isTransferMode && (
-            <div className="grid grid-cols-1 gap-6 mb-8 pt-6 border-t dark:border-teal-800/20">
-              <div id="field-requestPath">
-                <label className="block text-xs sm:text-sm font-black text-emerald-700 dark:text-emerald-400 mb-4 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
-                  {isRtl ? '📌 يرجى تحديد صفة ومسار الطلب المقدم:' : '📌 Please select request path/category:'} <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRequestPath('transfer');
-                      setStudentCategoryType('non_fresh');
-                    }}
-                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all text-center group ${
-                      requestPath === 'transfer'
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg scale-102'
-                        : 'bg-white dark:bg-teal-900/10 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:border-emerald-500'
-                    }`}
-                  >
-                    <ArrowRightLeft className={`w-8 h-8 ${requestPath === 'transfer' ? 'text-white' : 'text-emerald-600'}`} />
-                    <div className="space-y-1">
-                      <span className="block text-sm font-black">
-                        {isRtl ? 'طلب نقل الى مدرسة أخرى' : 'Transfer to another school'}
-                      </span>
-                      <span className={`block text-[10px] font-bold ${requestPath === 'transfer' ? 'text-emerald-100' : 'text-slate-400'}`}>
-                        {isRtl ? 'طالب غير مستجد' : 'Existing student'}
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRequestPath('equivalency');
-                      setStudentCategoryType('non_fresh');
-                    }}
-                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all text-center group ${
-                      requestPath === 'equivalency'
-                        ? 'bg-amber-600 border-amber-600 text-white shadow-lg scale-102'
-                        : 'bg-white dark:bg-teal-900/10 border-slate-200 dark:border-teal-800/40 text-slate-600 dark:text-teal-300 hover:border-amber-500'
-                    }`}
-                  >
-                    <GraduationCap className={`w-8 h-8 ${requestPath === 'equivalency' ? 'text-white' : 'text-amber-600'}`} />
-                    <div className="space-y-1">
-                      <span className="block text-sm font-black">
-                        {isRtl ? 'طلب معادلة المؤهلات' : 'Equivalency of Credentials'}
-                      </span>
-                      <span className={`block text-[10px] font-bold ${requestPath === 'equivalency' ? 'text-amber-100' : 'text-slate-400'}`}>
-                        {isRtl ? 'الشهادات الخارجية / الدولية' : 'Foreign / International Certificates'}
-                      </span>
-                    </div>
-                  </button>
-                </div>
-                {errors.requestPath && (
-                  <p className="mt-2 text-xs text-red-500 font-bold">{errors.requestPath}</p>
-                )}
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Student Name */}
             <div id="field-beneficiaryName">
@@ -1441,20 +1419,21 @@ export default function SurveyForm({
               onClick={() => {
                 setStudentCategoryType(isTransferMode ? 'non_fresh' : 'fresh');
                 setEqualizationStage('');
+                if (isTransferMode) setRequestPath('transfer');
               }}
               className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
-                (isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh')
+                (isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '' && (requestPath === 'transfer' || !requestPath)) : studentCategoryType === 'fresh')
                   ? 'bg-emerald-500/10 border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
                   : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-black ${(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh') ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                <span className={`text-sm font-black ${(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '' && (requestPath === 'transfer' || !requestPath)) : studentCategoryType === 'fresh') ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
                   {isTransferMode
                     ? (isRtl ? 'طلب نقل الى مدرسة أخرى - طالب غير مستجد' : 'Transfer to Another School - Non-Fresh Student')
                     : (isRtl ? '🟢 طالب مستجد (تسجيل جديد)' : 'Fresh Student (New Registration)')}
                 </span>
-                {(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '') : studentCategoryType === 'fresh') && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
+                {(isTransferMode ? (studentCategoryType === 'non_fresh' && equalizationStage === '' && (requestPath === 'transfer' || !requestPath)) : studentCategoryType === 'fresh') && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
               </div>
               <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                 {isTransferMode
@@ -1468,22 +1447,27 @@ export default function SurveyForm({
               <button
                 type="button"
                 onClick={() => {
-                  setStudentCategoryType('non_fresh');
-                  setEqualizationStage('primary');
+                  if (!hasAcceptedEqGuidelines) {
+                    setShowEqGuidelinesModal(true);
+                  } else {
+                    setStudentCategoryType('non_fresh');
+                    setEqualizationStage('primary');
+                    setRequestPath('equivalency');
+                  }
                 }}
                 className={`p-5 rounded-2xl border-2 text-start transition-all cursor-pointer flex flex-col justify-between ${
-                  studentCategoryType === 'non_fresh' && equalizationStage !== ''
-                    ? 'bg-purple-500/10 border-purple-600 shadow-md ring-2 ring-purple-500/20'
+                  studentCategoryType === 'non_fresh' && equalizationStage !== '' && requestPath === 'equivalency'
+                    ? 'bg-emerald-500/10 border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
                     : isDark ? 'bg-[#002424] border-teal-800/60 hover:border-teal-700' : 'bg-white border-slate-200 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' && equalizationStage !== '' ? 'text-purple-700 dark:text-purple-300' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                  <span className={`text-sm font-black ${studentCategoryType === 'non_fresh' && equalizationStage !== '' && requestPath === 'equivalency' ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
                     {isRtl ? 'طلب معادلة المؤهلات' : 'Qualification Equivalency Request'}
                   </span>
-                  {studentCategoryType === 'non_fresh' && equalizationStage !== '' && <CheckCircle2 className="w-5 h-5 text-purple-600 shrink-0" />}
+                  {studentCategoryType === 'non_fresh' && equalizationStage !== '' && requestPath === 'equivalency' && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
                 </div>
-                <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-purple-200' : 'text-purple-900'}`}>
+                <p className={`text-xs font-semibold leading-relaxed ${isDark ? 'text-emerald-200' : 'text-emerald-900'}`}>
                   {isRtl ? 'تقديم طلب معادلة مؤهل دراسي صادر من خارج المملكة أو من نظام تعليمي آخر.' : 'Request certificate equivalency for foreign qualifications.'}
                 </p>
               </button>
@@ -1492,25 +1476,25 @@ export default function SurveyForm({
         </div>
 
         {/* Dynamic View based on Category Selection */}
-        {(studentCategoryType === 'non_fresh' && (!isTransferMode || equalizationStage !== '')) ? (
+        {(studentCategoryType === 'non_fresh' && (!isTransferMode || requestPath === 'equivalency')) ? (
           /* SECTION: EQUALIZATION REQUEST FORM FOR NON-FRESH STUDENTS */
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             className={`p-6 rounded-3xl border space-y-6 ${
-              isDark ? 'bg-[#002b2b] border-purple-800/40 text-white' : 'bg-purple-50/60 border-purple-200 text-slate-800'
+              isDark ? 'bg-[#002b2b] border-emerald-800/40 text-white' : 'bg-emerald-50/60 border-emerald-200 text-slate-800'
             }`}
           >
-            <div className="flex items-center gap-2.5 border-b pb-4 dark:border-purple-800/40">
-              <span className="p-2.5 rounded-2xl bg-purple-600 text-white shadow-md">
+            <div className="flex items-center gap-2.5 border-b pb-4 dark:border-emerald-800/40">
+              <span className="p-2.5 rounded-2xl bg-emerald-600 text-white shadow-md">
                 <GraduationCap className="w-5 h-5" />
               </span>
               <div>
-                <h3 className="font-black text-base sm:text-lg text-purple-900 dark:text-purple-200">
+                <h3 className="font-black text-base sm:text-lg text-emerald-900 dark:text-emerald-200">
                   {isRtl ? '🎓 قسم تقديم طلبات معادلة الشهادات والمؤهلات' : 'Certificate Equalization Submission'}
                 </h3>
-                <p className="text-xs text-purple-700 dark:text-purple-300 font-semibold mt-0.5">
-                  {isRtl ? 'يحال هذا الطلب مباشرة إلى الموظف المختص والمعتمد لمعادلة الشهادات بقسم القبول والتسجيل.' : 'Routed directly to the assigned equalization officer.'}
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold mt-0.5">
+                  {isRtl ? 'يحال هذا الطلب مباشرة إلى الموظف المختص والمعتمد لمعادلة الشهادات.' : 'Routed directly to the assigned equalization officer.'}
                 </p>
               </div>
             </div>
@@ -1518,14 +1502,14 @@ export default function SurveyForm({
             <div className="space-y-4">
               {/* Equalization Stage Dropdown */}
               <div id="field-equalizationStage">
-                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-purple-200 mb-2">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-emerald-200 mb-2">
                   {isRtl ? 'نوع المعادلة للمرحلة المطلوبة' : 'Equalization Stage'} <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={equalizationStage}
                   onChange={(e) => setEqualizationStage(e.target.value as any)}
                   className={`w-full p-3.5 text-xs sm:text-sm font-bold rounded-xl border outline-none ${
-                    isDark ? 'bg-[#001c1c] border-purple-800 text-white' : 'bg-white border-purple-300 text-slate-900'
+                    isDark ? 'bg-[#001c1c] border-emerald-800 text-white' : 'bg-white border-emerald-300 text-slate-900'
                   } ${errors.equalizationStage ? 'border-red-500' : ''}`}
                   dir={isRtl ? 'rtl' : 'ltr'}
                 >
@@ -1533,15 +1517,41 @@ export default function SurveyForm({
                   <option value="primary">{isRtl ? 'المعادلة للمرحلة الابتدائية' : 'Primary School Equalization'}</option>
                   <option value="intermediate">{isRtl ? 'المعادلة للمرحلة المتوسطة' : 'Intermediate School Equalization'}</option>
                   <option value="secondary">{isRtl ? 'المعادلة للمرحلة الثانوية' : 'Secondary School Equalization'}</option>
+                  <option value="other_qualification">{isRtl ? 'آخر مؤهل أو شهادة حاصل عليها الطالب يكتب من قبل المستفيد' : 'Last qualification or certificate obtained by the student (To be written by beneficiary)'}</option>
                 </select>
                 {errors.equalizationStage && (
                   <p className="mt-1.5 text-xs text-red-500 font-bold">{errors.equalizationStage}</p>
                 )}
               </div>
 
+              {equalizationStage === 'other_qualification' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="space-y-2"
+                >
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-emerald-200">
+                    {isRtl ? 'اكتب أخر مؤهل أو شهادة حاصل عليها الطالب' : 'Specify Last Qualification/Certificate'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={equalizationOtherQualification}
+                    onChange={(e) => setEqualizationOtherQualification(e.target.value)}
+                    placeholder={isRtl ? 'مثال: شهادة دبلوم مهني، شهادة إتمام مرحلة من خارج المملكة...' : 'e.g. Vocational Diploma, Certificate from abroad...'}
+                    className={`w-full p-3.5 text-xs sm:text-sm font-bold rounded-xl border outline-none ${
+                      isDark ? 'bg-[#001c1c] border-emerald-800 text-white' : 'bg-white border-emerald-300 text-slate-900'
+                    } ${errors.equalizationOtherQualification ? 'border-red-500' : ''}`}
+                    dir={isRtl ? 'rtl' : 'ltr'}
+                  />
+                  {errors.equalizationOtherQualification && (
+                    <p className="text-xs text-red-500 font-bold">{errors.equalizationOtherQualification}</p>
+                  )}
+                </motion.div>
+              )}
+
               {/* Certificate & Equalization Details Textarea */}
               <div className="space-y-1.5">
-                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-purple-200">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-emerald-200">
                   {isRtl ? 'تفاصيل ومعلومات المؤهل والشهادة المراد معادلتها (اختياري):' : 'Qualification & Certificate Details (Optional):'}
                 </label>
                 <textarea
@@ -1557,7 +1567,7 @@ export default function SurveyForm({
               </div>
 
               {/* Preferred School Selection after Equivalency */}
-              <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/40 space-y-4">
+              <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 space-y-4">
                 <div id="field-schoolName">
                   <SchoolSelectDropdown
                     schools={activeSchools}
@@ -1599,14 +1609,14 @@ export default function SurveyForm({
                 </div>
 
                 <div className={`p-3.5 rounded-xl border flex items-start gap-2.5 ${
-                  isDark ? 'bg-purple-950/40 border-purple-800/40 text-purple-200' : 'bg-white border-purple-200 text-slate-700'
+                  isDark ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-200' : 'bg-white border-emerald-200 text-slate-700'
                 }`}>
                   <input
                     type="checkbox"
                     id="agreedToAlternativeSchoolPlacementEq"
                     checked={agreedToAlternativeSchoolPlacement}
                     onChange={(e) => setAgreedToAlternativeSchoolPlacement(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                    className="mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
                   />
                   <label htmlFor="agreedToAlternativeSchoolPlacementEq" className="text-xs font-semibold cursor-pointer leading-relaxed">
                     {isRtl
@@ -1614,6 +1624,9 @@ export default function SurveyForm({
                       : 'I agree to place my student in the nearest available school if choices are unavailable.'}
                   </label>
                 </div>
+                {errors.agreedToAlternativeSchoolPlacement && (
+                  <p className="text-xs text-red-500 font-bold mt-1 px-1">{errors.agreedToAlternativeSchoolPlacement}</p>
+                )}
               </div>
 
               {/* Submit Equalization Button */}
@@ -2025,6 +2038,9 @@ export default function SurveyForm({
                           : '☑️ Guardian Pledge: In case of impossibility to register in the above choices, I agree to place the student in the nearest available school to ensure education enrollment.'}
                       </span>
                     </label>
+                    {errors.agreedToAlternativeSchoolPlacement && (
+                      <p className="text-xs text-red-500 font-bold mt-1 px-1">{errors.agreedToAlternativeSchoolPlacement}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -2081,6 +2097,150 @@ export default function SurveyForm({
         isDark={isDark}
         isRtl={isRtl}
       />
+
+      {/* Equivalency Guidelines Modal */}
+      <AnimatePresence>
+        {showEqGuidelinesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={`w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl shadow-2xl flex flex-col ${
+                isDark ? 'bg-[#002424] text-white border border-teal-800' : 'bg-white text-slate-900 border border-slate-200'
+              }`}
+            >
+              {/* Header */}
+              <div className={`p-6 border-b flex items-center justify-between ${isDark ? 'border-teal-800 bg-teal-900/20' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 rounded-2xl bg-emerald-600 text-white shadow-md">
+                    <GraduationCap className="w-6 h-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black">
+                      {isRtl ? 'ضوابط وإجراءات معادلة الشهادات' : 'Equivalency Guidelines & Procedures'}
+                    </h2>
+                    <p className="text-xs font-bold text-slate-500 dark:text-teal-300">
+                      {isRtl ? 'إدارة التعليم بمنطقة المدينة المنورة' : 'Education Department - Madinah Region'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowEqGuidelinesModal(false)}
+                  className="p-2 hover:bg-slate-200 dark:hover:bg-teal-800/60 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 scrollbar-thin scrollbar-thumb-emerald-500">
+                <div className="space-y-4">
+                  <h3 className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 border-r-4 border-emerald-600 pr-3">
+                    {isRtl ? 'أولاً: الضوابط العامة' : 'I. General Regulations'}
+                  </h3>
+                  <div className={`p-5 rounded-2xl space-y-4 text-xs sm:text-sm leading-relaxed font-bold ${isDark ? 'bg-teal-900/30' : 'bg-slate-50'}`}>
+                    <p>{isRtl ? 'تتم معادلة وثائق الطلبة القادمين من الخارج وفق الضوابط التالية:' : 'International student documents are equivalated based on:'}</p>
+                    <ul className="list-decimal list-inside space-y-3">
+                      <li>{isRtl ? 'أن تكون المدرسة معتمدة من قبل الجهة المسؤولة عن التعليم في ذلك البلد.' : 'School must be accredited by educational authorities in the origin country.'}</li>
+                      <li>{isRtl ? 'أن تكون شهادة إتمام الدراسة الثانوية مقبولة في الجامعات ومؤسسات التعليم العالي في البلد الصادرة منه.' : 'High school certificates must be accepted by HE institutions in the origin country.'}</li>
+                      <li>{isRtl ? 'أن تكون الدراسة بالانتظام وفق تسلسل دراسي واضح مع ضرورة إرفاق وثائق النجاح للصفوف السابقة.' : 'Regular attendance with clear progression; past success records must be attached.'}</li>
+                      <li>
+                        {isRtl ? 'أن تكون الوثائق الدراسية المقدمة أصول ومستكملة التصديق والتوثيق من الجهات التالية:' : 'Documents must be original and fully authenticated by:'}
+                        <ul className="list-disc list-inside mr-6 mt-2 space-y-1 text-slate-600 dark:text-teal-400">
+                          <li>{isRtl ? 'وزارة التعليم في بلد التخرج أو الجهة المشرفة.' : 'Ministry of Education in graduation country.'}</li>
+                          <li>{isRtl ? 'وزارة الخارجية في البلد الذي صدرت منه.' : 'Ministry of Foreign Affairs in origin country.'}</li>
+                          <li>{isRtl ? 'الملحقية الثقافية أو السفارة السعودية في بلد التخرج.' : 'Saudi Cultural Mission or Saudi Embassy abroad.'}</li>
+                        </ul>
+                      </li>
+                      <li>{isRtl ? 'إرفاق صورة من بطاقة الهوية الوطنية أو الإقامة أو جواز السفر.' : 'Attach copy of National ID, Residency, or Passport.'}</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 border-r-4 border-emerald-600 pr-3">
+                    {isRtl ? 'ثانياً: الإجراءات' : 'II. Procedures'}
+                  </h3>
+                  <div className={`p-5 rounded-2xl space-y-4 text-xs sm:text-sm leading-relaxed font-bold ${isDark ? 'bg-teal-900/30' : 'bg-slate-50'}`}>
+                    <p className="text-emerald-800 dark:text-emerald-200">
+                      {isRtl ? '1. شهادات الثانوية العامة:' : '1. High School Certificates:'}
+                    </p>
+                    <ul className="list-disc list-inside space-y-2 mr-4">
+                      <li>{isRtl ? 'تتم المعادلة من خلال إدارات التعليم وتحال للوزارة إلكترونياً عبر نظام أعمالي.' : 'Processed through education depts and routed via Aamali system.'}</li>
+                      <li>{isRtl ? 'يتم إصدار الوثيقة فور استيفاء الشروط وإحالتها للمستفيد.' : 'Certificate issued once conditions met and delivered to beneficiary.'}</li>
+                    </ul>
+                    
+                    <p className="text-emerald-800 dark:text-emerald-200 mt-4">
+                      {isRtl ? '2. مراحل النقل (ما دون الصف الثالث الثانوي):' : '2. Transfer Stages (Below 12th Grade):'}
+                    </p>
+                    <ul className="list-disc list-inside space-y-2 mr-4">
+                      <li>{isRtl ? 'تتم المعادلة مباشرة من قبل إدارات التعليم ويسكن الطالب في صفه المستحق.' : 'Processed directly by education depts; student placed in the eligible grade.'}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer with Acknowledgment */}
+              <div className={`p-6 border-t ${isDark ? 'border-teal-800 bg-teal-900/10' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex flex-col gap-4">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <div className="relative mt-1">
+                      <input
+                        type="checkbox"
+                        checked={tempAcceptGuideline}
+                        onChange={(e) => setTempAcceptGuideline(e.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <div className={`w-5 h-5 rounded-md border-2 transition-all ${
+                        tempAcceptGuideline 
+                          ? 'bg-emerald-600 border-emerald-600' 
+                          : 'bg-white dark:bg-teal-900 border-slate-300 dark:border-teal-700 group-hover:border-emerald-400'
+                      }`}>
+                        {tempAcceptGuideline && <CheckSquare className="w-4 h-4 text-white m-auto" />}
+                      </div>
+                    </div>
+                    <span className={`text-xs sm:text-sm font-black leading-relaxed ${isDark ? 'text-teal-100' : 'text-slate-800'}`}>
+                      {isRtl 
+                        ? 'أقر أنا ولي الأمر بأنني اطلعت على ضوابط وإجراءات معادلة الشهادات الموضحة أعلاه وأتعهد بالالتزام بها وتوفير كافة الوثائق المطلوبة.'
+                        : 'I hereby acknowledge that I have read and agree to the equivalency guidelines and procedures stated above.'}
+                    </span>
+                  </label>
+
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      onClick={() => setShowEqGuidelinesModal(false)}
+                      className={`flex-1 py-3.5 rounded-2xl font-black text-sm transition-all ${
+                        isDark ? 'bg-teal-800/40 text-teal-300 hover:bg-teal-800/60' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                      }`}
+                    >
+                      {isRtl ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button
+                      disabled={!tempAcceptGuideline}
+                      onClick={() => {
+                        setHasAcceptedEqGuidelines(true);
+                        setShowEqGuidelinesModal(false);
+                        setStudentCategoryType('non_fresh');
+                        setEqualizationStage('primary');
+                        setRequestPath('equivalency');
+                      }}
+                      className={`flex-[2] py-3.5 rounded-2xl font-black text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${
+                        tempAcceptGuideline
+                          ? 'bg-gradient-to-r from-[#218caa] to-[#3078a6] text-white hover:brightness-110 cursor-pointer'
+                          : 'bg-slate-300 dark:bg-teal-900/40 text-slate-500 dark:text-teal-700 cursor-not-allowed'
+                      }`}
+                    >
+                      <span>{isRtl ? 'المتابعة لإكمال النموذج' : 'Proceed to Form'}</span>
+                      <ArrowRightLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

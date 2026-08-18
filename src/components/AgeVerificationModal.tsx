@@ -648,6 +648,11 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
                         : 'I declare that the student completed a full year in Kindergarten Level 3 with official documentation.'}
                     </span>
                   </label>
+                  {!declarationAccepted && (
+                    <p className="text-[10px] text-red-600 font-bold mt-2 bg-red-50 dark:bg-red-900/30 p-2 rounded-lg border border-red-200 dark:border-red-800 animate-pulse">
+                      ⚠️ {isRtl ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' : 'Confirmation of the pledge is a basic requirement to complete the procedure'}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -700,18 +705,28 @@ export const AgeVerificationModal: React.FC<AgeVerificationModalProps> = ({
                 <span>{isRtl ? 'المتابعة لتقديم الطلب (قبول مباشر) ⬅️' : 'Proceed to Application ⬅️'}</span>
               </button>
             ) : evaluation.category === 'exemption' ? (
-              <button
-                type="button"
-                disabled={!declarationAccepted}
-                onClick={handleProceedClick}
-                className={`w-full sm:w-auto px-7 py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
-                  declarationAccepted
-                    ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 cursor-pointer hover:scale-105'
-                    : 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-500 cursor-not-allowed opacity-70'
-                }`}
-              >
-                <span>{isRtl ? 'المتابعة لتقديم الطلب (مقر بشرط الروضة) ⬅️' : 'Proceed with Declaration ⬅️'}</span>
-              </button>
+              <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!declarationAccepted) {
+                      const msg = isRtl 
+                        ? 'تأكيد الإقرار والتعهد شرط أساسي لإكمال الإجراء' 
+                        : 'Confirmation of the pledge is a basic requirement to complete the procedure';
+                      alert(msg);
+                      return;
+                    }
+                    handleProceedClick();
+                  }}
+                  className={`w-full sm:w-auto px-7 py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
+                    declarationAccepted
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 cursor-pointer hover:scale-105'
+                      : 'bg-amber-400/50 text-amber-900/50 cursor-pointer opacity-70'
+                  }`}
+                >
+                  <span>{isRtl ? 'المتابعة لتقديم الطلب (مقر بشرط الروضة) ⬅️' : 'Proceed with Declaration ⬅️'}</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
