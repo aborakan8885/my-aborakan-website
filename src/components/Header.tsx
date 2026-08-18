@@ -72,18 +72,6 @@ export default function Header({
 
           {/* 3. Left Side (Back button, Admission Unit Badge, Theme & Language Toggles) */}
           <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto justify-center md:justify-end shrink-0">
-            {/* Back to Portal Button */}
-            {userRole !== 'portal' && (
-              <button
-                onClick={onBackToPortal}
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer bg-white/10 hover:bg-white/20 border border-white/20 text-white shadow-xs"
-                id="header-back-portal-desktop"
-              >
-                <Home className="w-3.5 h-3.5 text-sky-200" />
-                <span>{t.goBackPortal}</span>
-              </button>
-            )}
-
             {/* Admission Unit Badge - Isolated from text card, in front of theme & lang toggles */}
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-[#179bad] via-[#218caa] to-[#2eb882] text-white font-black text-[11px] sm:text-xs rounded-full shadow-md border border-white/30 shrink-0">
               <span className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse shadow-xs" />
@@ -116,21 +104,6 @@ export default function Header({
           </div>
 
         </div>
-
-        {/* Mobile Back to Portal Button */}
-        {userRole !== 'portal' && (
-          <div className="flex md:hidden border-t mt-2 pt-2 border-white/15">
-            <button
-              onClick={onBackToPortal}
-              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-black rounded-xl border transition-all cursor-pointer bg-white/10 hover:bg-white/20 border-white/20 text-white"
-              id="header-back-portal-mobile"
-            >
-              <Home className="w-4 h-4 text-sky-200" />
-              <span>{t.goBackPortal}</span>
-            </button>
-          </div>
-        )}
-
       </div>
     </header>
   );
