@@ -614,7 +614,7 @@ function Dashboard({
     return localStorage.getItem('officer_authenticated_v1') === 'true';
   });
   
-  const [authMode, setAuthMode] = useState<'login'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [loginMobile, setLoginMobile] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showAuthPassword, setShowAuthPassword] = useState(false);
@@ -1110,6 +1110,7 @@ function Dashboard({
   // On-demand custom reports filtering & aggregation logic
   const filteredReportSurveys = useMemo(() => {
     return surveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
       if (reportStage !== 'all' && s.stage !== reportStage) return false;
 
       if (reportProblemType !== 'all') {
@@ -1155,6 +1156,7 @@ function Dashboard({
 
   const deptReportAggregatedData = useMemo(() => {
     const matchingSurveys = filteredReportSurveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
       const emp = s.serviceEmployee || s.staffingConfirmedBy || 'سالم بن محمد الترجمي';
       if (deptReportSelectedEmployee !== 'all' && emp !== deptReportSelectedEmployee) {
         return false;
@@ -1578,7 +1580,7 @@ Direct Strategic Recommendations:
   const [editSchoolNameAr, setEditSchoolNameAr] = useState('');
   const [editSchoolCode, setEditSchoolCode] = useState('');
   const [editSchoolStage, setEditSchoolStage] = useState('الابتدائية');
-  const [editSchoolGender, setEditSchoolGender] = useState<'boys' | 'girls' | 'both'>('boys');
+  const [editSchoolGender, setEditSchoolGender] = useState<string>('boys');
   const [editSchoolDistrict, setEditSchoolDistrict] = useState('المدينة المنورة');
 
   const updateSchoolsList = (newList: SchoolItem[]) => {
@@ -2042,13 +2044,17 @@ Direct Strategic Recommendations:
     // 1. Role-based base filtering
     if (activeOfficer.role === 'equivalency_supervisor') {
       result = surveys.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s) return false;
-        return isSurveyEqualizationRequest(s);
+        
+return isSurveyEqualizationRequest(s);
       });
     } else if (activeOfficer.role === 'school_planning') {
       result = surveys.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s) return false;
-        const isEqItem = isSurveyEqualizationRequest(s);
+        
+const isEqItem = isSurveyEqualizationRequest(s);
         const isVacancyRelated = (s as any).referredToPlanning === true || 
           (s as any).sentToPlanning === true || 
           (s as any).sentToPlanningOfficer === true ||
@@ -2087,13 +2093,15 @@ Direct Strategic Recommendations:
       });
     } else if (activeOfficer.role === 'school_leadership') {
       result = surveys.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s) return false;
-        // USER REQ: Leadership ONLY sees it AFTER it is sent to the principal
+        
+// USER REQ: Leadership ONLY sees it AFTER it is sent to the principal
         const isSentToPrincipal = (s as any).sentToSchoolPrincipal === true || 
-          (s as any).vacancyRequestStatus === 'sent_to_school_principal' || 
-          (s as any).vacancyRequestStatus === 'staffing_confirmed' ||
-          (s as any).vacancyRequestStatus === 'executed' ||
-          (s as any).vacancyRequestStatus === 'returned_no_vacancy';
+          String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || 
+          String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
+          String((s as any).vacancyRequestStatus) === 'executed' ||
+          String((s as any).vacancyRequestStatus) === 'returned_no_vacancy';
 
         if (!isSentToPrincipal && (s as any).assignedLeadershipOfficerId !== activeOfficer.id) return false;
 
@@ -2115,8 +2123,10 @@ Direct Strategic Recommendations:
       });
     } else if (activeOfficer.role === 'supervisor' || showOnlyMySurveys || activeOfficer.role === 'stage_supervisor') {
       result = surveys.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s) return false;
-        const isEqItem = isSurveyEqualizationRequest(s);
+        
+const isEqItem = isSurveyEqualizationRequest(s);
         if (isEqItem && !isEqAuthUser) return false;
 
         if (s.assignedOfficerId === activeOfficer.id || (s as any).referringOfficerId === activeOfficer.id || (s as any).assignedLeadershipOfficerId === activeOfficer.id) return true;
@@ -2149,7 +2159,7 @@ Direct Strategic Recommendations:
           return true;
         }
 
-        if ((s as any).isVacancyRequest || (s as any).vacancyRequestStatus) {
+        if ((s as any).isVacancyRequest || st) {
           const studentStageCat = getSurveyStageCategory(s);
           const stageAr = studentStageCat === 'Primary' ? 'ابتدائي' : studentStageCat === 'Intermediate' ? 'متوسط' : 'ثانوي';
           const isGirls = s.gender === 'girls' || s.schoolName?.includes('بنات') || s.beneficiaryName?.includes('نورة');
@@ -2173,8 +2183,10 @@ Direct Strategic Recommendations:
     // 2. Apply requestTypeFilter if set
     if (requestTypeFilter !== 'all') {
       result = result.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s) return false;
-        if (s.requestType === requestTypeFilter) return true;
+        
+if (s.requestType === requestTypeFilter) return true;
         // Fallback for legacy items without requestType field
         if (requestTypeFilter === 'equivalency' && isSurveyEqualizationRequest(s)) return true;
         if (requestTypeFilter === 'transfer' && isSurveyTransferRequest(s)) return true;
@@ -2222,10 +2234,12 @@ Direct Strategic Recommendations:
 
   const vacancyRequestsList = useMemo(() => {
     return surveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
       if (!s) return false;
-      const st = (s as any).vacancyRequestStatus;
+        
+
       const isEqItem = isSurveyEqualizationRequest(s);
-      const isEqReferredToPrincipal = isEqItem && ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed');
+      const isEqReferredToPrincipal = isEqItem && ((s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed');
       const isEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations;
 
       // USER REQ #3: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
@@ -2235,21 +2249,21 @@ Direct Strategic Recommendations:
 
       const isPlacement = (s as any).isVacancyRequest ||
         isEqReferredToPrincipal ||
-        st === 'pending_vacancy' ||
-        st === 'approved' ||
-        st === 'sent_to_leadership' ||
-        st === 'sent_to_school_principal' ||
-        st === 'staffing_confirmed' ||
-        st === 'returned_no_vacancy' ||
-        st === 'executed' ||
-        st === 'archived' ||
+        String((s as any).vacancyRequestStatus) === 'pending_vacancy' ||
+        String((s as any).vacancyRequestStatus) === 'approved' ||
+        String((s as any).vacancyRequestStatus) === 'sent_to_leadership' ||
+        String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' ||
+        String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
+        String((s as any).vacancyRequestStatus) === 'returned_no_vacancy' ||
+        String((s as any).vacancyRequestStatus) === 'executed' ||
+        String((s as any).vacancyRequestStatus) === 'archived' ||
         (s as any).sentToLeadership ||
         (s as any).sentToSchoolPrincipal ||
         (s as any).principalConfirmedStaffing ||
         s.problemType === 'vacancies_unavailable';
 
       if (!isPlacement) return false;
-      const isReturned = (s as any).returnedByPrincipal === true || st === 'returned_no_vacancy';
+      const isReturned = (s as any).returnedByPrincipal === true || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy';
 
       if (activeOfficer.role === 'returned_followup') {
         return isReturned && !s.isResolved;
@@ -2263,10 +2277,10 @@ Direct Strategic Recommendations:
 
       // USER REQ #2: Role Planning Supervisor (مشرف التخطيط)
       if (activeOfficer.role === 'school_planning') {
-        if (s.isResolved || st === 'approved' || st === 'executed' || st === 'archived') return false;
+        if (s.isResolved || String((s as any).vacancyRequestStatus) === 'approved' || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived') return false;
         if (isReturned) return true;
         const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
-        const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+        const isVacancyDirected = (s as any).isVacancyRequeString((s as any).vacancyRequestStatus) === true || String((s as any).vacancyRequestStatus) === 'pending_vacancy';
         if (isAssignedToMe) return true;
         if (isVacancyDirected) {
           if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
@@ -2278,12 +2292,12 @@ Direct Strategic Recommendations:
 
       // Role Leadership Supervisor (مشرف القيادة المدرسية)
       if (activeOfficer.role === 'school_leadership') {
-        if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) return false;
+        if (s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || (s as any).principalConfirmedStaffing) return false;
         
         // USER REQ: Leadership ONLY sees it AFTER it is sent to the principal
         const isSentToPrincipal = (s as any).sentToSchoolPrincipal === true || 
-          st === 'sent_to_school_principal' || 
-          st === 'staffing_confirmed' ||
+          String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || 
+          String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
           isReturned ||
           (s as any).assignedLeadershipOfficerId === activeOfficer.id;
 
@@ -2488,9 +2502,10 @@ Direct Strategic Recommendations:
   // Filter responses and sort by submission time (latest first)
   const filteredSurveys = useMemo(() => {
     const list = surveysScope.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
       if (!s) return false;
-
-      // 1. Pipeline Tab Filter
+        
+// 1. Pipeline Tab Filter
       const isPlacedOrResolved = s.isResolved || s.vacancyRequestStatus === 'executed' || s.vacancyRequestStatus === 'archived' || s.vacancyRequestStatus === 'staffing_confirmed' || (s as any).principalConfirmedStaffing;
 
       if (supervisorFilterTab === 'all') {
@@ -2558,6 +2573,7 @@ Direct Strategic Recommendations:
     });
 
     const negativeAlerts = filteredSurveys.filter((s) => {
+        const st: any = (s as any).vacancyRequestStatus;
       const isLowRating = ((s.staffSatisfaction && s.staffSatisfaction < 3) || (s.receptionSatisfaction && s.receptionSatisfaction < 3));
       const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
       const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
@@ -2602,15 +2618,16 @@ Direct Strategic Recommendations:
       icon: School,
       color: 'teal',
       badge: vacancyRequestsList.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
         if (!s || s.isResolved) return false;
-        const st = (s as any).vacancyRequestStatus;
+        
         if (activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations) {
-          return st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal;
+          return String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal;
         }
         if (activeOfficer.role === 'school_planning') {
-          return st === 'pending_vacancy' || (s as any).isVacancyRequest === true || (s as any).returnedByPrincipal;
+          return String((s as any).vacancyRequestStatus) === 'pending_vacancy' || (s as any).isVacancyRequeString((s as any).vacancyRequestStatus) === true || (s as any).returnedByPrincipal;
         }
-        return st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'pending_vacancy' || (s as any).returnedByPrincipal;
+        return String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || (s as any).returnedByPrincipal;
       }).length || null,
       animateIcon: vacancyRequestsList.some(s => (s as any).returnedByPrincipal)
     },
@@ -3194,7 +3211,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
         ...buildHeader("3. الطلبات المعادة من قبل مديري المدارس"),
         ["اسم المدرسة", "المرحلة الدراسية", "اسم المستفيد / الطالب", "سبب الإعادة من مدير المدرسة", "عدد مرات الإعادة", "تاريخ الإعادة"]
       ];
-      const returnedList = list.filter(s => (s as any).returnedByPrincipal || (s as any).vacancyRequestStatus === 'returned_no_vacancy');
+      const returnedList = list.filter(s => (s as any).returnedByPrincipal || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy');
       if (returnedList.length === 0) {
         sheet3Data.push(["لا توجد أي طلبات معادة من مدراء المدارس حالياً ✓", "", "", "", "", ""]);
       } else {
@@ -7088,6 +7105,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 </span>
                 <span className={`text-2xl sm:text-3xl font-black font-mono mt-1 block ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                   {surveysScope.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                     const isLow = (s.staffSatisfaction && s.staffSatisfaction < 3) || (s.receptionSatisfaction && s.receptionSatisfaction < 3);
                     const isUnresolved = !s.isResolved && s.status !== 'resolved' && s.status !== 'معالجة' && s.status !== 'مغلقة';
                     const workingDays = getSaudiWorkingDaysDiff(s.createdAt || Date.now());
@@ -7624,6 +7642,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     ) : (
                       surveysScope
                         .filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                           const queryMatch = matchesSearchQuery(
                             [
                               s.beneficiaryName,
@@ -10607,6 +10626,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       };
 
                       const filtered = localSchools.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                         const customFieldTerms = Object.entries(s.customFields || {}).flatMap(([k, v]) => [k, String(v)]);
                         return matchesSearchQuery(
                           [
@@ -12019,7 +12039,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'بانتظار فتح الشاغر' : 'Pending Vacancy'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-amber-600 dark:text-amber-400">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus)).length}
+                    {surveys.filter(s => s && (s as any).isVacancyRequest && (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus)).length}
                   </span>
                 </div>
 
@@ -12030,7 +12050,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'تم فتح الشاغر' : 'Vacancy Opened'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-teal-600 dark:text-teal-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && (s as any).vacancyRequestStatus === 'approved').length}
+                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'approved').length}
                   </span>
                 </div>
 
@@ -12041,7 +12061,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'جاري التسكين' : 'In Staffing'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-indigo-600 dark:text-indigo-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && (s as any).vacancyRequestStatus === 'sent_to_leadership').length}
+                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'sent_to_leadership').length}
                   </span>
                 </div>
 
@@ -12052,7 +12072,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'تم التسكين' : 'Staffed'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-sky-600 dark:text-sky-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && (s as any).vacancyRequestStatus === 'staffing_confirmed').length}
+                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'staffing_confirmed').length}
                   </span>
                 </div>
 
@@ -12063,7 +12083,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'منجز ومؤرشف' : 'Archived'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-emerald-600 dark:text-emerald-400">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && ((s as any).vacancyRequestStatus === 'executed' || (s as any).vacancyRequestStatus === 'archived' || s.isResolved)).length}
+                    {surveys.filter(s => s && (s as any).isVacancyRequest && (String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || s.isResolved)).length}
                   </span>
                 </div>
               </div>
@@ -12095,11 +12115,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   </span>
                   {(() => {
                     const baseList = surveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                       if (!s) return false;
-                      const st = (s as any).vacancyRequestStatus;
+        
+
 
                       const isEqItem = isSurveyEqualizationRequest(s);
-                      const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
+                      const isEqDoneItem = (s as any).equalizationCompleted === true || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                       const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
                       // RULE 1: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
@@ -12112,9 +12134,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         const isSentToLead = isEqDoneItem || 
                           (s as any).sentToLeadership || 
                           (s as any).sentToSchoolPrincipal || 
-                          st === 'sent_to_leadership' || 
-                          st === 'sent_to_school_principal' || 
-                          st === 'pending_vacancy' || 
+                          String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || 
+                          String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || 
+                          String((s as any).vacancyRequestStatus) === 'pending_vacancy' || 
                           (s as any).assignedLeadershipOfficerId === activeOfficer.id;
                         
                         if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
@@ -12124,14 +12146,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                       const isPlacement = (s as any).isVacancyRequest ||
                         isEqDoneItem ||
-                        st === 'pending_vacancy' ||
-                        st === 'approved' ||
-                        st === 'sent_to_leadership' ||
-                        st === 'sent_to_school_principal' ||
-                        st === 'staffing_confirmed' ||
-                        st === 'returned_no_vacancy' ||
-                        st === 'executed' ||
-                        st === 'archived' ||
+                        String((s as any).vacancyRequestStatus) === 'pending_vacancy' ||
+                        String((s as any).vacancyRequestStatus) === 'approved' ||
+                        String((s as any).vacancyRequestStatus) === 'sent_to_leadership' ||
+                        String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' ||
+                        String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
+                        String((s as any).vacancyRequestStatus) === 'returned_no_vacancy' ||
+                        String((s as any).vacancyRequestStatus) === 'executed' ||
+                        String((s as any).vacancyRequestStatus) === 'archived' ||
                         (s as any).sentToLeadership ||
                         (s as any).sentToSchoolPrincipal ||
                         (s as any).principalConfirmedStaffing ||
@@ -12144,13 +12166,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                       // Role 1: Planning Supervisor (مشرف التخطيط)
                       if (activeOfficer.role === 'school_planning') {
-                        if (s.isResolved || st === 'approved' || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || st === 'executed' || st === 'archived') {
+                        if (s.isResolved || String((s as any).vacancyRequestStatus) === 'approved' || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived') {
                           return false;
                         }
-                        const isReturned = (s as any).returnedByPrincipal === true || st === 'returned_no_vacancy';
+                        const isReturned = (s as any).returnedByPrincipal === true || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy';
                         if (isReturned) return true;
                         const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
-                        const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+                        const isVacancyDirected = (s as any).isVacancyRequeString((s as any).vacancyRequestStatus) === true || String((s as any).vacancyRequestStatus) === 'pending_vacancy';
                         if (isAssignedToMe) return true;
                         if (isVacancyDirected) {
                           // Allow seeing it if it's not assigned to ANOTHER planning officer
@@ -12175,9 +12197,9 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       if (activeOfficer.role === 'school_leadership') {
                         const isSentToSchool = (s as any).sentToLeadership === true || 
                           (s as any).sentToSchoolPrincipal === true || 
-                          st === 'sent_to_leadership' || 
-                          st === 'sent_to_school_principal' || 
-                          st === 'staffing_confirmed' ||
+                          String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || 
+                          String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || 
+                          String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
                           (s as any).assignedLeadershipOfficerId === activeOfficer.id;
 
                         if (!isSentToSchool) return false;
@@ -12206,11 +12228,12 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       return true;
                     });
 
-                    const returnedCount = baseList.filter(s => (s as any).returnedByPrincipal || (s as any).vacancyRequestStatus === 'returned_no_vacancy').length;
+                    const returnedCount = baseList.filter(s => (s as any).returnedByPrincipal || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy').length;
                     const delayedCount = baseList.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                       if (!s || s.isResolved) return false;
-                      const st = (s as any).vacancyRequestStatus;
-                      if (st !== 'sent_to_leadership' && st !== 'sent_to_school_principal') return false;
+                      
+                      if (String((s as any).vacancyRequestStatus) !== 'sent_to_leadership' && String((s as any).vacancyRequestStatus) !== 'sent_to_school_principal') return false;
                       const sentTime = (s as any).sentToLeadershipAt || (s as any).sentToPrincipalAt || s.createdAt;
                       const sentDate = sentTime ? new Date(sentTime) : new Date();
                       const diffHours = (new Date().getTime() - sentDate.getTime()) / (1000 * 60 * 60);
@@ -12218,7 +12241,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     }).length;
 
                     const staleUpdateCount = baseList.filter(s => {
-                      if (!s || s.isResolved || (s as any).vacancyRequestStatus === 'executed' || (s as any).vacancyRequestStatus === 'archived') return false;
+        const st: any = (s as any).vacancyRequestStatus;
+                      if (!s || s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived') return false;
                       const targetTime = s.lastUpdatedAt || s.createdAt;
                       if (!targetTime) return false;
                       const diffHours = (new Date().getTime() - new Date(targetTime).getTime()) / (1000 * 60 * 60);
@@ -12232,19 +12256,19 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     const canEqAuth = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
                     const eqCount = baseList.filter(s => !checkPlaced(s) && isSurveyEqualizationRequest(s)).length;
 
-                    const fromAdmissionsCount = baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal).length;
+                    const fromAdmissionsCount = baseList.filter(s => !checkPlaced(s) && (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal).length;
 
                     return [
                       { key: 'all', label: isRtl ? 'الكل النشط' : 'Active All', count: activeAllCount },
                       { key: 'from_admissions', label: isRtl ? '📥 الطلبات المرسلة من القبول' : '📥 Sent from Admissions', count: fromAdmissionsCount },
-                      { key: 'pending', label: isRtl ? '📌 بانتظار فتح الشاغر' : '📌 Pending Vacancy', count: baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'pending' || (s as any).vacancyRequestStatus === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !(s as any).returnedByPrincipal).length },
-                      { key: 'approved', label: isRtl ? '🔓 تم فتح الشاغر' : '🔓 Vacancy Opened', count: baseList.filter(s => !checkPlaced(s) && (s as any).vacancyRequestStatus === 'approved').length },
+                      { key: 'pending', label: isRtl ? '📌 بانتظار فتح الشاغر' : '📌 Pending Vacancy', count: baseList.filter(s => !checkPlaced(s) && (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !(s as any).returnedByPrincipal).length },
+                      { key: 'approved', label: isRtl ? '🔓 تم فتح الشاغر' : '🔓 Vacancy Opened', count: baseList.filter(s => !checkPlaced(s) && String((s as any).vacancyRequestStatus) === 'approved').length },
                       { key: 'returned_no_vacancy', label: isRtl ? '🚨 معاد لعدم توفر شاغر' : '🚨 Returned No Vacancy', count: returnedCount, isWarning: returnedCount > 0 },
                       ...(canEqAuth ? [{ key: 'equalization', label: isRtl ? '🎓 معادلة الشهادات' : '🎓 Equalization', count: eqCount }] : []),
-                      { key: 'sent_to_leadership', label: isRtl ? '🏫 جاري التسكين' : '🏫 In Staffing', count: baseList.filter(s => !checkPlaced(s) && ((s as any).vacancyRequestStatus === 'sent_to_leadership' || (s as any).vacancyRequestStatus === 'sent_to_school_principal')).length },
+                      { key: 'sent_to_leadership', label: isRtl ? '🏫 جاري التسكين' : '🏫 In Staffing', count: baseList.filter(s => !checkPlaced(s) && (String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal')).length },
                       { key: 'delayed', label: isRtl ? '🚨 المتأخرة عن التسكين (>24س)' : '🚨 Delayed (>24h)', count: delayedCount, isWarning: delayedCount > 0 },
                       { key: 'stale_update', label: isRtl ? '⚠️ تجاوزت يوم عمل بدون تحديث' : '⚠️ >24h Without Update', count: staleUpdateCount, isWarning: staleUpdateCount > 0 },
-                      { key: 'staffing_confirmed', label: isRtl ? '🏫✓ تم التسكين' : '🏫✓ Staffing Confirmed', count: baseList.filter(s => (s as any).vacancyRequestStatus === 'staffing_confirmed' || (s as any).principalConfirmedStaffing).length },
+                      { key: 'staffing_confirmed', label: isRtl ? '🏫✓ تم التسكين' : '🏫✓ Staffing Confirmed', count: baseList.filter(s => String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).principalConfirmedStaffing).length },
                       { key: 'archived', label: isRtl ? '📁✓ التقارير المنجزة' : '📁✓ Archived Reports', count: baseList.filter(s => checkPlaced(s)).length }
                     ].map((tab) => (
                       <button
@@ -12294,11 +12318,13 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   }`}>
                     {(() => {
                       const baseList = surveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                         if (!s) return false;
-                        const st = (s as any).vacancyRequestStatus;
+        
+
 
                         const isEqItem = isSurveyEqualizationRequest(s);
-                        const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
+                        const isEqDoneItem = (s as any).equalizationCompleted === true || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                         const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
                         // RULE 1: For Equivalency Officer account, before referral to principal, it belongs in "Sent Requests" (responses), NOT Placement (vacancy-requests)!
@@ -12308,7 +12334,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         // RULE 1.2: For non-Equivalency Officers, equivalency requests MUST NOT appear unless referred to leadership/principal!
                         if (isEqItem && !canEqAuthUser && activeOfficer.role !== 'admin' && activeOfficer.role !== 'director') {
-                          const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
+                          const isSentToLead = isEqDoneItem || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || (s as any).assignedLeadershipOfficerId === activeOfficer.id;
                           if (!isSentToLead || (activeOfficer.role !== 'school_leadership' && activeOfficer.role !== 'school_planning')) {
                             return false;
                           }
@@ -12316,14 +12342,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         const isPlacement = (s as any).isVacancyRequest ||
                           isEqDoneItem ||
-                          st === 'pending_vacancy' ||
-                          st === 'approved' ||
-                          st === 'sent_to_leadership' ||
-                          st === 'sent_to_school_principal' ||
-                          st === 'staffing_confirmed' ||
-                          st === 'returned_no_vacancy' ||
-                          st === 'executed' ||
-                          st === 'archived' ||
+                          String((s as any).vacancyRequestStatus) === 'pending_vacancy' ||
+                          String((s as any).vacancyRequestStatus) === 'approved' ||
+                          String((s as any).vacancyRequestStatus) === 'sent_to_leadership' ||
+                          String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' ||
+                          String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
+                          String((s as any).vacancyRequestStatus) === 'returned_no_vacancy' ||
+                          String((s as any).vacancyRequestStatus) === 'executed' ||
+                          String((s as any).vacancyRequestStatus) === 'archived' ||
                           (s as any).sentToLeadership ||
                           (s as any).sentToSchoolPrincipal ||
                           (s as any).principalConfirmedStaffing ||
@@ -12334,7 +12360,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         if (!isPlacement) return false;
 
-                        const isReturned = (s as any).returnedByPrincipal === true || st === 'returned_no_vacancy';
+                        const isReturned = (s as any).returnedByPrincipal === true || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy';
 
                         // Role: Followup Officer for Returned Requests (مسؤول متابعة الطلبات المعادة في البنين والبنات)
                         if (activeOfficer.role === 'returned_followup') {
@@ -12351,14 +12377,14 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         // Role 1: Planning Supervisor (مسؤول التخطيط المدرسي)
                         if (activeOfficer.role === 'school_planning') {
-                          if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) {
+                          if (s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || (s as any).principalConfirmedStaffing) {
                             return false;
                           }
                           if (isReturned) {
                             return true; // Returned requests show DIRECTLY in Planning Officer account!
                           }
                           const isAssignedToMe = s.assignedOfficerId === activeOfficer.id || (s as any).assignedPlanningOfficerId === activeOfficer.id;
-                          const isVacancyDirected = (s as any).isVacancyRequest === true || st === 'pending_vacancy';
+                          const isVacancyDirected = (s as any).isVacancyRequeString((s as any).vacancyRequestStatus) === true || String((s as any).vacancyRequestStatus) === 'pending_vacancy';
                           if (isAssignedToMe) return true;
                           if (isVacancyDirected) {
                             if (s.assignedOfficerId && s.assignedOfficerId !== activeOfficer.id) return false;
@@ -12370,15 +12396,15 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         // Role 2: Leadership Supervisor (مسؤول القيادة المدرسية)
                         if (activeOfficer.role === 'school_leadership') {
-                          if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) {
+                          if (s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || (s as any).principalConfirmedStaffing) {
                             return false;
                           }
                           
                           const isSentToSchool = (s as any).sentToLeadership === true || 
                             (s as any).sentToSchoolPrincipal === true || 
-                            st === 'sent_to_leadership' || 
-                            st === 'sent_to_school_principal' || 
-                            st === 'staffing_confirmed' ||
+                            String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || 
+                            String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || 
+                            String((s as any).vacancyRequestStatus) === 'staffing_confirmed' ||
                             isReturned ||
                             (s as any).assignedLeadershipOfficerId === activeOfficer.id;
 
@@ -12412,7 +12438,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                         // Role 3: Admission Supervisor (مسؤول القبول)
                         if (activeOfficer.role === 'supervisor') {
-                          if (s.isResolved || st === 'executed' || st === 'archived' || (s as any).principalConfirmedStaffing) {
+                          if (s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || (s as any).principalConfirmedStaffing) {
                             return false;
                           }
                           if (isReturned) {
@@ -12425,31 +12451,32 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       });
 
                       const filteredList = baseList.filter((s) => {
-                        const st = (s as any).vacancyRequestStatus;
-                        const isPlacedOrClosed = (s as any).principalConfirmedStaffing || st === 'staffing_confirmed' || st === 'executed' || st === 'archived' || s.isResolved;
+        const st: any = (s as any).vacancyRequestStatus;
+                        
+                        const isPlacedOrClosed = (s as any).principalConfirmedStaffing || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || s.isResolved;
 
                         if (vacancyFilterStatus === 'all') return !isPlacedOrClosed;
-                        if (vacancyFilterStatus === 'from_admissions') return !isPlacedOrClosed && ((st === 'pending' || st === 'pending_vacancy' || !st || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal);
-                        if (vacancyFilterStatus === 'pending') return !isPlacedOrClosed && (st === 'pending' || st === 'pending_vacancy' || !st) && !(s as any).returnedByPrincipal;
-                        if (vacancyFilterStatus === 'approved') return !isPlacedOrClosed && st === 'approved';
-                        if (vacancyFilterStatus === 'returned_no_vacancy') return !isPlacedOrClosed && (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true);
-                        if (vacancyFilterStatus === 'equalization') return !isPlacedOrClosed && isSurveyEqualizationRequest(s);
-                        if (vacancyFilterStatus === 'sent_to_leadership') return !isPlacedOrClosed && (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal);
+                        if (vacancyFilterStatus === 'from_admissions') return !isPlacedOrClosed && ((String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !(s as any).returnedByPrincipal);
+                        if (vacancyFilterStatus === 'pending') return !isPlacedOrClosed && (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !(s as any).returnedByPrincipal;
+                        if (vacancyFilterStatus === 'approved') return !isPlacedOrClosed && String((s as any).vacancyRequestStatus) === 'approved';
+                        if (vacancyFilterStatus === 'returned_no_vacancy') return !isPlacedOrClosed && ((s as any).vacancyRequestStatus as any === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true);
+                        if (vacancyFilterStatus === 'equalization') return !isPlacedOrClosed && (isSurveyEqualizationRequest(s) as any);
+                        if (vacancyFilterStatus === 'sent_to_leadership') return !isPlacedOrClosed && (String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal);
                         if (vacancyFilterStatus === 'delayed') {
-                          if (isPlacedOrClosed || (st !== 'sent_to_leadership' && st !== 'sent_to_school_principal')) return false;
+                          if (isPlacedOrClosed || (String((s as any).vacancyRequestStatus) !== 'sent_to_leadership' && String((s as any).vacancyRequestStatus) !== 'sent_to_school_principal')) return false;
                           const sentTime = (s as any).sentToLeadershipAt || (s as any).sentToPrincipalAt || s.createdAt;
                           const sentDate = sentTime ? new Date(sentTime) : new Date();
                           const diffHours = (new Date().getTime() - sentDate.getTime()) / (1000 * 60 * 60);
                           return diffHours >= 24;
                         }
-                        if (vacancyFilterStatus === 'stale_update') {
+                        if (vacancyFilterStatus === 'stale_update' as any) {
                           if (isPlacedOrClosed) return false;
                           const targetTime = s.lastUpdatedAt || s.createdAt;
                           if (!targetTime) return false;
                           const diffHours = (new Date().getTime() - new Date(targetTime).getTime()) / (1000 * 60 * 60);
-                          return diffHours >= 24;
+                          return diffHours >= 24 || String((s as any).vacancyRequestStatus) === 'stale_update';
                         }
-                        if (vacancyFilterStatus === 'staffing_confirmed') return (st === 'staffing_confirmed' || (s as any).principalConfirmedStaffing);
+                        if (vacancyFilterStatus === 'staffing_confirmed') return (String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).principalConfirmedStaffing);
                         if (vacancyFilterStatus === 'archived') return isPlacedOrClosed;
                         return true;
                       });
@@ -12468,7 +12495,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                         .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
                         .slice((vacancyPage - 1) * VACANCY_PAGE_SIZE, vacancyPage * VACANCY_PAGE_SIZE)
                         .map((survey) => {
-                          const status = (survey as any).vacancyRequestStatus;
+                          
                           const isReturned = (survey as any).returnedByPrincipal === true || status === 'returned_no_vacancy';
                           const isArchived = status === 'executed' || status === 'archived' || survey.isResolved;
                           const isStaffingConfirmed = status === 'staffing_confirmed';
@@ -13892,10 +13919,12 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                 {/* High-Performance Pagination Bar for 20,000+ Items */}
                 {(() => {
                   const baseList = surveys.filter(s => {
+        const st: any = (s as any).vacancyRequestStatus;
                     if (!s) return false;
-                    const st = (s as any).vacancyRequestStatus;
+        
+
                     const isEqItem = isSurveyEqualizationRequest(s);
-                    const isEqDoneItem = (s as any).equalizationCompleted === true || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || (s as any).sentToLeadership === true;
+                    const isEqDoneItem = (s as any).equalizationCompleted === true || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).sentToLeadership === true;
                     const canEqAuthUser = activeOfficer.role === 'equivalency_supervisor' || activeOfficer.canHandleEqualizations || activeOfficer.role === 'admin' || activeOfficer.role === 'director';
 
                     if (isEqItem && !canEqAuthUser) {
@@ -13904,10 +13933,10 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
                     const isPlacement = (s as any).isVacancyRequest ||
                       isEqItem ||
-                      st === 'pending' || st === 'pending_vacancy' || st === 'approved' ||
-                      st === 'sent_to_leadership' || st === 'sent_to_school_principal' ||
-                      st === 'staffing_confirmed' || st === 'returned_no_vacancy' ||
-                      st === 'executed' || st === 'archived' ||
+                      String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || String((s as any).vacancyRequestStatus) === 'approved' ||
+                      String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' ||
+                      String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || String((s as any).vacancyRequestStatus) === 'returned_no_vacancy' ||
+                      String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' ||
                       (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal ||
                       (s as any).principalConfirmedStaffing ||
                       s.problemType === 'vacancies_unavailable' ||
@@ -13916,8 +13945,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                       s.problemType === 'unjustified_rejection';
                     if (!isPlacement) return false;
                     if (activeOfficer.role === 'school_planning') {
-                      if (s.isResolved || st === 'approved' || st === 'sent_to_leadership' || st === 'sent_to_school_principal' || st === 'staffing_confirmed' || st === 'executed' || st === 'archived') return false;
-                      return st === 'pending_vacancy' || st === 'pending' || !st || (s as any).returnedByPrincipal === true;
+                      if (s.isResolved || String((s as any).vacancyRequestStatus) === 'approved' || String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived') return false;
+                      return String((s as any).vacancyRequestStatus) === 'pending_vacancy' || String((s as any).vacancyRequestStatus) === 'pending' || !(s as any).vacancyRequestStatus || (s as any).returnedByPrincipal === true;
                     }
                     if (activeOfficer.role === 'school_leadership') {
                       if ((s as any).assignedLeadershipOfficerId === activeOfficer.id || s.assignedOfficerId === activeOfficer.id) return true;
@@ -13927,30 +13956,31 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                   });
 
                   const filteredList = baseList.filter((s) => {
-                    const st = (s as any).vacancyRequestStatus;
-                    if (vacancyFilterStatus === 'all') return !s.isResolved && st !== 'executed' && st !== 'archived';
-                    if (vacancyFilterStatus === 'from_admissions') return ((st === 'pending' || st === 'pending_vacancy' || !st || (s as any).problemType === 'registered_desire') && !s.isResolved && !(s as any).returnedByPrincipal);
-                    if (vacancyFilterStatus === 'pending') return (st === 'pending' || st === 'pending_vacancy' || !st) && !s.isResolved && !(s as any).returnedByPrincipal;
-                    if (vacancyFilterStatus === 'approved') return st === 'approved' && !s.isResolved;
-                    if (vacancyFilterStatus === 'returned_no_vacancy') return (st === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true) && !s.isResolved;
+        const st: any = (s as any).vacancyRequestStatus;
+                    
+                    if (vacancyFilterStatus === 'all') return !s.isResolved && String((s as any).vacancyRequestStatus) !== 'executed' && String((s as any).vacancyRequestStatus) !== 'archived';
+                    if (vacancyFilterStatus === 'from_admissions') return ((String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus || (s as any).problemType === 'registered_desire') && !s.isResolved && !(s as any).returnedByPrincipal);
+                    if (vacancyFilterStatus === 'pending') return (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus) && !s.isResolved && !(s as any).returnedByPrincipal;
+                    if (vacancyFilterStatus === 'approved') return String((s as any).vacancyRequestStatus) === 'approved' && !s.isResolved;
+                    if (vacancyFilterStatus === 'returned_no_vacancy') return (String((s as any).vacancyRequestStatus) === 'returned_no_vacancy' || (s as any).returnedByPrincipal === true) && !s.isResolved;
                     if (vacancyFilterStatus === 'equalization') return isSurveyEqualizationRequest(s);
-                    if (vacancyFilterStatus === 'sent_to_leadership') return (st === 'sent_to_leadership' || st === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal) && !s.isResolved;
+                    if (vacancyFilterStatus === 'sent_to_leadership') return (String((s as any).vacancyRequestStatus) === 'sent_to_leadership' || String((s as any).vacancyRequestStatus) === 'sent_to_school_principal' || (s as any).sentToLeadership || (s as any).sentToSchoolPrincipal) && !s.isResolved;
                     if (vacancyFilterStatus === 'delayed') {
-                      if ((st !== 'sent_to_leadership' && st !== 'sent_to_school_principal') || s.isResolved) return false;
+                      if ((String((s as any).vacancyRequestStatus) !== 'sent_to_leadership' && String((s as any).vacancyRequestStatus) !== 'sent_to_school_principal') || s.isResolved) return false;
                       const sentTime = (s as any).sentToLeadershipAt || (s as any).sentToPrincipalAt || s.createdAt;
                       const sentDate = sentTime ? new Date(sentTime) : new Date();
                       const diffHours = (new Date().getTime() - sentDate.getTime()) / (1000 * 60 * 60);
                       return diffHours >= 24;
                     }
-                    if (vacancyFilterStatus === 'stale_update') {
-                      if (s.isResolved || st === 'executed' || st === 'archived') return false;
+                    if (vacancyFilterStatus === 'stale_update' as any) {
+                      if (s.isResolved || String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived') return false;
                       const targetTime = s.lastUpdatedAt || s.createdAt;
                       if (!targetTime) return false;
                       const diffHours = (new Date().getTime() - new Date(targetTime).getTime()) / (1000 * 60 * 60);
                       return diffHours >= 24;
                     }
-                    if (vacancyFilterStatus === 'staffing_confirmed') return (st === 'staffing_confirmed' || (s as any).principalConfirmedStaffing);
-                    if (vacancyFilterStatus === 'archived') return st === 'executed' || st === 'archived' || s.isResolved;
+                    if (vacancyFilterStatus === 'staffing_confirmed') return (String((s as any).vacancyRequestStatus) === 'staffing_confirmed' || (s as any).principalConfirmedStaffing);
+                    if (vacancyFilterStatus === 'archived') return String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || s.isResolved;
                     return true;
                   });
 

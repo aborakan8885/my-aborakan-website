@@ -73,8 +73,9 @@ export interface SurveyResponse {
 
   // Vacancy request pipeline fields
   isVacancyRequest?: boolean;
-  vacancyRequestStatus?: 'pending' | 'pending_vacancy' | 'approved' | 'sent_to_leadership' | 'sent_to_school_principal' | 'returned_no_vacancy' | 'staffing_confirmed' | 'executed' | 'archived';
+  vacancyRequestStatus?: string;
   sentToSchoolPrincipal?: boolean;
+  sentToPlanningOfficer?: boolean;
   sentToLeadership?: boolean;
   sentToLeadershipAt?: string;
   isReceived?: boolean;
@@ -139,6 +140,8 @@ export interface SurveyResponse {
   archivedBy?: string;
   vacancyReplyNote?: string;
   lastUpdatedAt?: string;
+  officialSchoolName?: string;
+  status?: string;
 }
 
 export interface AppConfig {
@@ -198,9 +201,11 @@ export interface PrincipalReport {
   assignedOfficerId?: string;
   referredBy?: 'admin' | 'director';
   referralNotes?: string;
+  notes?: string;
+  status?: string;
 
   // Vacancy request pipeline fields
-  vacancyRequestStatus?: 'pending' | 'pending_vacancy' | 'approved' | 'sent_to_leadership' | 'staffing_confirmed' | 'executed' | 'archived';
+  vacancyRequestStatus?: string;
   assignedPlanningOfficerId?: string;
   planningOfficerName?: string;
   assignedLeadershipOfficerId?: string;

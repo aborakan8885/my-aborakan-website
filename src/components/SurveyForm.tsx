@@ -536,7 +536,7 @@ export default function SurveyForm({
       }
 
       // Standard Flow Submission
-      const isEq = studentCategoryType === 'non_fresh' && Boolean(equalizationStage && equalizationStage !== '');
+      const isEq = studentCategoryType === 'non_fresh' && Boolean(equalizationStage && (equalizationStage as string) !== '');
       const isVac = !isEq && problemType === 'vacancies_unavailable';
 
       const eqStageMapped = equalizationStage === 'primary' ? 'Primary' : equalizationStage === 'intermediate' ? 'Intermediate' : equalizationStage === 'secondary' ? 'Secondary' : 'Other Qualification';

@@ -12,6 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import ContactFeedbackModal from './components/ContactFeedbackModal';
 import { Language, SurveyResponse, AppConfig, EmailLog, SystemIntegrationLog, PrincipalReport, SchoolItem, BeneficiaryFeedback } from './types';
 import { sendOfficialEmail } from './utils/emailService';
+import { getSafeTranslation } from './utils/translationHelper';
 import {
   saveSurveysToStorage,
   loadSurveysFromStorage,
@@ -1033,27 +1034,27 @@ export default function App() {
       {userRole && (
         <>
           {/* FAB Right: Return to Main Gateway */}
-          <div className="fixed bottom-16 right-4 z-50">
+          <div className="fixed bottom-20 right-4 z-50">
             <button
               type="button"
               onClick={handleReturnToMainGateway}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-[10px] sm:text-xs rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-[9px] sm:text-[10px] rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
               id="fab-return-portal"
             >
-              <Home className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
+              <Home className="w-3.5 h-3.5 text-amber-300 group-hover:scale-110 transition-transform" />
               <span>{currentLang === 'ar' ? 'العودة لبوابة الدخول الرئيسية' : 'Return to Main Gateway'}</span>
             </button>
           </div>
 
           {/* FAB Left: Back / Go Back */}
-          <div className="fixed bottom-16 left-4 z-50">
+          <div className="fixed bottom-20 left-4 z-50">
             <button
               type="button"
               onClick={handleGoBack}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 hover:from-slate-800 hover:to-slate-950 text-white font-black text-[10px] sm:text-xs rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-slate-500/40 cursor-pointer group"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 hover:from-slate-800 hover:to-slate-950 text-white font-black text-[9px] sm:text-[10px] rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-slate-500/40 cursor-pointer group"
               id="fab-go-back"
             >
-              <RotateCcw className="w-4 h-4 text-teal-300 group-hover:-rotate-90 transition-transform" />
+              <RotateCcw className="w-3.5 h-3.5 text-teal-300 group-hover:-rotate-90 transition-transform" />
               <span>{currentLang === 'ar' ? 'عودة للخلف' : 'Go Back'}</span>
             </button>
           </div>

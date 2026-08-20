@@ -13,9 +13,6 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  declare props: Props;
-  declare state: State;
-
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -33,8 +30,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    (this as any).setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null });
     window.location.reload();
+  };
+
+  handleClearAndReset = () => {
+    if (window.confirm('سيتم حذف البيانات المؤقتة وإعادة ضبط النظام بالكامل. هل أنت متأكد؟')) {
+      localStorage.clear();
+      window.location.href = '/';
+    }
   };
 
   render() {
@@ -61,13 +65,20 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             )}
 
-            <div className="pt-2 flex items-center justify-center gap-3">
+            <div className="pt-2 flex flex-col gap-3">
               <button
                 onClick={this.handleReset}
-                className="px-5 py-2.5 bg-[#009d8f] hover:bg-[#008277] text-white text-xs font-black rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                className="w-full px-5 py-2.5 bg-[#009d8f] hover:bg-[#008277] text-white text-xs font-black rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>إعادة تحميل الشاشة بنشاط</span>
+              </button>
+              
+              <button
+                onClick={this.handleClearAndReset}
+                className="w-full px-5 py-2 text-slate-500 hover:text-red-500 text-[10px] font-bold transition-colors cursor-pointer"
+              >
+                حذف البيانات المخزنة وإعادة الضبط المصنعي
               </button>
             </div>
           </div>

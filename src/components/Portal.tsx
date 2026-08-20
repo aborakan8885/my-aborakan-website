@@ -42,6 +42,8 @@ import { TRANSLATIONS, INITIAL_SCHOOLS } from '../data/mockData';
 import { SchoolSelectDropdown } from './SchoolSelectDropdown';
 import { isMatchingPrincipalSchool, getRequestTypeInfo, cleanSchoolName, normalizeArabicText, isSurveyEqualizationRequest, isSurveyTransferRequest } from '../utils/storageEngine';
 
+import { getSafeTranslation } from '../utils/translationHelper';
+
 interface PortalProps {
   currentLang: Language;
   surveys: SurveyResponse[];
@@ -104,6 +106,9 @@ export default function Portal({
   // Map Warning Modal State
   const [showMapWarningModal, setShowMapWarningModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // Helper for safe translation
+  const st = (key: string, fallback?: string) => getSafeTranslation(currentLang, key, fallback);
 
   useEffect(() => {
     if (portalViewProp !== undefined && portalViewProp !== view) {
@@ -790,46 +795,37 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => window.open('https://mapedumadinah.com/', '_blank')}
-                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-700 hover:border-cyan-400'
-                    : 'bg-white border-slate-200 hover:border-cyan-500 hover:shadow-lg'
-                }`}
+                className="group relative rounded-2xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border bg-white border-slate-200 hover:border-cyan-500 hover:shadow-lg"
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
-                  isDark ? 'bg-cyan-500/5 group-hover:bg-cyan-500/10' : 'bg-cyan-500/5 group-hover:bg-cyan-500/10'
-                }`} />
+                <div className="absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all bg-cyan-500/5 group-hover:bg-cyan-500/10" />
                 
-                <div className="space-y-3">
-                  {/* White Icon Wrapper - Colored Icon */}
-                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
-                    isDark ? 'bg-slate-700 border-slate-600 text-cyan-400' : 'bg-white border-slate-100 text-cyan-600'
-                  }`}>
-                    <Map className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
-                      isDark ? 'text-white group-hover:text-cyan-300' : 'text-slate-800 group-hover:text-cyan-600'
-                    }`}>
-                      {(t as any).roleMap || (isRtl ? 'خارطة المدارس التعليمية' : 'Educational Schools Map')}
+                <div className="space-y-4">
+                  {/* Icon and Title in same box/row */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl shadow-md border bg-cyan-600 border-cyan-500 text-white transition-transform group-hover:scale-105">
+                      <Map className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-black text-lg sm:text-xl text-slate-800 transition-colors group-hover:text-cyan-700">
+                      {st('roleMap', isRtl ? 'خارطة المدارس التعليمية' : 'Educational Schools Map')}
                     </h3>
-                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
-                      {(t as any).roleMapIndependent || (isRtl ? 'رابط خارجي مستقل' : 'Independent External Link')}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[12px] sm:text-sm font-bold leading-relaxed text-cyan-600">
+                      {st('roleMapIndependent', isRtl ? 'رابط خارجي مستقل' : 'Independent External Link')}
                     </p>
-                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
-                      {(t as any).roleMapDesc || (isRtl 
+                    <p className="text-sm sm:text-base font-medium leading-relaxed text-slate-500">
+                      {st('roleMapDesc', isRtl 
                         ? 'بوابة مخصصة للمستفيدين لمعرفة المدارس القريبة من المدرسة المرغوبة او المستهدفة بالمسافة للتسجيل أو النقل'
                         : 'A portal dedicated to beneficiaries to find schools near their desired or target school by distance for registration or transfer')}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
-                  isDark ? 'text-cyan-300' : 'text-cyan-600'
-                }`}>
-                  <span>{(t as any).roleMapAction || (isRtl ? 'زيارة الخارطة الآن' : 'Visit Map Now')}</span>
-                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                <div className="flex items-center gap-1.5 pt-4 font-black text-sm text-cyan-600 group-hover:gap-2.5 transition-all">
+                  <span>{st('roleMapAction', isRtl ? 'زيارة الخارطة الآن' : 'Visit Map Now')}</span>
+                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 </div>
               </motion.div>
 
@@ -837,44 +833,37 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => setView('parent-choices')}
-                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-700 hover:border-teal-400'
-                    : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-lg'
-                }`}
+                className="group relative rounded-2xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border bg-white border-slate-200 hover:border-blue-500 hover:shadow-lg"
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
-                  isDark ? 'bg-teal-500/5 group-hover:bg-teal-500/10' : 'bg-blue-500/5 group-hover:bg-blue-500/10'
-                }`} />
+                <div className="absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all bg-blue-500/5 group-hover:bg-blue-500/10" />
                 
-                <div className="space-y-3">
-                  {/* White Icon Wrapper - Colored Icon */}
-                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
-                    isDark ? 'bg-slate-700 border-slate-600 text-teal-400' : 'bg-white border-slate-100 text-blue-600'
-                  }`}>
-                    <Users className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
-                      isDark ? 'text-white group-hover:text-teal-300' : 'text-slate-800 group-hover:text-blue-600'
-                    }`}>
-                      {t.roleParent}
+                <div className="space-y-4">
+                  {/* Icon and Title in same box/row */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl shadow-md border bg-blue-600 border-blue-500 text-white transition-transform group-hover:scale-105">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-black text-lg sm:text-xl text-slate-800 transition-colors group-hover:text-blue-700">
+                      {st('roleParent', isRtl ? 'مستفيد ولي أمر' : 'Parent Beneficiary')}
                     </h3>
-                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[12px] sm:text-sm font-bold leading-relaxed text-blue-600">
                       {isRtl ? 'دخول مباشر بدون حساب' : 'Direct access without registration'}
                     </p>
-                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
-                      {t.roleParentDesc}
+                    <p className="text-sm sm:text-base font-medium leading-relaxed text-slate-500">
+                      {st('roleParentDesc', isRtl 
+                        ? 'تقديم بلاغ، استفسار أو متابعة حالة طلبات القبول والتسجيل والنقل المدرسي وتعديل الرغبات'
+                        : 'Submit report, inquiry or track admission, registration and school transfer requests status')}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
-                  isDark ? 'text-teal-300' : 'text-blue-600'
-                }`}>
+                <div className="flex items-center gap-1.5 pt-4 font-black text-sm text-blue-600 group-hover:gap-2.5 transition-all">
                   <span>{isRtl ? 'بدء الخدمة الآن' : 'Start Service'}</span>
-                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 </div>
               </motion.div>
 
@@ -886,44 +875,37 @@ export default function Portal({
                   setPrincipalAuthMode('login');
                   setLoginError('');
                 }}
-                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-700 hover:border-emerald-400'
-                    : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-lg'
-                }`}
+                className="group relative rounded-2xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border bg-white border-slate-200 hover:border-emerald-500 hover:shadow-lg"
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
-                  isDark ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-emerald-500/5 group-hover:bg-emerald-500/10'
-                }`} />
+                <div className="absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all bg-emerald-500/5 group-hover:bg-emerald-500/10" />
                 
-                <div className="space-y-3">
-                  {/* White Icon Wrapper - Colored Icon */}
-                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
-                    isDark ? 'bg-slate-700 border-slate-600 text-emerald-400' : 'bg-white border-slate-100 text-emerald-600'
-                  }`}>
-                    <School className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
-                      isDark ? 'text-white group-hover:text-emerald-300' : 'text-slate-800 group-hover:text-emerald-600'
-                    }`}>
-                      {t.rolePrincipal}
+                <div className="space-y-4">
+                  {/* Icon and Title in same box/row */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl shadow-md border bg-emerald-600 border-emerald-500 text-white transition-transform group-hover:scale-105">
+                      <School className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-black text-lg sm:text-xl text-slate-800 transition-colors group-hover:text-emerald-700">
+                      {st('rolePrincipal', isRtl ? 'مستفيد مدير مدرسة' : 'School Principal')}
                     </h3>
-                    <p className={`text-[11px] sm:text-xs font-extrabold leading-relaxed ${isDark ? 'text-teal-400' : 'text-emerald-500'}`}>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[12px] sm:text-sm font-bold leading-relaxed text-emerald-600">
                       {isRtl ? 'يتطلب رمز أمن' : 'Requires secure code'}
                     </p>
-                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
-                      {t.rolePrincipalDesc}
+                    <p className="text-sm sm:text-base font-medium leading-relaxed text-slate-500">
+                      {st('rolePrincipalDesc', isRtl 
+                        ? 'بوابة مخصصة لمدراء المدارس للإبلاغ عن الشواغر المتاحة وتحديث بيانات الفصول الدراسية وتأكيد رغبات القبول'
+                        : 'Dedicated portal for school principals to report available vacancies, update class data, and confirm admission desires')}
                     </p>
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
-                  isDark ? 'text-emerald-300' : 'text-emerald-600'
-                }`}>
+                <div className="flex items-center gap-1.5 pt-4 font-black text-sm text-emerald-600 group-hover:gap-2.5 transition-all">
                   <span>{isRtl ? 'تسجيل دخول للمدرسة' : 'School Sign In'}</span>
-                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 </div>
               </motion.div>
 
@@ -931,34 +913,27 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => onSelectRole('admin')}
-                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-700 hover:border-amber-400'
-                    : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-lg'
-                }`}
+                className="group relative rounded-2xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border bg-white border-slate-200 hover:border-indigo-500 hover:shadow-lg"
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
-                  isDark ? 'bg-amber-500/5 group-hover:bg-amber-500/10' : 'bg-indigo-500/5 group-hover:bg-indigo-500/10'
-                }`} />
+                <div className="absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all bg-indigo-500/5 group-hover:bg-indigo-500/10" />
                 
-                <div className="space-y-3">
-                  {/* White Icon Wrapper - Colored Icon */}
-                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
-                    isDark ? 'bg-slate-700 border-slate-600 text-amber-400' : 'bg-white border-slate-100 text-indigo-600'
-                  }`}>
-                    <ShieldCheck className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className={`font-extrabold text-base sm:text-lg transition-colors ${
-                      isDark ? 'text-white group-hover:text-amber-300' : 'text-slate-800 group-hover:text-indigo-600'
-                    }`}>
+                <div className="space-y-4">
+                  {/* Icon and Title in same box/row */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl shadow-md border bg-indigo-600 border-indigo-500 text-white transition-transform group-hover:scale-105">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-black text-lg sm:text-xl text-slate-800 transition-colors group-hover:text-indigo-700">
                       {isRtl ? 'منسوبي الإدارة' : 'Department Staff'}
                     </h3>
-                    <p className={`text-[11px] sm:text-xs font-semibold leading-relaxed ${isDark ? 'text-teal-400' : 'text-slate-400'}`}>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[12px] sm:text-sm font-bold leading-relaxed text-indigo-600">
                       {isRtl ? 'بوابة إدارة وحوكمة الأنظمة والتحليلات' : 'Administrative governance & analytics'}
                     </p>
-                    <p className={`text-xs sm:text-sm font-medium leading-relaxed pt-1 ${isDark ? 'text-teal-200/70' : 'text-slate-500'}`}>
+                    <p className="text-sm sm:text-base font-medium leading-relaxed text-slate-500">
                       {isRtl
                         ? 'بوابة الدخول للمصرح لهم من منسوبي الإدارة العامة للتعليم بمنطقة المدينة المنورة'
                         : 'Entry portal for authorized staff of the General Administration of Education in Madinah Region'}
@@ -966,11 +941,9 @@ export default function Portal({
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 pt-3 font-bold text-xs sm:text-sm group-hover:gap-2.5 transition-all ${
-                  isDark ? 'text-amber-300' : 'text-indigo-600'
-                }`}>
+                <div className="flex items-center gap-1.5 pt-4 font-black text-sm text-indigo-600 group-hover:gap-2.5 transition-all">
                   <span>{isRtl ? 'تسجيل الدخول لمنسوبي الإدارة' : 'Department Staff Login'}</span>
-                  {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                  {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 </div>
               </motion.div>
 
