@@ -759,11 +759,11 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className={`flex-1 ${userRole === 'portal' ? 'pb-4' : 'pb-16'}`}>
+      <main className="flex-1 flex flex-col relative min-h-0">
         
         {/* Offline Alert Strip */}
         {!isOnline && (
-          <div className="w-full bg-amber-500 text-white font-bold text-xs sm:text-sm py-2 px-4 text-center flex items-center justify-center gap-2">
+          <div className="w-full bg-amber-500 text-white font-bold text-xs sm:text-sm py-2 px-4 text-center flex items-center justify-center gap-2 shrink-0 z-40">
             <Wifi className="w-4 h-4 animate-pulse" />
             <span>
               {currentLang === 'ar'
@@ -774,7 +774,7 @@ export default function App() {
         )}
 
         {/* Content Tabs */}
-        <div className="relative">
+        <div className={`flex-1 relative ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
           {userRole === 'portal' ? (
             <div key="portal-view" className="animate-fade-in">
               <ErrorBoundary fallbackTitleAr="خطأ في تحميل البوابة الموحدة">

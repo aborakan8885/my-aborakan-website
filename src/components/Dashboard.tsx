@@ -4924,8 +4924,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
             {/* Unresolved Reasons Section */}
             {unresolvedWithReason.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 className={`border p-6 rounded-2xl space-y-4 ${
                   isDark ? 'glass-card-dark text-white' : 'bg-white border border-slate-200 shadow-sm'
                 }`}
@@ -11727,8 +11727,8 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
 
               {aiSummary ? (
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   className={`p-5 rounded-2xl text-xs sm:text-sm leading-relaxed space-y-3 font-semibold whitespace-pre-wrap border ${
                     isDark ? 'glass-card-dark text-teal-100 border-teal-800/40' : 'bg-white border-violet-100 text-slate-800'
                   }`}

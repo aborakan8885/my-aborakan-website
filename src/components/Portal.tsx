@@ -101,6 +101,10 @@ export default function Portal({
   // Age Verification Modal State for Student Grade 1 Admission
   const [showAgeModal, setShowAgeModalInternal] = useState<boolean>(showAgeModalProp || false);
 
+  // Map Warning Modal State
+  const [showMapWarningModal, setShowMapWarningModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
   useEffect(() => {
     if (portalViewProp !== undefined && portalViewProp !== view) {
       setViewInternal(portalViewProp);
@@ -121,6 +125,11 @@ export default function Portal({
   const setShowAgeModal = (s: boolean) => {
     setShowAgeModalInternal(s);
     if (onAgeModalChange) onAgeModalChange(s);
+  };
+
+  const handleActionWithMapWarning = (action: () => void) => {
+    setPendingAction(() => action);
+    setShowMapWarningModal(true);
   };
 
   // Parent Tracking & Evaluation States
@@ -759,9 +768,9 @@ export default function Portal({
         {view === 'selection' && (
           <motion.div
             key="portal-selection"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             className="py-1 sm:py-2 space-y-3 max-w-6xl mx-auto px-4"
           >
@@ -978,9 +987,9 @@ export default function Portal({
         {view === 'parent-choices' && (
           <motion.div
             key="portal-parent-choices"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             className="space-y-12 max-w-4xl mx-auto"
           >
@@ -1015,10 +1024,12 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
                 onClick={() => {
-                  try {
-                    localStorage.setItem('student_service_type', 'new');
-                  } catch {}
-                  setShowAgeModal(true);
+                  handleActionWithMapWarning(() => {
+                    try {
+                      localStorage.setItem('student_service_type', 'new');
+                    } catch {}
+                    setShowAgeModal(true);
+                  });
                 }}
                 className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
@@ -1062,10 +1073,12 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
                 onClick={() => {
-                  try {
-                    localStorage.setItem('student_service_type', 'transfer');
-                  } catch {}
-                  onSelectRole('parent');
+                  handleActionWithMapWarning(() => {
+                    try {
+                      localStorage.setItem('student_service_type', 'transfer');
+                    } catch {}
+                    onSelectRole('parent');
+                  });
                 }}
                 className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
@@ -2583,9 +2596,9 @@ export default function Portal({
         {view === 'principal-dashboard' && principalSession && (
           <motion.div
             key="principal-dashboard"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             className="space-y-8"
           >
@@ -4259,6 +4272,76 @@ export default function Portal({
           </div>
         </div>
       )}
+
+      {/* Map Warning Modal */}
+      <AnimatePresence>
+        {showMapWarningModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border ${
+                isDark ? 'bg-[#061c24] border-teal-800/60' : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-blue-500 to-cyan-500" />
+              
+              <div className="p-8 space-y-6 text-start">
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl ${
+                    isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'
+                  }`}>
+                    <Map className="w-8 h-8" />
+                  </div>
+                  <h3 className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                    {isRtl ? 'تنبيه استرشادي هام' : 'Important Guidance Notice'}
+                  </h3>
+                </div>
+
+                <p className={`text-sm font-bold leading-relaxed ${isDark ? 'text-teal-100/90' : 'text-slate-600'}`}>
+                  {isRtl 
+                    ? "عزيزي المستفيد، يرجى الاطلاع على الخارطة التعليمية للقبول قبل تعبئة الطلب، وذلك لتحديد المدارس القريبة والمتاحة جغرافياً لإدراجها في قائمة رغباتك. في حال معرفتك بها مسبقاً، يمكنك الضغط على متابعة، أو الضغط على الزر المخصص لزيارة الخارطة."
+                    : "Dear beneficiary, please review the Educational Map for admission before filling out the request to identify nearby and geographically available schools to include in your preferences. If you are already aware of them, you can click Continue, or click the dedicated button to visit the map."}
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      window.open('https://mapedumadinah.com/', '_blank');
+                    }}
+                    className={`w-full sm:flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm transition-all shadow-md cursor-pointer ${
+                      isDark 
+                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100'
+                    }`}
+                  >
+                    <Map className="w-4 h-4" />
+                    <span>{isRtl ? 'زيارة الخارطة' : 'Visit Map'}</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setShowMapWarningModal(false);
+                      if (pendingAction) {
+                        pendingAction();
+                        setPendingAction(null);
+                      }
+                    }}
+                    className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-sm transition-all border cursor-pointer ${
+                      isDark 
+                        ? 'bg-transparent border-teal-800/60 text-teal-300 hover:bg-teal-900/30' 
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {isRtl ? 'متابعة' : 'Continue'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Student Admission Age Verification Modal */}
       <AgeVerificationModal

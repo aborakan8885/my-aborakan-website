@@ -691,8 +691,8 @@ export default function SurveyForm({
     return (
       <div className="max-w-3xl mx-auto my-6 sm:my-10 px-4 sm:px-0">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           className={`border rounded-3xl shadow-xl overflow-hidden ${
             isDark ? 'bg-teal-950/60 border-teal-800/40 text-white' : 'bg-white border-slate-200/80'
           }`}
@@ -1479,8 +1479,8 @@ export default function SurveyForm({
         {(studentCategoryType === 'non_fresh' && (!isTransferMode || requestPath === 'equivalency')) ? (
           /* SECTION: EQUALIZATION REQUEST FORM FOR NON-FRESH STUDENTS */
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             className={`p-6 rounded-3xl border space-y-6 ${
               isDark ? 'bg-[#002b2b] border-emerald-800/40 text-white' : 'bg-emerald-50/60 border-emerald-200 text-slate-800'
             }`}
