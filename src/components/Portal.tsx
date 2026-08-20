@@ -762,18 +762,13 @@ export default function Portal({
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-4" id="portal-root">
-      <AnimatePresence mode="wait">
-        
-        {/* VIEW 1: ROLE SELECTION LAUNCHPAD */}
-        {view === 'selection' && (
-          <motion.div
-            key="portal-selection"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="py-1 sm:py-2 space-y-3 max-w-6xl mx-auto px-4"
-          >
+      
+      {/* VIEW 1: ROLE SELECTION LAUNCHPAD */}
+      {view === 'selection' && (
+        <div
+          key="portal-selection"
+          className="py-1 sm:py-2 space-y-3 max-w-6xl mx-auto px-4 animate-fade-in"
+        >
             {/* Header Title */}
             <div className="text-center max-w-2xl mx-auto space-y-0.5">
               <h1 className={`text-2xl sm:text-3xl font-black tracking-tight leading-tight transition-colors ${
@@ -980,7 +975,7 @@ export default function Portal({
               </motion.div>
 
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* VIEW: PARENT CHOICES */}
@@ -4159,8 +4154,6 @@ export default function Portal({
             </AnimatePresence>
           </motion.div>
         )}
-
-      </AnimatePresence>
 
       {/* Return Request Reason Modal */}
       {returnModalSurvey && (

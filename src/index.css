@@ -217,14 +217,9 @@
   background: rgba(105, 206, 227, 0.7);
 }
 
-/* Snappy instantaneous tab switching animation - Removed transform to avoid breaking fixed positioning context */
-@keyframes fadeInSnappy {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
+/* Snappy instantaneous tab switching animation - Reverted to standard */
 .animate-fade-in {
-  animation: fadeInSnappy 0.15s ease-out forwards;
+  opacity: 1 !important;
 }
 
 
