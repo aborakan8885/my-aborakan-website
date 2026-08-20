@@ -982,7 +982,7 @@ export default function Portal({
         {view === 'parent-choices' && (
           <motion.div
             key="portal-parent-choices"
-            initial={{ opacity: 0 }}
+            initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
@@ -1192,7 +1192,7 @@ export default function Portal({
         {view === 'parent-track' && (
           <motion.div
             key="portal-parent-track"
-            initial={{ opacity: 0, scale: 0.98 }}
+            initial={{ opacity: 1, scale: 1 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.2 }}
@@ -1865,7 +1865,7 @@ export default function Portal({
         {view === 'principal-login' && (
           <motion.div
             key="principal-login-form"
-            initial={{ opacity: 0, scale: 0.98 }}
+            initial={{ opacity: 1, scale: 1 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.2 }}
@@ -2591,7 +2591,7 @@ export default function Portal({
         {view === 'principal-dashboard' && principalSession && (
           <motion.div
             key="principal-dashboard"
-            initial={{ opacity: 0 }}
+            initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}

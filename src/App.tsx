@@ -182,7 +182,13 @@ export default function App() {
 
   const [integrationLogs, setIntegrationLogs] = useState<SystemIntegrationLog[]>(() => {
     const cached = localStorage.getItem('beneficiary_integrations');
-    return cached ? JSON.parse(cached) : INITIAL_INTEGRATION_LOGS;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* ignore */ }
+    }
+    return INITIAL_INTEGRATION_LOGS;
   });
 
   // Beneficiary Feedbacks database
@@ -759,7 +765,7 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className={`flex-1 ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
+      <main className={`flex-1 flex flex-col relative min-h-0 ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
         
         {/* Offline Alert Strip */}
         {!isOnline && (
@@ -774,7 +780,7 @@ export default function App() {
         )}
 
         {/* Content Tabs */}
-        <div className="relative">
+        <div className={`flex-1 relative ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
           {userRole === 'portal' ? (
             <div key="portal-view" className="animate-fade-in">
               <ErrorBoundary fallbackTitleAr="خطأ في تحميل البوابة الموحدة">
