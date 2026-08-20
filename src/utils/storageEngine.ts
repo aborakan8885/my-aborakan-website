@@ -270,3 +270,416 @@ export async function savePrincipalReportsToStorage(reports: PrincipalReport[], 
     console.warn('IndexedDB save reports failed:', err);
   }
   try {
+    localStorage.setItem('principal_reports', JSON.stringify(reports.slice(0, 1000)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loadPrincipalReportsFromStorage(): Promise<PrincipalReport[]> {
+  let dbReports: PrincipalReport[] = [];
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_REPORTS, 'readonly');
+    const store = tx.objectStore(STORE_REPORTS);
+    dbReports = await new Promise<PrincipalReport[]>((resolve, reject) => {
+      const getAllReq = store.getAll();
+      getAllReq.onsuccess = () => resolve(getAllReq.result || []);
+      getAllReq.onerror = () => reject(getAllReq.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB load reports failed:', err);
+  }
+
+  let lsReports: PrincipalReport[] = [];
+  try {
+    const cached = localStorage.getItem('principal_reports');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) lsReports = parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const merged = new Map<string, PrincipalReport>();
+  dbReports.forEach(r => { if (r && r.id) merged.set(r.id, r); });
+  lsReports.forEach(r => { if (r && r.id && !merged.has(r.id)) merged.set(r.id, r); });
+
+  return Array.from(merged.values());
+}
+
+// ----------------------------------------------------
+// 4. OFFICERS & FEEDBACKS PERSISTENCE
+// ----------------------------------------------------
+export async function saveOfficersToStorage(officers: OfficerUser[]): Promise<void> {
+  if (!officers || !Array.isArray(officers) || officers.length === 0) return;
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_OFFICERS, 'readwrite');
+    const store = tx.objectStore(STORE_OFFICERS);
+    store.clear();
+    for (const off of officers) store.put(off);
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem('officer_users_v4', JSON.stringify(officers));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loadOfficersFromStorage(): Promise<OfficerUser[]> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_OFFICERS, 'readonly');
+    const store = tx.objectStore(STORE_OFFICERS);
+    const dbItems = await new Promise<OfficerUser[]>((res) => {
+      const req = store.getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror = () => res([]);
+    });
+    if (dbItems && dbItems.length > 0) return dbItems;
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    const cached = localStorage.getItem('officer_users_v4');
+    if (cached) return JSON.parse(cached);
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+// ----------------------------------------------------
+// 5. ADMIN-ONLY RESTRICTED CLEAR FUNCTIONS
+// ----------------------------------------------------
+export async function clearAllSurveysFromStorage(actorRole?: string): Promise<boolean> {
+  if (actorRole !== 'admin') {
+    console.error('Unauthorized deletion attempt. Only Admin can clear database.');
+    return false;
+  }
+
+  try {
+    const db = await openDB();
+    const tx = db.transaction([STORE_SURVEYS, STORE_REPORTS], 'readwrite');
+    tx.objectStore(STORE_SURVEYS).clear();
+    tx.objectStore(STORE_REPORTS).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB clear error:', err);
+  }
+
+  try {
+    localStorage.removeItem('beneficiary_surveys');
+    localStorage.removeItem('principal_reports');
+  } catch {
+    /* ignore */
+  }
+
+  return true;
+}
+
+export async function clearSchoolsFromStorage(actorRole?: string): Promise<boolean> {
+  if (actorRole !== 'admin') {
+    console.error('Unauthorized schools clear attempt. Only Admin can clear schools.');
+    return false;
+  }
+
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_SCHOOLS, 'readwrite');
+    tx.objectStore(STORE_SCHOOLS).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    /* ignore */
+  }
+
+  try {
+    localStorage.setItem('app_schools_list_v1', '[]');
+    localStorage.setItem('app_schools_saved_v1', 'true');
+    localStorage.setItem('app_schools_last_saved_at', new Date().toISOString());
+  } catch {
+    /* ignore */
+  }
+
+  return true;
+}
+
+// ----------------------------------------------------
+// 6. DATE-BASED EXCEL BACKUP ENGINE
+// ----------------------------------------------------
+
+export interface BackupFilterOptions {
+  year?: string | number;
+  month?: string | number;
+  day?: string | number;
+  problemType?: string;
+  stage?: string;
+  gender?: string;
+  status?: string;
+}
+
+export function filterSurveysByDateAndType(surveys: SurveyResponse[], filters: BackupFilterOptions): SurveyResponse[] {
+  if (!surveys || !Array.isArray(surveys)) return [];
+
+  return surveys.filter((item) => {
+    if (!item) return false;
+
+    const d = item.createdAt ? new Date(item.createdAt) : new Date();
+    const itemYear = d.getFullYear().toString();
+    const itemMonth = (d.getMonth() + 1).toString();
+    const itemDay = d.getDate().toString();
+
+    if (filters.year && filters.year !== 'all' && filters.year.toString() !== itemYear) return false;
+    if (filters.month && filters.month !== 'all' && filters.month.toString() !== itemMonth) return false;
+    if (filters.day && filters.day !== 'all' && filters.day.toString() !== itemDay) return false;
+
+    if (filters.problemType && filters.problemType !== 'all') {
+      if (filters.problemType === 'equalizations') {
+        if (!isSurveyEqualizationRequest(item)) return false;
+      } else if (filters.problemType === 'vacancies') {
+        if (!isSurveyTransferRequest(item)) return false;
+      } else if (item.problemType !== filters.problemType) {
+        return false;
+      }
+    }
+
+    if (filters.status && filters.status !== 'all') {
+      if (filters.status === 'resolved' && !item.isResolved) return false;
+      if (filters.status === 'pending' && item.isResolved) return false;
+    }
+
+    return true;
+  });
+}
+
+export function exportRequestsBackupToExcel(
+  surveys: SurveyResponse[],
+  filters: BackupFilterOptions,
+  officersList: OfficerUser[] = []
+): { success: boolean; count: number; filename: string } {
+  const filtered = filterSurveysByDateAndType(surveys, filters);
+
+  if (filtered.length === 0) {
+    return { success: false, count: 0, filename: '' };
+  }
+
+  const officerMap = new Map<string, string>();
+  officersList.forEach(o => officerMap.set(o.id, o.nameAr));
+
+  const rows = filtered.map((s, index) => {
+    const d = s.createdAt ? new Date(s.createdAt) : new Date();
+    const dateStr = d.toLocaleDateString('ar-SA');
+    const typeInfo = getRequestTypeInfo(s, true);
+
+    return {
+      'م': index + 1,
+      'رقم المعاملة': s.id,
+      'تاريخ التسجيل': dateStr,
+      'اسم المستفيد': s.beneficiaryName || s.parentName || 'غير مسجل',
+      'رقم الهوية': s.nationalId || 'غير متوفر',
+      'رقم الجوال': s.phoneNumber || 'غير متوفر',
+      'المرحلة': getStageArabicLabel(s.stage),
+      'نوع الطلب': typeInfo.label,
+      'التصنيف': typeInfo.subLabel,
+      'الحالة': s.isResolved ? 'منجز' : 'قيد المعالجة',
+      'الموظف المسؤول': s.assignedOfficerId ? (officerMap.get(s.assignedOfficerId) || s.assignedOfficerId) : 'غير مسند'
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  (worksheet as any)['!views'] = [{ RTL: true }];
+  worksheet['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 20 }, { wch: 28 }, { wch: 16 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 20 }];
+
+  const workbook = XLSX.utils.book_new();
+  workbook.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'سجل النسخة الاحتياطية');
+
+  const filename = `backup_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  XLSX.writeFile(workbook, filename);
+
+  return { success: true, count: filtered.length, filename };
+}
+
+// ----------------------------------------------------
+// 7. BUSINESS LOGIC HELPERS
+// ----------------------------------------------------
+
+export function isSurveyEqualizationRequest(survey: SurveyResponse | undefined | null): boolean {
+  if (!survey) return false;
+  return (
+    survey.requestType === 'equivalency' ||
+    survey.serviceType === 'equalization' ||
+    Boolean(survey.isEqualizationRequest) ||
+    String(survey.problemType).startsWith('cert_')
+  );
+}
+
+export function isSurveyTransferRequest(survey: SurveyResponse | undefined | null): boolean {
+  if (!survey) return false;
+  return (
+    survey.requestType === 'transfer' ||
+    survey.serviceType === 'transfer' ||
+    survey.problemType === 'distance_from_school' ||
+    survey.problemType === 'vacancies_unavailable'
+  );
+}
+
+export function getRequestTypeInfo(survey: SurveyResponse | undefined | null, isRtl: boolean = true): {
+  label: string;
+  subLabel: string;
+  badgeClass: string;
+  icon: string;
+  category: 'registration' | 'transfer' | 'equalization' | 'admission';
+} {
+  if (!survey) {
+    return {
+      label: isRtl ? 'تسجيل جديد' : 'New Registration',
+      subLabel: isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration',
+      badgeClass: 'bg-emerald-100 text-emerald-800',
+      icon: '🎒',
+      category: 'registration'
+    };
+  }
+
+  if (isSurveyEqualizationRequest(survey)) {
+    return {
+      label: isRtl ? 'معادلة' : 'Equivalency',
+      subLabel: isRtl ? 'معادلة شهادات ومؤهلات' : 'Certificates Equivalency',
+      badgeClass: 'bg-purple-100 text-purple-800',
+      icon: '🎓',
+      category: 'equalization'
+    };
+  }
+
+  if (isSurveyTransferRequest(survey)) {
+    return {
+      label: isRtl ? 'نقل' : 'Transfer',
+      subLabel: isRtl ? 'طلب نقل بين المدارس' : 'Transfer Request',
+      badgeClass: 'bg-blue-100 text-blue-800',
+      icon: '🔄',
+      category: 'transfer'
+    };
+  }
+
+  return {
+    label: isRtl ? 'تسجيل جديد' : 'New Registration',
+    subLabel: isRtl ? 'تسجيل طالب مستجد' : 'Fresh Student Registration',
+    badgeClass: 'bg-emerald-100 text-emerald-800',
+    icon: '🎒',
+    category: 'registration'
+  };
+}
+
+export function getProblemTypeArabicLabel(type: string | undefined): string {
+  if (!type) return 'تسجيل جديد';
+  switch (type) {
+    case 'cert_primary_eq': return 'معادلة ابتدائي';
+    case 'cert_intermediate_eq': return 'معادلة متوسط';
+    case 'cert_secondary_eq': return 'معادلة ثانوي';
+    case 'vacancies_unavailable': return 'نقل - شواغر';
+    case 'distance_from_school': return 'نقل - بعد السكن';
+    case 'new_registration_saudi': return 'تسجيل سعودي';
+    case 'new_registration_resident': return 'تسجيل مقيم';
+    default: return 'أخرى';
+  }
+}
+
+export function getStageArabicLabel(stage: string | undefined): string {
+  if (!stage) return 'غير محدد';
+  const s = stage.toLowerCase();
+  if (s.includes('primary') || s.includes('ابتدائي')) return 'المرحلة الابتدائية';
+  if (s.includes('intermediate') || s.includes('متوسط')) return 'المرحلة المتوسطة';
+  if (s.includes('secondary') || s.includes('ثانوي')) return 'المرحلة الثانوية';
+  return stage;
+}
+
+// ----------------------------------------------------
+// 6. UTILS & HELPERS
+// ----------------------------------------------------
+export function normalizeArabicText(str: string | number | undefined | null): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/\u0640/g, '')
+    .replace(/[أإآٱءئؤ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ');
+}
+
+export function cleanSchoolName(name: string | undefined | null): string {
+  if (!name) return '';
+  let norm = normalizeArabicText(name);
+  norm = norm.replace(/\b(مدرسه|مجمع|ابتدائيه|متوسطه|ثانويه|روضه|طفوله مبكره|بنين|بنات|للبنين|للبنات)\b/g, ' ').trim();
+  return norm.replace(/\s+/g, ' ');
+}
+
+export function isMatchingPrincipalSchool(
+  survey: SurveyResponse | undefined | null,
+  principalSession: { schoolCode?: string; schoolName?: string; [key: string]: any } | undefined | null,
+  schoolsList: SchoolItem[] = []
+): boolean {
+  if (!survey || !principalSession) return false;
+
+  const pCode = String(principalSession.schoolCode || '').trim();
+  const pName = String(principalSession.schoolName || '').trim();
+  const pClean = cleanSchoolName(pName);
+  const pNorm = normalizeArabicText(pName);
+
+  const sCode = String(survey.schoolCode || '').trim();
+  if (pCode && sCode && sCode === pCode) return true;
+
+  const sName = String(survey.schoolName || '').trim();
+  if (sName) {
+    const sNorm = normalizeArabicText(sName);
+    const sClean = cleanSchoolName(sName);
+    if (sNorm === pNorm || (pClean && sClean && (sClean.includes(pClean) || pClean.includes(sClean)))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function createFullSystemBackupSnapshot(): Promise<string> {
+  const surveys = await loadSurveysFromStorage();
+  const schools = await loadSchoolsFromStorage();
+  const reports = await loadPrincipalReportsFromStorage();
+  const officers = await loadOfficersFromStorage();
+
+  const backupPayload = {
+    timestamp: new Date().toISOString(),
+    version: '2.0',
+    data: {
+      surveys,
+      schools,
+      reports,
+      officers
+    }
+  };
+
+  const jsonStr = JSON.stringify(backupPayload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  return `تم أخذ نسخة شاملة بنجاح.`;
+}
