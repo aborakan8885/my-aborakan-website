@@ -40,8 +40,8 @@ export default function Header({
       {/* Top multi-color gradient line (Cyan -> Green) */}
       <div className="h-1.5 w-full bg-gradient-to-r from-[#179bad] via-[#1bb3a2] via-[#28c792] to-[#60e090]" />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-1 sm:py-2">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-0.5 sm:py-1">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-1 md:gap-3">
           
           {/* 1. Right Side (Text Card: Kingdom, Education Directorate, Educational Affairs) */}
           <div className="flex flex-col items-center text-center w-full md:w-auto shrink-0">

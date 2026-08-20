@@ -765,7 +765,7 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className={`flex-1 flex flex-col relative min-h-0 ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
+      <main className={`flex-1 flex flex-col relative min-h-0 ${userRole === 'portal' ? 'pb-12 sm:pb-6' : 'pb-32 sm:pb-20'}`}>
         
         {/* Offline Alert Strip */}
         {!isOnline && (
@@ -780,7 +780,7 @@ export default function App() {
         )}
 
         {/* Content Tabs */}
-        <div className={`flex-1 relative ${userRole === 'portal' ? 'pb-24 sm:pb-12' : 'pb-32 sm:pb-20'}`}>
+        <div className={`flex-1 relative ${userRole === 'portal' ? 'pb-12 sm:pb-6' : 'pb-32 sm:pb-20'}`}>
           {userRole === 'portal' ? (
             <div key="portal-view" className="animate-fade-in">
               <ErrorBoundary fallbackTitleAr="خطأ في تحميل البوابة الموحدة">
@@ -1003,11 +1003,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Bottom Footer - Only Compact Contact & Feedback Button on the Left */}
-      <footer className="w-full bg-transparent py-1.5 transition-colors duration-300">
+      <footer className="w-full bg-transparent py-0.5 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-start" style={{ direction: 'ltr' }}>
           <button
             onClick={() => setIsFeedbackModalOpen(true)}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 ${
               isDark
                 ? 'bg-[#1b6b8b]/60 hover:bg-[#218caa]/80 border-[#69cee3]/40 text-cyan-100'
                 : 'bg-white/95 hover:bg-cyan-50/80 border-[#218caa]/35 text-[#1b6583]'
@@ -1030,30 +1030,30 @@ export default function App() {
       />
 
       {/* Floating Action Buttons (FAB) */}
-      {(userRole !== 'portal' || portalView !== 'selection' || showAgeModal) && (
+      {userRole && (
         <>
           {/* FAB Right: Return to Main Gateway */}
-          <div className="fixed bottom-6 right-6 z-50">
+          <div className="fixed bottom-16 right-4 z-50">
             <button
               type="button"
               onClick={handleReturnToMainGateway}
-              className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-[10px] sm:text-xs rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-teal-300/40 cursor-pointer group"
               id="fab-return-portal"
             >
-              <Home className="w-5 h-5 text-amber-300 group-hover:scale-110 transition-transform" />
+              <Home className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
               <span>{currentLang === 'ar' ? 'العودة لبوابة الدخول الرئيسية' : 'Return to Main Gateway'}</span>
             </button>
           </div>
 
           {/* FAB Left: Back / Go Back */}
-          <div className="fixed bottom-6 left-6 z-50">
+          <div className="fixed bottom-16 left-4 z-50">
             <button
               type="button"
               onClick={handleGoBack}
-              className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 hover:from-slate-800 hover:to-slate-950 text-white font-black text-xs sm:text-sm rounded-2xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-slate-500/40 cursor-pointer group"
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 hover:from-slate-800 hover:to-slate-950 text-white font-black text-[10px] sm:text-xs rounded-xl shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 border border-slate-500/40 cursor-pointer group"
               id="fab-go-back"
             >
-              <RotateCcw className="w-5 h-5 text-teal-300 group-hover:-rotate-90 transition-transform" />
+              <RotateCcw className="w-4 h-4 text-teal-300 group-hover:-rotate-90 transition-transform" />
               <span>{currentLang === 'ar' ? 'عودة للخلف' : 'Go Back'}</span>
             </button>
           </div>

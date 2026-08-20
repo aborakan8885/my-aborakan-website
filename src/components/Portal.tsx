@@ -761,22 +761,22 @@ export default function Portal({
 
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-4" id="portal-root">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1 sm:py-2" id="portal-root">
       
       {/* VIEW 1: ROLE SELECTION LAUNCHPAD */}
       {view === 'selection' && (
         <div
           key="portal-selection"
-          className="py-1 sm:py-2 space-y-3 max-w-6xl mx-auto px-4 animate-fade-in"
+          className="py-0.5 sm:py-1 space-y-2 max-w-6xl mx-auto px-4 animate-fade-in"
         >
             {/* Header Title */}
-            <div className="text-center max-w-2xl mx-auto space-y-0.5">
-              <h1 className={`text-2xl sm:text-3xl font-black tracking-tight leading-tight transition-colors ${
+            <div className="text-center max-w-2xl mx-auto space-y-0">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight leading-tight transition-colors ${
                 isDark ? 'text-white' : 'text-slate-800'
               }`}>
                 {t.portalTitle}
               </h1>
-              <p className={`text-xs sm:text-sm font-medium max-w-xl mx-auto leading-relaxed transition-colors ${
+              <p className={`text-[10px] sm:text-xs font-medium max-w-xl mx-auto leading-relaxed transition-colors ${
                 isDark ? 'text-teal-200/80' : 'text-slate-500'
               }`}>
                 {t.portalSubtitle}
@@ -784,27 +784,27 @@ export default function Portal({
             </div>
 
             {/* Selection Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 max-w-6xl mx-auto">
               
               {/* Card 1: Educational Schools Map (خارطة المدارس التعليمية) */}
               <motion.div
-                whileHover={{ y: -4, scale: 1.005 }}
+                whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => window.open('https://mapedumadinah.com/', '_blank')}
-                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
                   isDark
-                    ? 'glass-card-dark hover:border-cyan-400 hover:shadow-cyan-500/5'
-                    : 'bg-white border-slate-200 hover:border-cyan-500 hover:shadow-xl'
+                    ? 'bg-slate-800 border-slate-700 hover:border-cyan-400'
+                    : 'bg-white border-slate-200 hover:border-cyan-500 hover:shadow-lg'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
                   isDark ? 'bg-cyan-500/5 group-hover:bg-cyan-500/10' : 'bg-cyan-500/5 group-hover:bg-cyan-500/10'
                 }`} />
                 
                 <div className="space-y-3">
-                  {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
-                    isDark ? 'glass-icon-dark-blue group-hover:bg-cyan-400 group-hover:text-[#061c24]' : 'glass-icon-light-cyan group-hover:bg-cyan-600 group-hover:text-white'
+                  {/* White Icon Wrapper - Colored Icon */}
+                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
+                    isDark ? 'bg-slate-700 border-slate-600 text-cyan-400' : 'bg-white border-slate-100 text-cyan-600'
                   }`}>
                     <Map className="w-6 h-6" />
                   </div>
@@ -835,23 +835,23 @@ export default function Portal({
 
               {/* Card 2: Parent Beneficiary (ولي أمر) */}
               <motion.div
-                whileHover={{ y: -4, scale: 1.005 }}
+                whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => setView('parent-choices')}
-                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
                   isDark
-                    ? 'glass-card-dark hover:border-teal-400 hover:shadow-teal-500/5'
-                    : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-xl'
+                    ? 'bg-slate-800 border-slate-700 hover:border-teal-400'
+                    : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-lg'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
                   isDark ? 'bg-teal-500/5 group-hover:bg-teal-500/10' : 'bg-blue-500/5 group-hover:bg-blue-500/10'
                 }`} />
                 
                 <div className="space-y-3">
-                  {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
-                    isDark ? 'glass-icon-dark-blue group-hover:bg-teal-400 group-hover:text-[#061c24]' : 'glass-icon-light-blue group-hover:bg-blue-600 group-hover:text-white'
+                  {/* White Icon Wrapper - Colored Icon */}
+                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
+                    isDark ? 'bg-slate-700 border-slate-600 text-teal-400' : 'bg-white border-slate-100 text-blue-600'
                   }`}>
                     <Users className="w-6 h-6" />
                   </div>
@@ -880,27 +880,27 @@ export default function Portal({
 
               {/* Card 3: School Principal Beneficiary (مدير مدرسة) */}
               <motion.div
-                whileHover={{ y: -4, scale: 1.005 }}
+                whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => {
                   setView('principal-login');
                   setPrincipalAuthMode('login');
                   setLoginError('');
                 }}
-                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
                   isDark
-                    ? 'glass-card-dark hover:border-emerald-400 hover:shadow-emerald-500/5'
-                    : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-xl'
+                    ? 'bg-slate-800 border-slate-700 hover:border-emerald-400'
+                    : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-lg'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
                   isDark ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-emerald-500/5 group-hover:bg-emerald-500/10'
                 }`} />
                 
                 <div className="space-y-3">
-                  {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
-                    isDark ? 'glass-icon-dark-emerald group-hover:bg-emerald-400 group-hover:text-[#061c24]' : 'glass-icon-light-emerald group-hover:bg-[#218caa] group-hover:text-white'
+                  {/* White Icon Wrapper - Colored Icon */}
+                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
+                    isDark ? 'bg-slate-700 border-slate-600 text-emerald-400' : 'bg-white border-slate-100 text-emerald-600'
                   }`}>
                     <School className="w-6 h-6" />
                   </div>
@@ -929,23 +929,23 @@ export default function Portal({
 
               {/* Card 4: Department Staff (منسوبي الإدارة) */}
               <motion.div
-                whileHover={{ y: -4, scale: 1.005 }}
+                whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => onSelectRole('admin')}
-                className={`group relative rounded-2xl p-4 sm:p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-sm border ${
                   isDark
-                    ? 'glass-card-dark hover:border-amber-400 hover:shadow-amber-500/5'
-                    : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-xl'
+                    ? 'bg-slate-800 border-slate-700 hover:border-amber-400'
+                    : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-lg'
                 }`}
               >
                 {/* Decorative background glow */}
-                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl transition-all ${
+                <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-3xl transition-all ${
                   isDark ? 'bg-amber-500/5 group-hover:bg-amber-500/10' : 'bg-indigo-500/5 group-hover:bg-indigo-500/10'
                 }`} />
                 
                 <div className="space-y-3">
-                  {/* Frosted Glass Icon Wrapper */}
-                  <div className={`glass-icon-container p-2.5 w-fit rounded-xl ${
-                    isDark ? 'glass-icon-dark-indigo group-hover:bg-amber-400 group-hover:text-[#061c24]' : 'glass-icon-light-indigo group-hover:bg-indigo-600 group-hover:text-white'
+                  {/* White Icon Wrapper - Colored Icon */}
+                  <div className={`p-2.5 w-fit rounded-xl shadow-sm border transition-all duration-300 ${
+                    isDark ? 'bg-slate-700 border-slate-600 text-amber-400' : 'bg-white border-slate-100 text-indigo-600'
                   }`}>
                     <ShieldCheck className="w-6 h-6" />
                   </div>
@@ -986,10 +986,10 @@ export default function Portal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="space-y-12 max-w-4xl mx-auto"
+            className="space-y-6 max-w-4xl mx-auto"
           >
             {/* Header Title */}
-            <div className="text-center max-w-2xl mx-auto space-y-4">
+            <div className="text-center max-w-2xl mx-auto space-y-2">
               <span className={`inline-flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-full font-bold border transition-colors ${
                 isDark
                   ? 'bg-[#0b2a3f] text-teal-300 border-teal-800/40'
@@ -1013,7 +1013,7 @@ export default function Portal({
             </div>
 
             {/* Grid of Three Choices */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
               
               {/* Option A: Submit Request */}
               <motion.div
@@ -1026,7 +1026,7 @@ export default function Portal({
                     setShowAgeModal(true);
                   });
                 }}
-                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-3xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-teal-400 hover:shadow-teal-500/5'
                     : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-xl'
@@ -1075,7 +1075,7 @@ export default function Portal({
                     onSelectRole('parent');
                   });
                 }}
-                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-3xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-emerald-400 hover:shadow-emerald-500/5'
                     : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-xl'
@@ -1131,7 +1131,7 @@ export default function Portal({
               <motion.div
                 whileHover={{ y: -6, scale: 1.01 }}
                 onClick={() => setView('parent-track')}
-                className={`group relative rounded-3xl p-7 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
+                className={`group relative rounded-3xl p-5 cursor-pointer transition-all flex flex-col justify-between overflow-hidden shadow-xs border ${
                   isDark
                     ? 'glass-card-dark hover:border-amber-400 hover:shadow-amber-500/5'
                     : 'bg-white border-slate-200 hover:border-amber-500 hover:shadow-xl'
@@ -1171,20 +1171,7 @@ export default function Portal({
 
             </div>
 
-            {/* Back Button */}
-            <div className="text-center pt-4">
-              <button
-                onClick={() => setView('selection')}
-                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-extrabold transition-all cursor-pointer ${
-                  isDark 
-                    ? 'bg-[#0b2336] border-teal-800/40 text-teal-300 hover:bg-[#061c24] hover:border-teal-400' 
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-blue-500 hover:text-blue-600'
-                }`}
-              >
-                {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-                <span>{isRtl ? 'العودة للقائمة الرئيسية' : 'Back to Main Menu'}</span>
-              </button>
-            </div>
+            {/* Back Button Removed as requested */}
           </motion.div>
         )}
 
