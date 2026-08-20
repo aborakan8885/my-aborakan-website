@@ -7,6 +7,17 @@ export default defineConfig(() => {
   return {
     base: '/',
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'lucide-react', 'motion/react'],
+            utils: ['xlsx', 'iconv-lite', 'jschardet', 'nodemailer'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1000,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

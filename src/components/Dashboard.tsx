@@ -2009,7 +2009,7 @@ Direct Strategic Recommendations:
   const [supervisorFilterTab, setSupervisorFilterTab] = useState<'all' | 'new_unreceived' | 'my_received' | 'vacancy_approved' | 'sent_leadership' | 'sent_principal' | 'staffing_confirmed' | 'archived'>('all');
   const [requestTypeFilter, setRequestTypeFilter] = useState<'all' | RequestType>('all');
   const [selectedCategoryMap, setSelectedCategoryMap] = useState<Record<string, string>>({});
-  const [vacancyFilterStatus, setVacancyFilterStatus] = useState<'all' | 'pending' | 'from_admissions' | 'approved' | 'sent_to_leadership' | 'delayed' | 'staffing_confirmed' | 'archived'>('all');
+  const [vacancyFilterStatus, setVacancyFilterStatus] = useState<'all' | 'pending' | 'from_admissions' | 'approved' | 'sent_to_leadership' | 'delayed' | 'staffing_confirmed' | 'archived' | 'returned_no_vacancy' | 'equalization' | 'stale_update'>('all');
   const [vacancyPage, setVacancyPage] = useState<number>(1);
   const VACANCY_PAGE_SIZE = 50;
 

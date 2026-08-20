@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import iconv from "iconv-lite";
 import jschardet from "jschardet";
 import nodemailer from "nodemailer";
+import rateLimit from "express-rate-limit";
 import { createServer as createViteServer } from "vite";
 
 // Prevent process crashes under intense concurrent load spikes
@@ -61,9 +62,19 @@ async function startServer() {
 
   // Standard Security Headers with Helmet
   app.use(helmet({
-    contentSecurityPolicy: false, // Vite handles CSP in dev, and it can be tricky for SPAs without config
+    contentSecurityPolicy: false, 
     crossOriginEmbedderPolicy: false
   }));
+
+  // Rate Limiting to prevent brute force and DDoS on API endpoints
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many requests from this IP, please try again later."
+  });
+  app.use("/api/", limiter);
 
   // Enable response compression (Gzip / Brotli) for maximum throughput
   app.use(compression({ level: 6, threshold: 1024 }));
