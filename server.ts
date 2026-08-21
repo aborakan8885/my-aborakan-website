@@ -79,14 +79,14 @@ async function startServer() {
   // Enable response compression (Gzip / Brotli) for maximum throughput
   app.use(compression({ level: 6, threshold: 1024 }));
 
-  app.use(express.json({ limit: "10mb" })); // Reduced limit for better security
-  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  app.use(express.json({ limit: "5mb" })); 
+  app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
   // Custom high concurrency headers
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
     next();
   });
 
@@ -498,6 +498,11 @@ async function startServer() {
         error: `حدث خطأ أثناء معالجة الملف: ${err.message || err}`
       });
     }
+  });
+
+  // Loader.io Verification Route
+  app.get(["/loaderio-7103f8a28cf58d4ccd87bed4e090afe6.txt", "/loaderio-7103f8a28cf58d4ccd87bed4e090afe6/"], (req, res) => {
+    res.type('text/plain').send("loaderio-7103f8a28cf58d4ccd87bed4e090afe6");
   });
 
   // Vite middleware for development / Static file serving for production

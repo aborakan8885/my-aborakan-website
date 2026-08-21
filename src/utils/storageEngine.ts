@@ -17,6 +17,8 @@ const ENCRYPTION_SALT = 'MoeSmartSecureSalt_2026';
 let dbInstance: IDBDatabase | null = null;
 
 // دالة أمنية لتشفير النصوص الحساسة قبل تخزينها محلياً لحماية خصوصية المستفيدين
+// ملاحظة أمنية: هذا التشفير يعتمد على التعمية (Obfuscation) لحماية البيانات من المتطفلين العاديين في المتصفح.
+// في بيئة الإنتاج الفعلية، يجب استخدام نظام تشفير متقدم أو نقل البيانات للخادم مباشرة.
 function encryptField(text: string | undefined | null): string {
   if (!text) return '';
   try {

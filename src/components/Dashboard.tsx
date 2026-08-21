@@ -600,6 +600,25 @@ function Dashboard({
     return list;
   });
 
+  // Performance Optimization: Memoized vacancy statistics for large datasets
+  const vacancyStats = useMemo(() => {
+    const vacancySurveys = surveys.filter(s => s && (s as any).isVacancyRequest);
+    return {
+      total: vacancySurveys.length,
+      pending: vacancySurveys.filter(s => {
+        const status = String((s as any).vacancyRequestStatus || '');
+        return status === 'pending' || status === 'pending_vacancy' || !status;
+      }).length,
+      approved: vacancySurveys.filter(s => String((s as any).vacancyRequestStatus) === 'approved').length,
+      leadership: vacancySurveys.filter(s => String((s as any).vacancyRequestStatus) === 'sent_to_leadership').length,
+      staffing: vacancySurveys.filter(s => String((s as any).vacancyRequestStatus) === 'staffing_confirmed').length,
+      archived: vacancySurveys.filter(s => {
+        const status = String((s as any).vacancyRequestStatus || '');
+        return status === 'executed' || status === 'archived' || s.isResolved;
+      }).length
+    };
+  }, [surveys]);
+
   // Active Officer Session inside the Admin Portal
   const [activeOfficer, setActiveOfficer] = useState<OfficerUser>(() => {
     const cachedId = localStorage.getItem('active_officer_id_v1');
@@ -12028,7 +12047,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'إجمالي الطلبات' : 'Total'}
                   </span>
                   <span className={`block text-base sm:text-lg font-black mt-0.5 ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                    {surveys.filter(s => s && (s as any).isVacancyRequest).length}
+                    {vacancyStats.total}
                   </span>
                 </div>
 
@@ -12039,7 +12058,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'بانتظار فتح الشاغر' : 'Pending Vacancy'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-amber-600 dark:text-amber-400">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && (String((s as any).vacancyRequestStatus) === 'pending' || String((s as any).vacancyRequestStatus) === 'pending_vacancy' || !(s as any).vacancyRequestStatus)).length}
+                    {vacancyStats.pending}
                   </span>
                 </div>
 
@@ -12050,7 +12069,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'تم فتح الشاغر' : 'Vacancy Opened'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-teal-600 dark:text-teal-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'approved').length}
+                    {vacancyStats.approved}
                   </span>
                 </div>
 
@@ -12061,7 +12080,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'جاري التسكين' : 'In Staffing'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-indigo-600 dark:text-indigo-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'sent_to_leadership').length}
+                    {vacancyStats.leadership}
                   </span>
                 </div>
 
@@ -12072,7 +12091,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'تم التسكين' : 'Staffed'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-sky-600 dark:text-sky-300">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && String((s as any).vacancyRequestStatus) === 'staffing_confirmed').length}
+                    {vacancyStats.staffing}
                   </span>
                 </div>
 
@@ -12083,7 +12102,7 @@ ${isArabic ? '<x:DisplayRightToLeft/>' : ''}
                     {isRtl ? 'منجز ومؤرشف' : 'Archived'}
                   </span>
                   <span className="block text-base sm:text-lg font-black mt-0.5 text-emerald-600 dark:text-emerald-400">
-                    {surveys.filter(s => s && (s as any).isVacancyRequest && (String((s as any).vacancyRequestStatus) === 'executed' || String((s as any).vacancyRequestStatus) === 'archived' || s.isResolved)).length}
+                    {vacancyStats.archived}
                   </span>
                 </div>
               </div>
